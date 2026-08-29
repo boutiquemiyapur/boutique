@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+
+  --color-boutique-ruby: #625e59;
+  --color-boutique-crimson: #494541;
+  --color-boutique-rose: #9a9187;
+  --color-boutique-gold: #a89785;
+  --color-boutique-gold-light: #d8c8b7;
+  --color-boutique-champagne: #ebe7e1;
+  --color-boutique-sand: #f7f5f2;
+  --color-boutique-ivory: #fffdf9;
+  --color-boutique-charcoal: #2c2926;
+  --color-boutique-emerald: #16423C;
+  --color-boutique-navy: #152238;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-boutique-charcoal);
+    background-color: var(--color-boutique-sand);
+    overflow-x: hidden;
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, .font-luxury {
+    font-family: var(--font-serif);
+  }
+
+  .font-brand {
+    font-family: var(--font-display);
+  }
+}
+
+button, input, select, textarea { border-radius: 0 !important; }
+button { cursor: pointer; }
+input, select, textarea { outline-color: #625e59; }
+.stitch-shell { background: #f7f5f2; color: #2c2926; }
+.stitch-panel { background: #fff; border: 1px solid #ddd7cf; }
+
+/* The legacy screens share the original ruby/gold utility classes. Keep them
+   visually coherent with the new neutral Stitch system while those screens use
+   their existing, working interaction markup. */
+.bg-\[\#8B1E3F\], .hover\:bg-\[\#8B1E3F\]:hover { background-color: #625e59 !important; }
+.bg-\[\#721C24\], .hover\:bg-\[\#721C24\]:hover { background-color: #494541 !important; }
+.bg-\[\#1A1715\], .hover\:bg-\[\#1A1715\]:hover { background-color: #2c2926 !important; }
+.bg-\[\#FAF7F2\] { background-color: #f7f5f2 !important; }
+.bg-\[\#FAF4ED\] { background-color: #f3f0eb !important; }
+.bg-\[\#EFE7DA\] { background-color: #ebe7e1 !important; }
+.text-\[\#8B1E3F\], .hover\:text-\[\#8B1E3F\]:hover { color: #625e59 !important; }
+.text-\[\#721C24\], .hover\:text-\[\#721C24\]:hover { color: #494541 !important; }
+.text-\[\#1A1715\] { color: #2c2926 !important; }
+.text-\[\#C5A059\], .text-\[\#DFBF77\] { color: #8e8175 !important; }
+.border-\[\#8B1E3F\], .hover\:border-\[\#8B1E3F\]:hover { border-color: #625e59 !important; }
+.border-\[\#E6D5B8\], .border-\[\#C5A059\] { border-color: #ddd7cf !important; }
+
+/* Custom smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FAF7F2;
+}
+::-webkit-scrollbar-thumb {
+  background: #D8C8B8;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C5A059;
+}
+
+/* Elegant gold gradient */
+.bg-gold-gradient {
+  background: linear-gradient(135deg, #D4AF37 0%, #C5A059 50%, #A67C1E 100%);
+}
+
+.text-gold-gradient {
+  background: linear-gradient(135deg, #DFBF77 0%, #C5A059 50%, #A67C1E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.border-gold-gradient {
+  border-image: linear-gradient(135deg, #DFBF77, #C5A059, #A67C1E) 1;
+}
+
+/* Glass & soft shadow */
+.luxury-card-shadow {
+  box-shadow: 0 10px 30px -10px rgba(26, 23, 21, 0.07);
+}
+
+.luxury-card-shadow-hover:hover {
+  box-shadow: 0 20px 40px -15px rgba(139, 30, 63, 0.12);
+}

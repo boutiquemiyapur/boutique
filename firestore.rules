@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    // This claim must be assigned only with the Firebase Admin SDK or a trusted
+    // Cloud Function. It is never read from a client-writable Firestore field.
+    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    function owns(userId) { return signedIn() && request.auth.uid == userId; }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    // Coupon codes are public only because the present storefront validates a
+    // code in-browser. A checkout function must still recalculate eligibility.
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /customers/{customerId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Reserved for canonical, server-validated orders. Browser clients must
+    // never create or change documents in this collection.
+    match /orders/{orderId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if owns(userId) || isAdmin();
+      allow create: if owns(userId)
+        && request.resource.data.keys().hasOnly(['profile', 'role', 'createdAt', 'updatedAt'])
+        && request.resource.data.role == 'customer';
+      allow update: if isAdmin() || (
+        owns(userId)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profile', 'updatedAt'])
+      );
+      allow delete: if false;
+
+      // Private customer checkout requests. Only a server process may update
+      // payment, fulfilment, tracking, prices, discount, or stock outcomes.
+      match /orders/{orderId} {
+        allow read: if owns(userId) || isAdmin();
+        allow create: if owns(userId)
+          && request.resource.data.keys().hasOnly(['customerId', 'data', 'createdAt', 'updatedAt'])
+          && request.resource.data.customerId == userId
+          && request.resource.data.data.paymentStatus == 'Pending'
+          && request.resource.data.data.orderStatus == 'Order Placed';
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    match /carts/{userId} {
+      allow read: if owns(userId) || isAdmin();
+      allow create: if owns(userId)
+        && request.resource.data.keys().hasOnly(['ownerId', 'items', 'updatedAt'])
+        && request.resource.data.ownerId == userId;
+      allow update: if isAdmin() || (
+        owns(userId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'updatedAt'])
+      );
+      allow delete: if owns(userId) || isAdmin();
+    }
+
+    match /wishlists/{userId} {
+      allow read: if owns(userId) || isAdmin();
+      allow create: if owns(userId)
+        && request.resource.data.keys().hasOnly(['ownerId', 'productIds', 'updatedAt'])
+        && request.resource.data.ownerId == userId;
+      allow update: if isAdmin() || (
+        owns(userId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['productIds', 'updatedAt'])
+      );
+      allow delete: if owns(userId) || isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.verifiedBuyer == false;
+      allow update: if isAdmin() || (
+        owns(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.productId == resource.data.productId
+        && request.resource.data.verifiedBuyer == resource.data.verifiedBuyer
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['data', 'updatedAt'])
+      );
+      allow delete: if owns(resource.data.userId) || isAdmin();
+    }
+  }
+}
