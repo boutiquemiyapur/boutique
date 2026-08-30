@@ -1,13 +1,16 @@
-export type Category = 
-  | 'All'
-  | 'Kanjeevaram Silks'
-  | 'Banarasi Sarees'
-  | 'Bridal Lehengas'
-  | 'Designer Sarees'
-  | 'Unstitched Suits'
-  | 'Anarkalis & Kurtis'
-  | 'Indo-Western'
-  | 'Temple Jewelry';
+// Categories are data, not a code-level enumeration. This allows the catalog
+// to grow or shrink through the admin category collection without a release.
+export type Category = string;
+
+export interface StoreCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  image?: string;
+  isActive: boolean;
+  sortOrder: number;
+}
 
 export type FabricType = 
   | 'Pure Mulberry Silk'
@@ -138,7 +141,8 @@ export interface ShippingAddress {
 
 export type ShippingMethod = 'standard' | 'express';
 
-export type PaymentMethod = 'razorpay_upi' | 'razorpay_card' | 'razorpay_netbanking' | 'cod';
+// Online payment methods are intentionally not enabled in the current checkout.
+export type PaymentMethod = 'cod';
 
 export type OrderStatus = 
   | 'Order Placed'
@@ -176,9 +180,11 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: 'Paid' | 'Pending' | 'Failed';
   orderStatus: OrderStatus;
-  trackingNumber: string;
-  courierPartner: 'BlueDart Luxury Express' | 'Delhivery Air' | 'DHL Express International';
-  estimatedDeliveryDate: string;
+  /** Populated only after a real dispatch has been arranged. */
+  trackingNumber?: string;
+  courierPartner?: 'BlueDart Luxury Express' | 'Delhivery Air' | 'DHL Express International';
+  /** An estimate is optional until the boutique confirms fulfilment. */
+  estimatedDeliveryDate?: string;
   timeline: OrderTimelineEvent[];
 }
 
@@ -210,6 +216,7 @@ export type AppView =
   | 'shop'
   | 'product-detail'
   | 'cart'
+  | 'wishlist'
   | 'checkout'
   | 'order-confirmation'
   | 'order-tracking'
@@ -218,6 +225,13 @@ export type AppView =
   | 'about'
   | 'tailoring-guide'
   | 'contact'
+  | 'shipping-policy'
+  | 'returns-policy'
+  | 'cancellation-policy'
+  | 'privacy-policy'
+  | 'terms-policy'
+  | 'cookie-policy'
+  | 'not-found'
   | 'login'
   | 'register'
   | 'forgot-password';
@@ -233,5 +247,5 @@ export interface FilterState {
   readyToShipOnly: boolean;
   handloomOnly: boolean;
   searchQuery: string;
-  sortBy: 'featured' | 'newest' | 'price-low-high' | 'price-high-low' | 'rating';
+  sortBy: 'featured' | 'newest' | 'price-low-high' | 'price-high-low' | 'rating' | 'name-a-z';
 }

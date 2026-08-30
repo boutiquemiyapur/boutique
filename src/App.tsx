@@ -18,6 +18,9 @@ import { WishlistDrawer } from './components/common/WishlistDrawer';
 import { QuickViewModal } from './components/common/QuickViewModal';
 import { SizeGuideModal } from './components/common/SizeGuideModal';
 import { ToastContainer } from './components/common/ToastContainer';
+import { WishlistPage } from './components/common/WishlistPage';
+import { CartPage } from './components/cart/CartPage';
+import { NotFoundPage, StaticPage } from './components/pages/StaticPage';
 import { AuthPage } from './components/auth/AuthPage';
 import { LoaderCircle, ShieldAlert } from 'lucide-react';
 
@@ -41,7 +44,7 @@ const ProtectedAdmin = () => {
 const AccessNotice = ({ title, action, onAction }: { title: string; action: string; onAction: () => void }) => <section className="grid min-h-[60vh] place-items-center px-5"><div className="max-w-md border border-[#ddd7cf] bg-white p-8 text-center shadow-sm"><ShieldAlert className="mx-auto h-7 w-7 text-[#685c53]" /><h1 className="mt-4 font-serif text-3xl text-[#252220]">{title}</h1><p className="mt-3 text-sm text-stone-600">Your account and boutique operations are protected by Firebase Authentication.</p><button onClick={onAction} className="mt-6 bg-[#685c53] px-6 py-3 text-xs font-semibold uppercase tracking-[.12em] text-white">{action}</button></div></section>;
 
 function AppContent() {
-  const { activeView } = useStore();
+  const { activeView, navigateFromUrl } = useStore();
   const isAuthView = activeView === 'login' || activeView === 'register' || activeView === 'forgot-password';
   const isStandaloneView = isAuthView || activeView === 'admin';
 
@@ -49,6 +52,15 @@ function AppContent() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeView]);
+
+  useEffect(() => {
+    navigateFromUrl();
+    window.addEventListener('popstate', navigateFromUrl);
+    return () => window.removeEventListener('popstate', navigateFromUrl);
+    // Route parser only uses stable React state setters; registering it once
+    // avoids rebinding the listener on each StoreContext provider render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#1A1715] selection:bg-[#8B1E3F] selection:text-white font-sans antialiased">
@@ -61,6 +73,10 @@ function AppContent() {
         {activeView === 'shop' && <ProductListingPage />}
 
         {activeView === 'product-detail' && <ProductDetailPage />}
+
+        {activeView === 'cart' && <CartPage />}
+
+        {activeView === 'wishlist' && <WishlistPage />}
 
         {activeView === 'checkout' && <CheckoutPage />}
 
@@ -75,6 +91,10 @@ function AppContent() {
         {activeView === 'about' && <AboutArtisansPage />}
 
         {activeView === 'contact' && <ContactConciergePage />}
+
+        {['shipping-policy', 'returns-policy', 'cancellation-policy', 'privacy-policy', 'terms-policy', 'cookie-policy'].includes(activeView) && <StaticPage view={activeView} />}
+
+        {activeView === 'not-found' && <NotFoundPage />}
 
         {activeView === 'admin' && <ProtectedAdmin />}
 

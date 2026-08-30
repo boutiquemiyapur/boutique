@@ -31,7 +31,7 @@ const TESTIMONIALS: Testimonial[] = [
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
     rating: 5,
     productPurchased: 'Noor-E-Chashm Velvet Zardozi Bridal Lehenga Set',
-    comment: 'The double dupatta draping and heavy velvet flare made me feel like royalty. Miyapur Boutique is our entire family’s destination for all weddings.'
+    comment: 'This sample review must be replaced with a verified customer review before publication.'
   },
   {
     id: 't-3',

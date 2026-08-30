@@ -16,7 +16,7 @@ export const CustomTailoringBanner: React.FC = () => {
             <div className="lg:col-span-8 space-y-4">
               <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-[#DFBF77]">
                 <Scissors className="w-3.5 h-3.5" />
-                <span>Miyapur Bespoke Atelier</span>
+                <span>AB Collection tailoring</span>
               </div>
 
               <h2 className="text-2xl sm:text-4xl lg:text-5xl font-serif font-bold leading-tight">

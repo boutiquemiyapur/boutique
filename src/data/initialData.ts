@@ -42,13 +42,13 @@ export const INITIAL_COUPONS: Coupon[] = [
 
 export const INITIAL_CUSTOMER: CustomerProfile = {
   id: 'cust-991',
-  fullName: 'Pooja Reddy',
+  fullName: 'Sample Customer',
   email: 'pooja.reddy@example.com',
   phone: '+91 98490 12345',
   tier: 'Royal Heirloom VIP',
   savedAddresses: [
     {
-      fullName: 'Pooja Reddy',
+      fullName: 'Sample Customer',
       phone: '+91 98490 12345',
       email: 'pooja.reddy@example.com',
       addressLine1: 'Villa 42, Palm Meadows, Jubilee Hills Road No. 36',
@@ -144,7 +144,7 @@ export const INITIAL_ORDERS: Order[] = [
       }
     ],
     shippingAddress: {
-      fullName: 'Pooja Reddy',
+      fullName: 'Sample Customer',
       phone: '+91 98490 12345',
       email: 'pooja.reddy@example.com',
       addressLine1: 'Villa 42, Palm Meadows, Jubilee Hills Road No. 36',
@@ -162,8 +162,8 @@ export const INITIAL_ORDERS: Order[] = [
     taxGstINR: 2002,
     totalINR: 42052,
     currency: 'INR',
-    paymentMethod: 'razorpay_upi',
-    paymentStatus: 'Paid',
+    paymentMethod: 'cod',
+    paymentStatus: 'Pending',
     orderStatus: 'In Transit',
     trackingNumber: 'BLUEDART-HYD-9812903',
     courierPartner: 'BlueDart Luxury Express',
@@ -172,7 +172,7 @@ export const INITIAL_ORDERS: Order[] = [
       {
         status: 'Order Placed',
         timestamp: '25 Aug 2026, 02:30 PM',
-        description: 'Order confirmed & secured via Razorpay UPI.',
+        description: 'Cash on Delivery order recorded. Fulfilment updates will appear when available.',
         location: 'Hyderabad Studio',
         completed: true
       },

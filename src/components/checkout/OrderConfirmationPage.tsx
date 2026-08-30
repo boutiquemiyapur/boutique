@@ -3,15 +3,12 @@ import { useStore } from '../../context/StoreContext';
 import {
   CheckCircle2,
   Truck,
-  Package,
-  Calendar,
-  Phone,
   Printer,
   ArrowRight,
-  ShieldCheck,
   Scissors
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { BrandMark } from '../../config/brand';
 
 export const OrderConfirmationPage: React.FC = () => {
   const { currentOrder, formatPrice, navigate } = useStore();
@@ -48,12 +45,13 @@ export const OrderConfirmationPage: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Success Card Header */}
         <div className="bg-white border border-[#E6D5B8] rounded-3xl p-8 sm:p-12 shadow-sm text-center space-y-4">
+          <div className="flex justify-center"><BrandMark className="text-lg" /></div>
           <div className="w-16 h-16 rounded-full bg-emerald-100 border-2 border-emerald-500 text-emerald-600 mx-auto flex items-center justify-center shadow-md">
             <CheckCircle2 className="w-10 h-10" />
           </div>
 
           <span className="text-xs uppercase tracking-[0.25em] font-bold text-[#8B1E3F]">
-            Order Confirmed & Atelier Dispatched
+            Order request received
           </span>
 
           <h1 className="text-2xl sm:text-4xl font-serif font-bold text-[#1A1715]">
@@ -61,16 +59,16 @@ export const OrderConfirmationPage: React.FC = () => {
           </h1>
 
           <p className="text-xs sm:text-sm text-stone-600 max-w-lg mx-auto font-sans leading-relaxed">
-            Your heirloom order <strong>#{currentOrder.orderNumber}</strong> has been registered with our master weavers in Hyderabad. A confirmation has been sent to <strong>{currentOrder.shippingAddress.email}</strong>.
+            Your Cash on Delivery order <strong>#{currentOrder.orderNumber}</strong> is recorded. Fulfilment and dispatch details will be shown in your order status when they are available.
           </p>
 
           <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
             <button
               id="confirm-track-order-btn"
-              onClick={() => navigate('order-tracking', currentOrder.orderNumber)}
+              onClick={() => navigate('order-tracking', undefined, currentOrder.id)}
               className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase font-semibold tracking-wider px-6 py-3 rounded-xl flex items-center gap-2 shadow-md transition-all"
             >
-              <Truck className="w-4 h-4" /> Live Courier Tracking
+              <Truck className="w-4 h-4" /> View order status
             </button>
 
             <button
@@ -78,7 +76,7 @@ export const OrderConfirmationPage: React.FC = () => {
               onClick={() => window.print()}
               className="bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs uppercase font-semibold tracking-wider px-6 py-3 rounded-xl flex items-center gap-2 transition-all"
             >
-              <Printer className="w-4 h-4" /> Print Tax Invoice
+              <Printer className="w-4 h-4" /> Print order summary
             </button>
           </div>
         </div>
@@ -90,13 +88,13 @@ export const OrderConfirmationPage: React.FC = () => {
               <span className="text-stone-400">Order Number:</span>
               <span className="font-mono font-bold text-stone-900 ml-1.5">{currentOrder.orderNumber}</span>
             </div>
-            <div>
+            {currentOrder.estimatedDeliveryDate && <div>
               <span className="text-stone-400">Estimated Delivery:</span>
               <span className="font-bold text-emerald-800 ml-1.5">{currentOrder.estimatedDeliveryDate}</span>
-            </div>
+            </div>}
             <div>
               <span className="text-stone-400">Payment:</span>
-              <span className="font-bold text-stone-900 uppercase ml-1.5">{currentOrder.paymentMethod.replace('_', ' ')}</span>
+              <span className="font-bold text-stone-900 uppercase ml-1.5">{currentOrder.paymentMethod.replace('_', ' ')} · {currentOrder.paymentStatus}</span>
             </div>
           </div>
 
@@ -159,11 +157,11 @@ export const OrderConfirmationPage: React.FC = () => {
                 <span>{formatPrice(currentOrder.taxGstINR)}</span>
               </div>
               <div className="flex justify-between text-stone-600">
-                <span>Courier Logistics</span>
+                <span>Shipping</span>
                 <span>{currentOrder.shippingCostINR === 0 ? 'FREE' : formatPrice(currentOrder.shippingCostINR)}</span>
               </div>
               <div className="flex justify-between text-base font-serif font-bold text-[#8B1E3F] pt-2 border-t border-[#E6D5B8]">
-                <span>Total Paid</span>
+                <span>Total payable on delivery</span>
                 <span>{formatPrice(currentOrder.totalINR)}</span>
               </div>
             </div>

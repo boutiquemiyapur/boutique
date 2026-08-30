@@ -61,7 +61,7 @@ export const ArtisanStory: React.FC = () => {
             </h2>
 
             <p className="text-xs sm:text-sm text-[#EFE7DA]/80 leading-relaxed font-sans">
-              At Miyapur Boutique, every warp and weft is a sacred dialogue between artisan and ancestry. We work directly with heritage weaver guilds across Kanchipuram, Varanasi, Chanderi, and Paithan, cutting out middlemen to deliver direct-from-loom silk royalty.
+              AB Collection’s brand story and sourcing information will be added after client approval.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">

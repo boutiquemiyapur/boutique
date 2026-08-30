@@ -13,7 +13,7 @@ const LOOKBOOK_POSTS: LookbookPost[] = [
   {
     id: 'look-1',
     image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=600&q=80',
-    tag: '#MiyapurBride',
+    tag: '#ABCollection',
     productId: 'mb-kanjeevaram-01'
   },
   {
@@ -57,13 +57,13 @@ export const InstagramLookbook: React.FC = () => {
         <div className="text-center max-w-2xl mx-auto mb-10">
           <div className="flex items-center justify-center gap-2 text-xs uppercase tracking-[0.25em] font-semibold text-[#8B1E3F]">
             <Instagram className="w-4 h-4 text-[#8B1E3F]" />
-            <span>@MiyapurBoutiqueOfficial</span>
+            <span>Social links coming soon</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#1A1715] mt-1">
             Shoppable Haute Couture Gallery
           </h2>
           <p className="text-xs text-stone-500 mt-2">
-            Tag #MiyapurRoyale on Instagram to be featured on our official global lookbook.
+            Social profiles will be linked here once AB Collection provides them.
           </p>
         </div>
 

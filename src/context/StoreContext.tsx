@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   AppView,
   CartItem,
@@ -56,6 +56,7 @@ interface StoreContextType {
 
   // Navigation
   navigate: (view: AppView, productId?: string, trackingOrderId?: string) => void;
+  navigateFromUrl: () => void;
   setSelectedCurrency: (currency: CurrencyCode) => void;
   setQuickViewProduct: (product: Product | null) => void;
   setIsSizeGuideOpen: (open: boolean) => void;
@@ -153,6 +154,28 @@ const initialFilterState: FilterState = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
+const categoryFromSlug = (slug: string): Category | null => {
+  const match: Record<string, Category> = {
+    'kanjeevaram-silks': 'Kanjeevaram Silks', 'banarasi-brocades': 'Banarasi Sarees',
+    'designer-sarees': 'Designer Sarees', 'bridal-lehengas': 'Bridal Lehengas',
+    'chikankari-suits': 'Unstitched Suits', 'temple-antique-jewelry': 'Temple Jewelry'
+  };
+  return match[slug] || null;
+};
+
+const pathForView = (view: AppView, productId?: string, orderId?: string) => {
+  const paths: Partial<Record<AppView, string>> = {
+    home: '/', shop: '/shop', cart: '/cart', wishlist: '/wishlist', checkout: '/checkout', account: '/account',
+    admin: '/admin', about: '/about', 'tailoring-guide': '/tailoring', contact: '/contact', login: '/login', register: '/register',
+    'forgot-password': '/forgot-password', 'shipping-policy': '/shipping', 'returns-policy': '/returns', 'cancellation-policy': '/cancellation',
+    'privacy-policy': '/privacy', 'terms-policy': '/terms', 'cookie-policy': '/cookies', 'not-found': '/404'
+  };
+  if (view === 'product-detail' && productId) return `/product/${encodeURIComponent(productId)}`;
+  if (view === 'order-confirmation' && orderId) return `/order-confirmation/${encodeURIComponent(orderId)}`;
+  if (view === 'order-tracking' && orderId) return `/orders/${encodeURIComponent(orderId)}`;
+  return paths[view] || '/';
+};
+
 const customerForSession = (session: NonNullable<AuthSession>): CustomerProfile => ({
   id: session.uid,
   fullName: session.displayName || '',
@@ -238,6 +261,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const [authSession, setAuthSession] = useState<AuthSession>(null);
   const [pendingProtectedView, setPendingProtectedView] = useState<AppView | null>(null);
+  const activePrivateUidRef = useRef<string | null>(null);
+  const privateLoadVersionRef = useRef(0);
+  const guestDataRef = useRef({ cart, wishlist });
+  // Browser guest state may be migrated once, but only after it was created in
+  // a genuinely unauthenticated session. It is never populated from an account.
+  const guestDataDirtyRef = useRef(cart.length > 0 || wishlist.length > 0);
 
   const freeShippingThresholdINR = 5000;
 
@@ -271,11 +300,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [customer, firebaseUserId]);
 
-  useEffect(() => startAuthSession((session) => {
+  useEffect(() => {
+    if (!firebaseUserId) guestDataRef.current = { cart, wishlist };
+  }, [cart, firebaseUserId, wishlist]);
+
+  const resetPrivateState = (session: AuthSession = null) => {
+    setPrivateDataReady(false);
+    setCart([]);
+    setWishlist([]);
+    setOrders([]);
+    setCustomer(session ? customerForSession(session) : INITIAL_CUSTOMER);
+    setLastPlacedOrder(null);
+    setSelectedTrackingOrderId(null);
+    setAppliedCoupon(null);
+    setIsCartDrawerOpen(false);
+    setIsWishlistDrawerOpen(false);
+  };
+
+  const applyAuthSession = (session: AuthSession) => {
+    const nextUid = session?.uid || null;
+    if (activePrivateUidRef.current !== nextUid) {
+      privateLoadVersionRef.current += 1;
+      resetPrivateState(session);
+      activePrivateUidRef.current = nextUid;
+    }
     setAuthSession(session);
-    setFirebaseUserId(session?.uid || null);
+    setFirebaseUserId(nextUid);
     setAuthStatus(session ? 'authenticated' : 'unauthenticated');
-  }), []);
+  };
+
+  useEffect(() => startAuthSession(applyAuthSession), []);
 
   useEffect(() => {
     void Promise.all([
@@ -293,30 +347,38 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
     setPrivateDataReady(false);
-    const guestCart = cart;
-    const guestWishlist = wishlist;
+    const loadVersion = ++privateLoadVersionRef.current;
+    const uid = firebaseUserId;
+    const shouldMigrateGuestData = guestDataDirtyRef.current;
+    const guestCart = guestDataRef.current.cart;
+    const guestWishlist = guestDataRef.current.wishlist;
     const sessionCustomer = authSession ? customerForSession(authSession) : INITIAL_CUSTOMER;
-    void commerceRepository.loadCustomerData(firebaseUserId, {
+    void commerceRepository.loadCustomerData(uid, {
       cart: [],
       wishlist: [],
       profile: sessionCustomer,
       orders: []
     }).then((snapshot) => {
-      // Guest migration is deliberate: only a genuinely empty authenticated cart
-      // receives the current guest items after a successful sign-in.
-      const nextCart = snapshot.cart?.length ? snapshot.cart : guestCart;
-      const nextWishlist = snapshot.wishlist?.length ? snapshot.wishlist : guestWishlist;
-      if (!snapshot.cart?.length && guestCart.length) void commerceRepository.saveCart(firebaseUserId, guestCart);
-      if (!snapshot.wishlist?.length && guestWishlist.length) void commerceRepository.saveWishlist(firebaseUserId, guestWishlist);
+      // Ignore stale reads from a previous user after a sign-out or account switch.
+      if (privateLoadVersionRef.current !== loadVersion || activePrivateUidRef.current !== uid) return;
+      // Only migrate data that was changed while genuinely browsing as a guest.
+      // Authenticated data is never treated as guest data on an account switch.
+      const nextCart = shouldMigrateGuestData && !snapshot.cart?.length ? guestCart : (snapshot.cart || []);
+      const nextWishlist = shouldMigrateGuestData && !snapshot.wishlist?.length ? guestWishlist : (snapshot.wishlist || []);
+      if (shouldMigrateGuestData && !snapshot.cart?.length && guestCart.length) void commerceRepository.saveCart(uid, guestCart);
+      if (shouldMigrateGuestData && !snapshot.wishlist?.length && guestWishlist.length) void commerceRepository.saveWishlist(uid, guestWishlist);
+      guestDataDirtyRef.current = false;
       setCart(nextCart);
       setWishlist(nextWishlist);
       if (snapshot.profile) setCustomer(snapshot.profile);
       if (!snapshot.profileExists && authSession) {
-        void commerceRepository.createProfile(firebaseUserId, sessionCustomer);
+        void commerceRepository.createProfile(uid, sessionCustomer);
         setCustomer(sessionCustomer);
       }
       if (authSession?.isAdmin) {
-        void commerceRepository.loadAdminOrders(snapshot.orders || []).then(setOrders);
+        void commerceRepository.loadAdminOrders(snapshot.orders || []).then((adminOrders) => {
+          if (privateLoadVersionRef.current === loadVersion && activePrivateUidRef.current === uid) setOrders(adminOrders);
+        });
       } else {
         setOrders(snapshot.orders || []);
       }
@@ -329,9 +391,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const login = async (email: string, password: string, remember = true) => {
     try {
       const session = await signInWithEmail(email, password, remember);
-      setAuthSession(session);
-      setFirebaseUserId(session.uid);
-      setAuthStatus('authenticated');
+      applyAuthSession(session);
       return session;
     } catch (error) {
       throw new Error(authErrorMessage(error));
@@ -343,10 +403,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const session = await registerWithEmail(email, password);
       const profile: CustomerProfile = { ...customerForSession(session), fullName: fullName.trim(), phone: phone.trim() };
       await commerceRepository.createProfile(session.uid, profile);
+      applyAuthSession(session);
       setCustomer(profile);
-      setAuthSession(session);
-      setFirebaseUserId(session.uid);
-      setAuthStatus('authenticated');
       return session;
     } catch (error) {
       throw new Error(authErrorMessage(error));
@@ -359,16 +417,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const logout = async () => {
     await logoutFirebaseUser();
-    setCart([]);
-    setWishlist([]);
-    setOrders([]);
-    setCustomer(INITIAL_CUSTOMER);
-    setLastPlacedOrder(null);
-    setSelectedTrackingOrderId(null);
-    setAuthSession(null);
-    setAuthStatus('unauthenticated');
-    setFirebaseUserId(null);
-    setPrivateDataReady(false);
+    applyAuthSession(null);
     setActiveView('home');
   };
 
@@ -430,6 +479,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     giftPackaging: boolean = false,
     giftNote?: string
   ) => {
+    if (!firebaseUserId) guestDataDirtyRef.current = true;
     const tailoringFee = isCustomTailored ? product.customStitchingFeeINR : 0;
     const existingIndex = cart.findIndex(
       (item) =>
@@ -467,6 +517,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateCartQuantity = (cartItemId: string, quantity: number) => {
+    if (!firebaseUserId) guestDataDirtyRef.current = true;
     if (quantity <= 0) {
       removeFromCart(cartItemId);
       return;
@@ -477,17 +528,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const removeFromCart = (cartItemId: string) => {
+    if (!firebaseUserId) guestDataDirtyRef.current = true;
     setCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId));
     showToast('Item Removed', 'Product removed from shopping bag.', 'info');
   };
 
   const clearCart = () => {
+    if (!firebaseUserId) guestDataDirtyRef.current = true;
     setCart([]);
     setAppliedCoupon(null);
   };
 
   // Wishlist
   const toggleWishlist = (productId: string) => {
+    if (!firebaseUserId) guestDataDirtyRef.current = true;
     const isSaved = wishlist.includes(productId);
     const prod = products.find((p) => p.id === productId);
     if (isSaved) {
@@ -576,40 +630,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       paymentMethod,
       paymentStatus: 'Pending',
       orderStatus: 'Order Placed',
-      trackingNumber: `BLUEDART-HYD-${Math.floor(1000000 + Math.random() * 9000000)}`,
-      courierPartner: 'BlueDart Luxury Express',
-      estimatedDeliveryDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       timeline: [
         {
           status: 'Order Placed',
           timestamp: 'Just now',
-          description: 'Order request received by Miyapur Atelier. Payment confirmation is pending.',
-          location: 'Hyderabad Studio',
+          description: 'Your Cash on Delivery order request has been received. Fulfilment updates will appear here when they are recorded.',
           completed: true
-        },
-        {
-          status: 'Artisan Tailoring',
-          timestamp: 'Estimated Tomorrow',
-          description: 'Custom pattern drafted and assigned to Senior Master Tailor.',
-          completed: false
-        },
-        {
-          status: 'Quality Inspection',
-          timestamp: 'Pending',
-          description: 'Zari audit & handloom Silk Mark certification check.',
-          completed: false
-        },
-        {
-          status: 'Dispatched',
-          timestamp: 'Pending',
-          description: 'Sealed in velvet heirloom packaging and handed to express courier.',
-          completed: false
-        },
-        {
-          status: 'Delivered',
-          timestamp: 'Estimated in 3-5 business days',
-          description: 'Scheduled white-glove doorstep delivery.',
-          completed: false
         }
       ]
     };
@@ -694,28 +720,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('Admin Access Required', 'Only an authorized Firebase admin can update fulfilment status.', 'error');
       return;
     }
-    setOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id === orderId) {
-          const updatedTimeline = ord.timeline.map((event) => {
-            if (event.status === status) {
-              return { ...event, completed: true, timestamp: 'Updated by Admin' };
-            }
-            return event;
-          });
-          return {
-            ...ord,
-            orderStatus: status,
-            trackingNumber: trackingNumber || ord.trackingNumber,
-            timeline: updatedTimeline
-          };
-        }
-        return ord;
-      })
-    );
-    // Admin status writes are intentionally not made from the customer app. A
-    // trusted Admin SDK/Cloud Function must own privileged updates in Firestore.
-    showToast('Order Updated', `Order ${orderId} status set to ${status}.`);
+    void orderId;
+    void status;
+    void trackingNumber;
+    // Privileged fulfilment writes must be made by a trusted Admin SDK/Cloud
+    // Function. Keeping this UI method truthful avoids showing a local-only
+    // update as a persisted operational change.
+    showToast('Fulfilment service required', 'Order status changes must be sent through the trusted admin fulfilment service.', 'info');
   };
 
   const addProduct = (product: Product) => {
@@ -799,7 +810,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (productId) setSelectedProductId(productId);
     if (trackingOrderId) setSelectedTrackingOrderId(trackingOrderId);
+    const nextPath = pathForView(view, productId, trackingOrderId);
+    if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath);
     setActiveView(view);
+  };
+
+  const navigateFromUrl = () => {
+    const [first, second] = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/');
+    const paths: Record<string, AppView> = {
+      '': 'home', shop: 'shop', cart: 'cart', wishlist: 'wishlist', checkout: 'checkout', account: 'account', admin: 'admin', about: 'about',
+      tailoring: 'tailoring-guide', contact: 'contact', login: 'login', register: 'register', 'forgot-password': 'forgot-password',
+      shipping: 'shipping-policy', returns: 'returns-policy', cancellation: 'cancellation-policy', privacy: 'privacy-policy', terms: 'terms-policy', cookies: 'cookie-policy', '404': 'not-found'
+    };
+    if (first === 'product' && second) { setSelectedProductId(decodeURIComponent(second)); setActiveView('product-detail'); return; }
+    if (first === 'order-confirmation' && second) { setSelectedTrackingOrderId(decodeURIComponent(second)); setActiveView('order-confirmation'); return; }
+    if (first === 'orders' && second) { setSelectedTrackingOrderId(decodeURIComponent(second)); setActiveView('order-tracking'); return; }
+    if (first === 'collections' && second) {
+      const category = categoryFromSlug(second);
+      if (category) { setFilters((current) => ({ ...current, category, searchQuery: '' })); setActiveView('shop'); return; }
+    }
+    setActiveView(paths[first] || 'not-found');
   };
 
   const resetFilters = () => {
@@ -832,6 +862,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         appliedCoupon,
         toasts,
         navigate,
+        navigateFromUrl,
         setSelectedCurrency,
         setQuickViewProduct,
         setIsSizeGuideOpen,

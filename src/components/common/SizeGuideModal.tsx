@@ -45,7 +45,7 @@ export const SizeGuideModal: React.FC = () => {
         </div>
         <h2 className="text-2xl font-serif font-bold text-[#1A1715]">Standard Size & Measurement Chart</h2>
         <p className="text-sm text-stone-600 mt-1">
-          All Miyapur Boutique garments are tailored with generous 2-inch interior margins for effortless future alterations.
+          Product-specific fit and alteration information will be confirmed by AB Collection before purchase.
         </p>
 
         {/* Unit switch */}

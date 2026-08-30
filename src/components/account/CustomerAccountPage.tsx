@@ -101,7 +101,7 @@ export const CustomerAccountPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E6D5B8] mb-8">
           <div>
             <span className="text-xs uppercase tracking-[0.25em] font-bold text-[#8B1E3F]">
-              Miyapur Royale Guild
+              AB Collection account
             </span>
             <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#1A1715]">
               My Couture Account & Vault

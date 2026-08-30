@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
+import { BrandMark } from '../../config/brand';
 
 type Mode = 'login' | 'register' | 'forgot';
 
@@ -35,8 +36,8 @@ export const AuthPage: React.FC<{ mode: Mode }> = ({ mode: initialMode }) => {
 
   if (authStatus === 'loading') return <div className="grid min-h-[70vh] place-items-center bg-[#fbf9f7]"><LoaderCircle className="h-6 w-6 animate-spin text-[#685c53]" /></div>;
   return <div className="min-h-screen bg-[#fbf9f7] p-0 lg:grid lg:place-items-center lg:p-8"><section className="grid min-h-screen w-full max-w-[1280px] overflow-hidden border border-[#d0c4bc] bg-white lg:min-h-[80vh] lg:grid-cols-2">
-    <div className="relative hidden min-h-full overflow-hidden lg:block"><img src={imageUrl} alt="Miyapur Boutique collection" className="absolute inset-0 h-full w-full object-cover grayscale-[25%]" /><div className="absolute inset-0 bg-[#30302f]/20" /><button onClick={() => navigate('home')} className="absolute left-8 top-8 font-serif text-5xl tracking-tight text-white">MIYAPUR BOUTIQUE</button></div>
-    <div className="flex min-h-screen flex-col justify-center px-7 py-12 sm:px-14 lg:min-h-0 lg:px-20"><button onClick={() => navigate('home')} className="mb-12 self-start font-serif text-2xl tracking-tight text-[#615e5c] lg:hidden">MIYAPUR BOUTIQUE</button><div className="mx-auto w-full max-w-md"><div className="mb-10"><h1 className="font-serif text-4xl text-[#1b1c1b]">{title}</h1><p className="mt-3 text-base text-[#4d453f]">{subtitle}</p></div>{error && <div role="alert" className="mb-5 border border-[#ba1a1a]/30 bg-[#ffdad6]/50 p-3 text-sm text-[#93000a]">{error}</div>}{notice && <div role="status" className="mb-5 border border-[#685c53]/30 bg-[#f5f3f1] p-3 text-sm text-[#4f453c]">{notice}</div>}
+    <div className="relative hidden min-h-full overflow-hidden lg:block"><img src={imageUrl} alt="AB Collection" className="absolute inset-0 h-full w-full object-cover grayscale-[25%]" /><div className="absolute inset-0 bg-[#30302f]/20" /><button onClick={() => navigate('home')} className="absolute left-8 top-8"><BrandMark inverse className="text-4xl" /></button></div>
+    <div className="flex min-h-screen flex-col justify-center px-7 py-12 sm:px-14 lg:min-h-0 lg:px-20"><button onClick={() => navigate('home')} className="mb-12 self-start lg:hidden"><BrandMark className="text-2xl" /></button><div className="mx-auto w-full max-w-md"><div className="mb-10"><h1 className="font-serif text-4xl text-[#1b1c1b]">{title}</h1><p className="mt-3 text-base text-[#4d453f]">{subtitle}</p></div>{error && <div role="alert" className="mb-5 border border-[#ba1a1a]/30 bg-[#ffdad6]/50 p-3 text-sm text-[#93000a]">{error}</div>}{notice && <div role="status" className="mb-5 border border-[#685c53]/30 bg-[#f5f3f1] p-3 text-sm text-[#4f453c]">{notice}</div>}
       <form onSubmit={submit} className="space-y-7">
         {mode === 'register' && <><Field label="Full Name" value={name} onChange={setName} placeholder="Your name" required /><Field label="Phone Number" value={phone} onChange={setPhone} placeholder="Optional" /></>}
         <Field label="Email" value={email} onChange={setEmail} placeholder="your@email.com" required type="email" />

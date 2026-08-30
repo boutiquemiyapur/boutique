@@ -5,9 +5,6 @@ import {
   ShieldCheck,
   Lock,
   Truck,
-  CreditCard,
-  QrCode,
-  Building2,
   Banknote,
   ArrowRight,
   ChevronLeft,
@@ -51,11 +48,7 @@ export const CheckoutPage: React.FC = () => {
   );
 
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('razorpay_upi');
-  const [upiId, setUpiId] = useState('pooja.reddy@okaxis');
-  const [cardNumber, setCardNumber] = useState('4532 •••• •••• 8819');
-  const [cardExpiry, setCardExpiry] = useState('11/28');
-  const [cardCvv, setCardCvv] = useState('742');
+  const [paymentMethod] = useState<PaymentMethod>('cod');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   if (cart.length === 0) {
@@ -81,7 +74,7 @@ export const CheckoutPage: React.FC = () => {
       setIsProcessingPayment(false);
       const newOrder = createOrder(address, shippingMethod, paymentMethod);
       showToast('Order Placed Successfully!', `Order #${newOrder.orderNumber} confirmed.`);
-      navigate('order-confirmation');
+      navigate('order-confirmation', undefined, newOrder.id);
     }, 1200);
   };
 
@@ -101,7 +94,7 @@ export const CheckoutPage: React.FC = () => {
               <ChevronLeft className="w-3.5 h-3.5" /> Return to Catalog
             </button>
             <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#1A1715]">
-              Miyapur Secure Checkout
+              AB Collection secure checkout
             </h1>
           </div>
 
@@ -173,7 +166,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.fullName}
                       onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
-                      placeholder="e.g. Pooja Reddy"
+                      placeholder="Your full name"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -375,134 +368,18 @@ export const CheckoutPage: React.FC = () => {
                     onClick={() => setStep(3)}
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-semibold px-8 py-3.5 rounded-lg flex items-center gap-2 shadow-md transition-all"
                   >
-                    <span>Proceed to Payment</span>
+                    <span>Review COD order</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Payment */}
+            {/* Step 3: COD confirmation */}
             {step === 3 && (
               <form onSubmit={handlePlaceOrder} className="bg-white border border-[#E6D5B8] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
-                <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-[#8B1E3F]" /> Select Payment Method
-                </h3>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('razorpay_upi')}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
-                      paymentMethod === 'razorpay_upi'
-                        ? 'border-[#8B1E3F] bg-[#8B1E3F]/10 text-[#8B1E3F] font-bold'
-                        : 'border-[#E6D5B8] text-stone-700'
-                    }`}
-                  >
-                    <QrCode className="w-5 h-5" />
-                    <span>UPI / GPay</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('razorpay_card')}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
-                      paymentMethod === 'razorpay_card'
-                        ? 'border-[#8B1E3F] bg-[#8B1E3F]/10 text-[#8B1E3F] font-bold'
-                        : 'border-[#E6D5B8] text-stone-700'
-                    }`}
-                  >
-                    <CreditCard className="w-5 h-5" />
-                    <span>Credit/Debit</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('razorpay_netbanking')}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
-                      paymentMethod === 'razorpay_netbanking'
-                        ? 'border-[#8B1E3F] bg-[#8B1E3F]/10 text-[#8B1E3F] font-bold'
-                        : 'border-[#E6D5B8] text-stone-700'
-                    }`}
-                  >
-                    <Building2 className="w-5 h-5" />
-                    <span>Net Banking</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('cod')}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
-                      paymentMethod === 'cod'
-                        ? 'border-[#8B1E3F] bg-[#8B1E3F]/10 text-[#8B1E3F] font-bold'
-                        : 'border-[#E6D5B8] text-stone-700'
-                    }`}
-                  >
-                    <Banknote className="w-5 h-5" />
-                    <span>Cash on Delivery</span>
-                  </button>
-                </div>
-
-                {/* Sub-panels for payment options */}
-                {paymentMethod === 'razorpay_upi' && (
-                  <div className="p-4 bg-[#FAF7F2] border border-[#E6D5B8] rounded-xl space-y-3">
-                    <label className="text-xs font-bold text-stone-800 block">Instant UPI VPA / ID</label>
-                    <input
-                      type="text"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      placeholder="e.g. yourname@okhdfcbank"
-                      className="w-full p-2.5 bg-white border border-[#E6D5B8] rounded-lg text-xs font-mono"
-                    />
-                    <p className="text-[11px] text-stone-500">
-                      Supports Google Pay, PhonePe, Paytm, CRED, and BHIM UPI.
-                    </p>
-                  </div>
-                )}
-
-                {paymentMethod === 'razorpay_card' && (
-                  <div className="p-4 bg-[#FAF7F2] border border-[#E6D5B8] rounded-xl space-y-3 text-xs">
-                    <div>
-                      <label className="font-bold text-stone-800 block mb-1">Card Number</label>
-                      <input
-                        type="text"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
-                        className="w-full p-2.5 bg-white border border-[#E6D5B8] rounded-lg font-mono"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="font-bold text-stone-800 block mb-1">Expiry Date</label>
-                        <input
-                          type="text"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-[#E6D5B8] rounded-lg font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="font-bold text-stone-800 block mb-1">CVV</label>
-                        <input
-                          type="password"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value)}
-                          maxLength={4}
-                          className="w-full p-2.5 bg-white border border-[#E6D5B8] rounded-lg font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === 'cod' && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
-                    <p className="font-bold">Cash on Delivery Confirmation</p>
-                    <p className="text-[11px]">
-                      Our concierge will call on <strong>{address.phone}</strong> to confirm dispatch. Please keep cash or UPI ready at delivery.
-                    </p>
-                  </div>
-                )}
+                <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2"><Banknote className="w-5 h-5 text-[#8B1E3F]" /> Cash on Delivery</h3>
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Cash on Delivery Confirmation</p><p className="text-[11px]">Our concierge will call on <strong>{address.phone}</strong> to confirm dispatch. Please keep the payable amount ready at delivery.</p></div>
 
                 <div className="pt-4 flex items-center justify-between border-t border-[#E6D5B8]">
                   <button
@@ -603,7 +480,7 @@ export const CheckoutPage: React.FC = () => {
             <div className="bg-[#FAF4ED] border border-[#DFBF77]/40 rounded-2xl p-4 flex items-start gap-3">
               <ShieldCheck className="w-6 h-6 text-[#8B1E3F] shrink-0 mt-0.5" />
               <div className="text-xs text-stone-700">
-                <h4 className="font-bold text-[#8B1E3F]">Miyapur Royal Authenticity Guarantee</h4>
+                <h4 className="font-bold text-[#8B1E3F]">AB Collection order information</h4>
                 <p className="mt-0.5 text-stone-600">
                   Every order includes physical Silk Mark India hologram cards and arrives in our bespoke velvet trousseau box.
                 </p>

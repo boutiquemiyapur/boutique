@@ -66,7 +66,7 @@ export const INITIAL_PRODUCTS: Product[] = [
         rating: 5,
         date: '28 Nov 2025',
         title: 'Authentic pure heirloom quality.',
-        comment: 'You can immediately tell the difference between powerloom fakes and this authentic Korvai handloom. Miyapur Boutique is my absolute favorite.',
+        comment: 'Sample review content. Replace with a verified customer review before publishing.',
         verifiedBuyer: true
       }
     ]
