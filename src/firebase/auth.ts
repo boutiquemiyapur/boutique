@@ -7,12 +7,38 @@ import { firebaseAuth } from './config';
 
 export type AuthSession = { uid: string; email: string; displayName: string | null; isAdmin: boolean } | null;
 
+/**
+ * Custom claims are encoded in the Firebase ID token. A browser can retain an
+ * earlier token for up to an hour, so admin authorization must always build a
+ * session from a freshly refreshed token rather than a cached result.
+ */
+const sessionFromFreshToken = async (user: User, fallbackEmail = ''): Promise<NonNullable<AuthSession>> => {
+  await user.getIdToken(true);
+  const token = await user.getIdTokenResult();
+  const session = {
+    uid: user.uid,
+    email: user.email || fallbackEmail,
+    displayName: user.displayName,
+    isAdmin: token.claims.admin === true
+  };
+  if (import.meta.env.DEV) {
+    console.debug('[Firebase Auth] refreshed ID token claims', { uid: session.uid, isAdmin: session.isAdmin });
+  }
+  return session;
+};
+
 export const startAuthSession = (onSession: (session: AuthSession) => void) => {
   if (!firebaseAuth) { onSession(null); return () => undefined; }
   return onAuthStateChanged(firebaseAuth, async (user: User | null) => {
     if (!user) return onSession(null);
-    const token = await user.getIdTokenResult().catch(() => null);
-    onSession({ uid: user.uid, email: user.email || '', displayName: user.displayName, isAdmin: token?.claims.admin === true });
+    try {
+      const session = await sessionFromFreshToken(user);
+      // Ignore an obsolete async result when the user changed during refresh.
+      if (firebaseAuth.currentUser?.uid === user.uid) onSession(session);
+    } catch (error) {
+      console.error('Unable to refresh the Firebase ID token.', error);
+      if (firebaseAuth.currentUser?.uid === user.uid) onSession({ uid: user.uid, email: user.email || '', displayName: user.displayName, isAdmin: false });
+    }
   });
 };
 
@@ -20,8 +46,7 @@ export const signInWithEmail = async (email: string, password: string, remember 
   if (!firebaseAuth) throw new Error('Firebase Authentication is not configured.');
   await setPersistence(firebaseAuth, remember ? browserLocalPersistence : browserSessionPersistence);
   const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
-  const token = await credential.user.getIdTokenResult();
-  return { uid: credential.user.uid, email: credential.user.email || email.trim(), displayName: credential.user.displayName, isAdmin: token.claims.admin === true };
+  return sessionFromFreshToken(credential.user, email.trim());
 };
 
 export const registerWithEmail = async (email: string, password: string) => {
