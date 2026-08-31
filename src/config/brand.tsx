@@ -19,7 +19,7 @@ export const BRAND = {
     'Miyapur, Hyderabad – 500049',
     'India'
   ],
-  mapsUrl: 'https://maps.app.goo.gl/aKAeSGga8zbM1y7H7',
+  mapsUrl: 'https://maps.app.goo.gl/YWUASJtbLWpz5DiaA',
   whatsappUrl: 'https://wa.me/919014461462',
   logoSrc
 } as const;

@@ -1,4 +1,4 @@
-import { collectionGroup, deleteDoc, deleteField, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
+import { collectionGroup, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
 import { firestore } from '../firebase/config';
 import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
 
@@ -24,7 +24,10 @@ export const commerceRepository = {
     if (!firestore) return readLocal('mb_products', fallback);
     try {
       const snapshot = await getDocs(collection(firestore, 'products'));
-      const products = snapshot.docs.map((item) => item.data().data as Product).filter(Boolean);
+      const products = snapshot.docs
+        .filter((item) => item.data().status !== 'archived' && item.data().status !== 'inactive')
+        .map((item) => item.data().data as Product)
+        .filter((item): item is Product => Boolean(item && item.isActive !== false));
       return products.length ? products : fallback;
     } catch (error) { console.warn('Firestore catalog unavailable; using local catalog fallback.', error); return readLocal('mb_products', fallback); }
   },
@@ -116,11 +119,11 @@ export const commerceRepository = {
   },
   async saveProduct(product: Product) {
     if (!firestore) return writeLocal('mb_products', product);
-    await setDoc(doc(firestore, 'products', product.id), toFirestore({ data: product, category: product.category, sku: product.sku, status: 'active', createdAt: serverTimestamp() }), { merge: true });
+    await setDoc(doc(firestore, 'products', product.id), toFirestore({ data: product, category: product.category, sku: product.sku, status: product.isActive === false ? 'inactive' : 'active', createdAt: serverTimestamp() }), { merge: true });
   },
   async deleteProduct(productId: string) {
     if (!firestore) return;
-    await updateDoc(doc(firestore, 'products', productId), { status: 'archived', updatedAt: serverTimestamp(), data: deleteField() });
+    await updateDoc(doc(firestore, 'products', productId), { status: 'archived', updatedAt: serverTimestamp() });
   },
   async updateOrderStatus(orderId: string, customerId: string, status: OrderStatus, trackingNumber?: string) {
     if (!firestore) return;

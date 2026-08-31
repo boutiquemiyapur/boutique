@@ -25,6 +25,22 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /siteContent/{contentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /about/{aboutId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /contact/{contactId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
     match /customers/{customerId} {
       allow read, write: if isAdmin();
     }

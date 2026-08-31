@@ -34,11 +34,17 @@ const ProtectedAccount = () => {
 };
 
 const ProtectedAdmin = () => {
-  const { authStatus, authSession, requireAuth, navigate } = useStore();
+  const { authStatus, authSession, requireAuth } = useStore();
   if (authStatus === 'loading') return <RouteLoading />;
   if (authStatus !== 'authenticated') return <AccessNotice title="Admin sign-in required" action="Sign in" onAction={() => requireAuth('admin')} />;
-  if (!authSession?.isAdmin) return <AccessNotice title="You do not have boutique administrator access" action="Return to boutique" onAction={() => navigate('home')} />;
+  if (!authSession?.isAdmin) return <UnauthorizedAdminRedirect />;
   return <AdminPortalPage />;
+};
+
+const UnauthorizedAdminRedirect = () => {
+  const { navigate } = useStore();
+  useEffect(() => { navigate('home'); }, [navigate]);
+  return <RouteLoading />;
 };
 
 const AccessNotice = ({ title, action, onAction }: { title: string; action: string; onAction: () => void }) => <section className="grid min-h-[60vh] place-items-center px-5"><div className="max-w-md border border-[#ddd7cf] bg-white p-8 text-center shadow-sm"><ShieldAlert className="mx-auto h-7 w-7 text-[#685c53]" /><h1 className="mt-4 font-serif text-3xl text-[#252220]">{title}</h1><p className="mt-3 text-sm text-stone-600">Your account and boutique operations are protected by Firebase Authentication.</p><button onClick={onAction} className="mt-6 bg-[#685c53] px-6 py-3 text-xs font-semibold uppercase tracking-[.12em] text-white">{action}</button></div></section>;

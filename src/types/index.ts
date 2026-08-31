@@ -102,6 +102,49 @@ export interface Product {
   customStitchingFeeINR: number;
   tags: string[];
   reviews?: ReviewItem[];
+  /** Publication is controlled by an admin-only Firestore record. */
+  isActive?: boolean;
+}
+
+export interface Banner {
+  id: string;
+  image: string;
+  title: string;
+  subtitle: string;
+  ctaText: string;
+  ctaDestination: string;
+  isActive: boolean;
+  displayOrder: number;
+}
+
+export interface SiteContent {
+  homeEyebrow: string;
+  collectionHeading: string;
+  collectionDescription: string;
+  newArrivalsHeading: string;
+  newArrivalsDescription: string;
+  footerDescription: string;
+}
+
+export interface AboutContent {
+  businessName: string;
+  heading: string;
+  introduction: string;
+  brandStory: string;
+  philosophy: string;
+  additionalInformation: string;
+  image?: string;
+}
+
+export interface ContactInformation {
+  businessName: string;
+  phone: string;
+  email: string;
+  addressLines: string[];
+  mapsUrl: string;
+  whatsappUrl: string;
+  instagramUrl?: string;
+  businessHours?: string;
 }
 
 export interface CartItem {

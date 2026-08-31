@@ -1,0 +1,23 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Storefront assets are public to read; only Firebase custom-claim admins
+    // can create, replace, or remove them.
+    match /products/{productId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /banners/{bannerId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /about/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

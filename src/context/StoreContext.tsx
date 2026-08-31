@@ -4,7 +4,6 @@ import {
   CartItem,
   Category,
   Coupon,
-  CurrencyCode,
   CustomerProfile,
   CustomMeasurements,
   FilterState,
@@ -22,6 +21,7 @@ import { CURRENCIES, INITIAL_COUPONS, INITIAL_CUSTOMER, INITIAL_ORDERS } from '.
 import confetti from 'canvas-confetti';
 import { AuthSession, authErrorMessage, logoutFirebaseUser, registerWithEmail, requestPasswordReset, signInWithEmail, startAuthSession } from '../firebase/auth';
 import { commerceRepository } from '../services/commerceRepository';
+import { cmsRepository, DEFAULT_CMS, PublicCms } from '../services/cmsRepository';
 
 interface Toast {
   id: string;
@@ -39,7 +39,7 @@ interface StoreContextType {
   orders: Order[];
   coupons: Coupon[];
   customer: CustomerProfile;
-  selectedCurrency: CurrencyCode;
+  cms: PublicCms;
   activeView: AppView;
   currentView: AppView;
   selectedProductId: string | null;
@@ -57,7 +57,7 @@ interface StoreContextType {
   // Navigation
   navigate: (view: AppView, productId?: string, trackingOrderId?: string) => void;
   navigateFromUrl: () => void;
-  setSelectedCurrency: (currency: CurrencyCode) => void;
+  refreshCms: () => Promise<void>;
   setQuickViewProduct: (product: Product | null) => void;
   setIsSizeGuideOpen: (open: boolean) => void;
   setIsCartDrawerOpen: (open: boolean) => void;
@@ -243,7 +243,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  const [selectedCurrency, setSelectedCurrency] = useState<CurrencyCode>('INR');
+  const [cms, setCms] = useState<PublicCms>(DEFAULT_CMS);
+  const selectedCurrency = 'INR' as const;
   const [activeView, setActiveView] = useState<AppView>('home');
   const [selectedProductId, setSelectedProductId] = useState<string | null>('mb-kanjeevaram-01');
   const [selectedTrackingOrderId, setSelectedTrackingOrderId] = useState<string | null>('ord-881');
@@ -269,6 +270,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const guestDataDirtyRef = useRef(cart.length > 0 || wishlist.length > 0);
 
   const freeShippingThresholdINR = 5000;
+
+  const refreshCms = async () => {
+    setCms(await cmsRepository.loadPublicCms());
+  };
+
+  useEffect(() => { void refreshCms(); }, []);
 
   // Firebase is accessed only through the repository. The local browser storage
   // remains an offline/unauthenticated fallback while authentication is enabled.
@@ -626,7 +633,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       couponCodeApplied: appliedCoupon?.code,
       taxGstINR: cartTaxINR,
       totalINR: cartSubtotalINR + cartTailoringTotalINR - cartDiscountINR + cartTaxINR + (shippingMethod === 'express' ? 350 : cartShippingINR),
-      currency: selectedCurrency,
+      currency: 'INR',
       paymentMethod,
       paymentStatus: 'Pending',
       orderStatus: 'Order Placed',
@@ -847,7 +854,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         orders,
         coupons,
         customer,
-        selectedCurrency,
+        cms,
         activeView,
         currentView: activeView,
         selectedProductId,
@@ -863,7 +870,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toasts,
         navigate,
         navigateFromUrl,
-        setSelectedCurrency,
+        refreshCms,
         setQuickViewProduct,
         setIsSizeGuideOpen,
         setIsCartDrawerOpen,
