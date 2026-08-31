@@ -8,3 +8,6 @@ coverage/
 !.env.example
 service-account*.json
 *service-account*.json
+
+.vercel
+.env*

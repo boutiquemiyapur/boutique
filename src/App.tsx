@@ -18,6 +18,7 @@ import { WishlistDrawer } from './components/common/WishlistDrawer';
 import { QuickViewModal } from './components/common/QuickViewModal';
 import { SizeGuideModal } from './components/common/SizeGuideModal';
 import { ToastContainer } from './components/common/ToastContainer';
+import { FloatingWhatsAppButton } from './components/common/FloatingWhatsAppButton';
 import { WishlistPage } from './components/common/WishlistPage';
 import { CartPage } from './components/cart/CartPage';
 import { NotFoundPage, StaticPage } from './components/pages/StaticPage';
@@ -116,6 +117,7 @@ function AppContent() {
 
       {/* Modals and Slide-out Drawers */}
       {!isStandaloneView && <><CartDrawer /><WishlistDrawer /><QuickViewModal /><SizeGuideModal /></>}
+      {!isStandaloneView && <FloatingWhatsAppButton />}
       <ToastContainer />
     </div>
   );

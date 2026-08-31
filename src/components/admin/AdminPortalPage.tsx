@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Boxes, ClipboardList, FileText, Image, LayoutDashboard, LogOut, Menu, Package, Phone, Plus, Search, Settings, Users, X } from 'lucide-react';
+import { AlertTriangle, Boxes, ClipboardList, FileText, Image, LayoutDashboard, LogOut, Menu, MessageCircle, Package, Phone, Plus, Search, Settings, Users, X } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { cmsRepository, AdminSnapshot } from '../../services/cmsRepository';
 import { AboutContent, Banner, ContactInformation, Product, SiteContent } from '../../types';
+import { CustomerEnquiriesPanel } from './CustomerEnquiriesPanel';
 
-type AdminTab = 'dashboard' | 'products' | 'orders' | 'customers' | 'inventory' | 'banners' | 'content' | 'contact' | 'about' | 'settings';
+type AdminTab = 'dashboard' | 'products' | 'orders' | 'customers' | 'inventory' | 'banners' | 'content' | 'contact' | 'about' | 'enquiries' | 'settings';
 const emptySnapshot: AdminSnapshot = { products: [], orders: [], customers: [] };
 const input = 'mt-1 w-full border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-stone-700';
 
@@ -37,8 +38,8 @@ export const AdminPortalPage: React.FC = () => {
   const outOfStock = data.products.filter((product) => product.stockCount <= 0);
   const completed = data.orders.filter((order) => order.orderStatus === 'Delivered');
   const pending = data.orders.filter((order) => order.orderStatus === 'Order Placed');
-  const nav: Array<[AdminTab, string, React.ElementType]> = [['dashboard', 'Dashboard', LayoutDashboard], ['products', 'Products', Package], ['orders', 'Orders', ClipboardList], ['customers', 'Customers', Users], ['inventory', 'Inventory', Boxes], ['banners', 'Banners', Image], ['content', 'Website Content', FileText], ['contact', 'Contact Information', Phone], ['about', 'About Us', FileText], ['settings', 'Settings', Settings]];
-  const title: Record<AdminTab, string> = { dashboard: 'Dashboard', products: 'Products', orders: 'Orders', customers: 'Customers', inventory: 'Inventory', banners: 'Banners', content: 'Website content', contact: 'Contact information', about: 'About us', settings: 'Settings' };
+  const nav: Array<[AdminTab, string, React.ElementType]> = [['dashboard', 'Dashboard', LayoutDashboard], ['products', 'Products', Package], ['orders', 'Orders', ClipboardList], ['customers', 'Customers', Users], ['inventory', 'Inventory', Boxes], ['banners', 'Banners', Image], ['content', 'Website Content', FileText], ['contact', 'Contact Information', Phone], ['about', 'About Us', FileText], ['enquiries', 'Customer Enquiries', MessageCircle], ['settings', 'Settings', Settings]];
+  const title: Record<AdminTab, string> = { dashboard: 'Dashboard', products: 'Products', orders: 'Orders', customers: 'Customers', inventory: 'Inventory', banners: 'Banners', content: 'Website content', contact: 'Contact information', about: 'About us', enquiries: 'Customer enquiries', settings: 'Settings' };
   const selectTab = (tab: AdminTab) => { setActiveTab(tab); setQuery(''); setMenuOpen(false); };
   const removeProduct = async (product: Product) => {
     if (!window.confirm(`Remove “${product.title}” from the public catalog? This can be restored only by an administrator.`)) return;
@@ -59,6 +60,7 @@ export const AdminPortalPage: React.FC = () => {
     {activeTab === 'content' && <ContentEditor initial={cms.content} onSave={async (content) => { await cmsRepository.saveContent(content); await refreshCms(); showToast('Website content saved', 'Approved storefront copy is now updated.'); }} />}
     {activeTab === 'contact' && <ContactEditor initial={cms.contact} onSave={async (contact) => { await cmsRepository.saveContact(contact); await refreshCms(); showToast('Contact information saved', 'The contact page and footer now use this record.'); }} />}
     {activeTab === 'about' && <AboutEditor initial={cms.about} onSave={async (about) => { await cmsRepository.saveAbout(about); await refreshCms(); showToast('About page saved', 'The public About Us page now uses this record.'); }} />}
+    {activeTab === 'enquiries' && <CustomerEnquiriesPanel />}
     {activeTab === 'settings' && <SettingsEditor threshold={threshold} onSave={async (value) => { await cmsRepository.saveSettings(value); await refreshCms(); showToast('Settings saved', 'Low-stock alerts now use this threshold.'); }} />}
   </main></div>{productEditor !== undefined && <ProductEditor product={productEditor} onClose={() => setProductEditor(undefined)} onSave={async (product) => { await cmsRepository.saveProduct(product); await reload(); setProductEditor(undefined); showToast('Product saved', `${product.title} was saved to Firestore.`); }} />}{bannerEditor !== undefined && <BannerEditor banner={bannerEditor} onClose={() => setBannerEditor(undefined)} onSave={async (banner) => { await cmsRepository.saveBanner(banner); await reload(); await refreshCms(); setBannerEditor(undefined); showToast('Banner saved', 'The active homepage banner set has been updated.'); }} />}</div>;
 };

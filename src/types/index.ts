@@ -147,6 +147,20 @@ export interface ContactInformation {
   businessHours?: string;
 }
 
+export type ContactMessageStatus = 'new' | 'read' | 'replied';
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  message: string;
+  status: ContactMessageStatus;
+  source: 'contact_form';
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}
+
 export interface CartItem {
   cartItemId: string;
   product: Product;

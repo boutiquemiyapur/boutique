@@ -11,7 +11,7 @@ export const BRAND = {
   displayName: 'AB COLLECTION',
   contactPerson: 'Yesodha Vimala',
   phone: '9014461462',
-  email: 'Aadyaboutique2023@gamil.com',
+  email: 'boutiquemiyapur@gmail.com',
   addressLines: [
     'AB Collection / Aadya Boutique',
     'Suvarna Heights',

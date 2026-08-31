@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, ReviewItem, SizeOption } from '../../types';
 import { ProductCard } from '../common/ProductCard';
+import { whatsappChatUrl } from '../../utils/whatsapp';
 import {
   Heart,
   ShoppingBag,
@@ -35,7 +36,8 @@ export const ProductDetailPage: React.FC = () => {
     submitReview,
     setIsSizeGuideOpen,
     navigate,
-    showToast
+    showToast,
+    cms
   } = useStore();
 
   const product = products.find((p) => p.id === selectedProductId) || products[0];
@@ -559,10 +561,10 @@ export const ProductDetailPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-xs text-stone-500 pt-1">
+              <a href={whatsappChatUrl(cms.contact.whatsappUrl, `Hello AB Collection,\n\nI am interested in:\n\nProduct: ${product.title}\nProduct ID: ${product.sku || product.id}\nSelected size: ${selectedSize}\nSelected colour: ${selectedColor}\n\nPlease share availability and details.`) || undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-xs text-stone-500 pt-1 hover:text-[#8B1E3F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8B1E3F]">
                 <Phone className="w-3.5 h-3.5 text-[#8B1E3F]" />
-                <span>Need assistance? Contact AB Collection on WhatsApp at 9014461462.</span>
-              </div>
+                <span>Enquire about this style on WhatsApp.</span>
+              </a>
             </div>
           </div>
         </div>

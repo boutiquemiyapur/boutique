@@ -41,6 +41,27 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
+    // Public visitors may submit a tightly validated enquiry, but only a
+    // custom-claim admin may ever read, change, or delete it.
+    match /contactMessages/{messageId} {
+      allow create: if request.resource.data.keys().hasOnly(['name', 'email', 'phone', 'message', 'status', 'source', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['name', 'email', 'message', 'status', 'source', 'createdAt', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 160
+        && request.resource.data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$')
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 10
+        && request.resource.data.message.size() <= 2000
+        && (!request.resource.data.keys().hasAny(['phone']) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 30))
+        && request.resource.data.status == 'new'
+        && request.resource.data.source == 'contact_form'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow read, update, delete: if isAdmin();
+    }
     match /customers/{customerId} {
       allow read, write: if isAdmin();
     }
@@ -49,6 +70,14 @@ service cloud.firestore {
     // never create or change documents in this collection.
     match /orders/{orderId} {
       allow read, create, update, delete: if isAdmin();
+    }
+
+    // `collectionGroup('orders')` is used by the admin dashboard to read the
+    // customer-owned order documents below. Collection-group queries require
+    // an explicit version-2 recursive match; this grants read access only to
+    // Firebase Authentication tokens bearing the trusted admin custom claim.
+    match /{path=**}/orders/{orderId} {
+      allow read: if isAdmin();
     }
 
     match /users/{userId} {
