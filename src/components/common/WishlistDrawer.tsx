@@ -111,12 +111,13 @@ export const WishlistDrawer: React.FC = () => {
                     <button
                       id={`move-to-bag-${product.id}`}
                       onClick={() => {
-                        addToCart(
+                        void addToCart(
                           product,
                           product.colors[0]?.colorName || 'Default',
                           product.availableSizes[0] || 'Unstitched'
-                        );
-                        toggleWishlist(product.id);
+                        ).then((added) => {
+                          if (added) void toggleWishlist(product.id);
+                        });
                       }}
                       className="flex-1 bg-[#1A1715] hover:bg-[#8B1E3F] text-white text-[11px] font-semibold uppercase tracking-wider py-1.5 px-2.5 rounded flex items-center justify-center gap-1 transition-colors"
                     >

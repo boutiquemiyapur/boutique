@@ -20,7 +20,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
         {product.discountPercentage && <span className="bg-[#625e59] px-2 py-1 text-white">{product.discountPercentage}% off</span>}
         {isSoldOut && <span className="bg-[#2c2926] px-2 py-1 text-white">Sold out</span>}
       </div>
-      <button onClick={() => toggleWishlist(product.id)} aria-label={saved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`} className="absolute right-3 top-3 grid h-9 w-9 place-items-center bg-[#fffdf9]/95 text-[#2c2926] transition hover:bg-[#625e59] hover:text-white">
+      <button onClick={() => toggleWishlist(product.id)} aria-label={saved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`} className={`absolute right-3 top-3 grid h-9 w-9 place-items-center transition ${saved ? 'bg-[#8B1E3F] text-white' : 'bg-[#fffdf9]/95 text-[#2c2926] hover:bg-[#625e59] hover:text-white'}`}>
         <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
       </button>
       <div className="absolute inset-x-3 bottom-3 flex translate-y-2 gap-2 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100">

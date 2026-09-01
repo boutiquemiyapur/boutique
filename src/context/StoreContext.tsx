@@ -20,7 +20,7 @@ import { INITIAL_PRODUCTS } from '../data/mockProducts';
 import { CURRENCIES, INITIAL_COUPONS, INITIAL_CUSTOMER, INITIAL_ORDERS } from '../data/initialData';
 import confetti from 'canvas-confetti';
 import { AuthSession, authErrorMessage, logoutFirebaseUser, registerWithEmail, requestPasswordReset, signInWithEmail, startAuthSession } from '../firebase/auth';
-import { commerceRepository } from '../services/commerceRepository';
+import { cartLineKey, commerceRepository, normalizeCartItems, normalizeWishlistProductIds } from '../services/commerceRepository';
 import { cmsRepository, DEFAULT_CMS, PublicCms } from '../services/cmsRepository';
 
 interface Toast {
@@ -75,13 +75,13 @@ interface StoreContextType {
     customMeasurements?: CustomMeasurements,
     giftPackaging?: boolean,
     giftNote?: string
-  ) => void;
-  updateCartQuantity: (cartItemId: string, quantity: number) => void;
-  removeFromCart: (cartItemId: string) => void;
-  clearCart: () => void;
+  ) => Promise<boolean>;
+  updateCartQuantity: (cartItemId: string, quantity: number) => Promise<boolean>;
+  removeFromCart: (cartItemId: string) => Promise<boolean>;
+  clearCart: () => Promise<boolean>;
 
   // Wishlist
-  toggleWishlist: (productId: string) => void;
+  toggleWishlist: (productId: string) => Promise<boolean>;
   isInWishlist: (productId: string) => boolean;
 
   // Pricing & Currency
@@ -253,6 +253,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [pendingProtectedView, setPendingProtectedView] = useState<AppView | null>(null);
   const activePrivateUidRef = useRef<string | null>(null);
   const privateLoadVersionRef = useRef(0);
+  const pendingCartLineKeysRef = useRef(new Set<string>());
+  const pendingWishlistProductIdsRef = useRef(new Set<string>());
 
   const freeShippingThresholdINR = 5000;
 
@@ -272,15 +274,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     commerceRepository.saveLocalCoupons(coupons);
   }, [coupons]);
 
-  useEffect(() => {
-    if (!privateDataReady) return;
-    void commerceRepository.saveCart(firebaseUserId, cart);
-  }, [cart, firebaseUserId, privateDataReady]);
-
-  useEffect(() => {
-    if (!privateDataReady) return;
-    void commerceRepository.saveWishlist(firebaseUserId, wishlist);
-  }, [wishlist, firebaseUserId, privateDataReady]);
 
   useEffect(() => {
     if (!firebaseUserId) commerceRepository.saveLocalOrders(orders);
@@ -293,6 +286,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [customer, firebaseUserId]);
 
   const resetPrivateState = (session: AuthSession = null) => {
+    pendingCartLineKeysRef.current.clear();
+    pendingWishlistProductIdsRef.current.clear();
     setPrivateDataReady(false);
     setCart([]);
     setWishlist([]);
@@ -468,8 +463,46 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return Math.round(inrAmount * curr.rateAgainstINR);
   };
 
+  const canChangePrivateData = () => {
+    if (privateDataReady) return true;
+    showToast('Your selections are loading', 'Please wait a moment before updating your bag or wishlist.', 'info');
+    return false;
+  };
+
+  const stillOwnsPrivateData = (uid: string | null, version: number) => activePrivateUidRef.current === uid && privateLoadVersionRef.current === version;
+
+  const commitCart = async (nextCart: CartItem[]) => {
+    const uid = firebaseUserId;
+    const version = privateLoadVersionRef.current;
+    try {
+      await commerceRepository.saveCart(uid, nextCart);
+      if (!stillOwnsPrivateData(uid, version)) return false;
+      setCart(normalizeCartItems(nextCart));
+      return true;
+    } catch (error) {
+      console.error('Unable to save shopping bag.', error);
+      showToast('Unable to update shopping bag', 'Your shopping bag was not changed. Please try again.', 'error');
+      return false;
+    }
+  };
+
+  const commitWishlist = async (nextWishlist: string[]) => {
+    const uid = firebaseUserId;
+    const version = privateLoadVersionRef.current;
+    try {
+      await commerceRepository.saveWishlist(uid, nextWishlist);
+      if (!stillOwnsPrivateData(uid, version)) return false;
+      setWishlist(normalizeWishlistProductIds(nextWishlist));
+      return true;
+    } catch (error) {
+      console.error('Unable to save wishlist.', error);
+      showToast('Unable to update wishlist', 'Your wishlist was not changed. Please try again.', 'error');
+      return false;
+    }
+  };
+
   // Cart operations
-  const addToCart = (
+  const addToCart = async (
     product: Product,
     selectedColor: string,
     selectedSize: SizeOption,
@@ -478,77 +511,90 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     customMeasurements?: CustomMeasurements,
     giftPackaging: boolean = false,
     giftNote?: string
-  ) => {
-    const tailoringFee = isCustomTailored ? product.customStitchingFeeINR : 0;
-    const existingIndex = cart.findIndex(
-      (item) =>
-        item.product.id === product.id &&
-        item.selectedColor === selectedColor &&
-        item.selectedSize === selectedSize &&
-        item.isCustomTailored === isCustomTailored
-    );
-
-    if (existingIndex > -1 && !isCustomTailored) {
-      const updated = [...cart];
-      updated[existingIndex].quantity += quantity;
-      setCart(updated);
-    } else {
-      const newItem: CartItem = {
-        cartItemId: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        product,
-        selectedColor,
-        selectedSize,
-        quantity,
-        isCustomTailored,
-        customMeasurements: isCustomTailored ? (customMeasurements || customer.savedMeasurements) : undefined,
-        tailoringFeeINR: tailoringFee,
-        giftPackaging,
-        giftNote
-      };
-      setCart((prev) => [newItem, ...prev]);
+  ): Promise<boolean> => {
+    if (!canChangePrivateData()) return false;
+    const newItem: CartItem = {
+      cartItemId: `cart-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      product,
+      selectedColor,
+      selectedSize,
+      quantity: Math.max(1, Math.floor(quantity)),
+      isCustomTailored,
+      customMeasurements: isCustomTailored ? (customMeasurements || customer.savedMeasurements) : undefined,
+      tailoringFeeINR: isCustomTailored ? product.customStitchingFeeINR : 0,
+      giftPackaging,
+      giftNote
+    };
+    const lineKey = cartLineKey(newItem);
+    const currentCart = normalizeCartItems(cart);
+    if (currentCart.some((item) => cartLineKey(item) === lineKey) || pendingCartLineKeysRef.current.has(lineKey)) {
+      showToast('Already added', `${product.title} is already in your shopping bag.`, 'info');
+      return false;
     }
 
-    showToast(
-      'Added to Shopping Bag',
-      `${product.title} (${selectedSize}) is now in your bag.`
-    );
-    setIsCartDrawerOpen(true);
-  };
-
-  const updateCartQuantity = (cartItemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(cartItemId);
-      return;
+    pendingCartLineKeysRef.current.add(lineKey);
+    try {
+      const saved = await commitCart([newItem, ...currentCart]);
+      if (saved) {
+        showToast('Added to Shopping Bag', `${product.title} (${selectedSize}) is now in your bag.`);
+        setIsCartDrawerOpen(true);
+      }
+      return saved;
+    } finally {
+      pendingCartLineKeysRef.current.delete(lineKey);
     }
-    setCart((prev) =>
-      prev.map((item) => (item.cartItemId === cartItemId ? { ...item, quantity } : item))
-    );
   };
 
-  const removeFromCart = (cartItemId: string) => {
-    setCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId));
-    showToast('Item Removed', 'Product removed from shopping bag.', 'info');
+  const updateCartQuantity = async (cartItemId: string, quantity: number): Promise<boolean> => {
+    if (!canChangePrivateData()) return false;
+    if (quantity <= 0) return removeFromCart(cartItemId);
+    const currentCart = normalizeCartItems(cart);
+    if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
+    return commitCart(currentCart.map((item) => item.cartItemId === cartItemId ? { ...item, quantity: Math.max(1, Math.floor(quantity)) } : item));
   };
 
-  const clearCart = () => {
-    setCart([]);
-    setAppliedCoupon(null);
+  const removeFromCart = async (cartItemId: string): Promise<boolean> => {
+    if (!canChangePrivateData()) return false;
+    const currentCart = normalizeCartItems(cart);
+    if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
+    const removed = await commitCart(currentCart.filter((item) => item.cartItemId !== cartItemId));
+    if (removed) showToast('Item Removed', 'Product removed from shopping bag.', 'info');
+    return removed;
+  };
+
+  const clearCart = async (): Promise<boolean> => {
+    if (!canChangePrivateData()) return false;
+    if (!cart.length) {
+      setAppliedCoupon(null);
+      return true;
+    }
+    const cleared = await commitCart([]);
+    if (cleared) setAppliedCoupon(null);
+    return cleared;
   };
 
   // Wishlist
-  const toggleWishlist = (productId: string) => {
-    const isSaved = wishlist.includes(productId);
-    const prod = products.find((p) => p.id === productId);
-    if (isSaved) {
-      setWishlist((prev) => prev.filter((id) => id !== productId));
-      showToast('Removed from Wishlist', `${prod?.title || 'Item'} removed.`, 'info');
-    } else {
-      setWishlist((prev) => [...prev, productId]);
-      showToast('Saved to Wishlist', `${prod?.title || 'Item'} added to your wishlist.`);
+  const toggleWishlist = async (productId: string): Promise<boolean> => {
+    if (!canChangePrivateData()) return false;
+    if (pendingWishlistProductIdsRef.current.has(productId)) return false;
+    const product = products.find((item) => item.id === productId);
+    if (!product) {
+      showToast('Unavailable product', 'This item is no longer available to save.', 'error');
+      return false;
+    }
+    const currentWishlist = normalizeWishlistProductIds(wishlist);
+    const isSaved = currentWishlist.includes(productId);
+    pendingWishlistProductIdsRef.current.add(productId);
+    try {
+      const saved = await commitWishlist(isSaved ? currentWishlist.filter((id) => id !== productId) : [...currentWishlist, productId]);
+      if (saved) showToast(isSaved ? 'Removed from Wishlist' : 'Saved to Wishlist', isSaved ? `${product.title} removed.` : `${product.title} added to your wishlist.`, isSaved ? 'info' : 'success');
+      return saved;
+    } finally {
+      pendingWishlistProductIdsRef.current.delete(productId);
     }
   };
 
-  const isInWishlist = (productId: string) => wishlist.includes(productId);
+  const isInWishlist = (productId: string) => normalizeWishlistProductIds(wishlist).includes(productId);
 
   // Cart Totals Calculations
   const cartSubtotalINR = cart.reduce((sum, item) => sum + item.product.priceINR * item.quantity, 0);
@@ -642,7 +688,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setOrders((prev) => [newOrder, ...prev.filter((order) => order.id !== newOrder.id)]);
     setLastPlacedOrder(newOrder);
     setSelectedTrackingOrderId(newOrder.id);
-    clearCart();
+    const cartCleared = await clearCart();
+    if (!cartCleared) showToast('Order placed', 'Your order was placed, but your shopping bag could not be cleared. Please refresh before shopping again.', 'info');
 
     // Trigger celebratory confetti
     try {

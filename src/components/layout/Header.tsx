@@ -15,7 +15,7 @@ export const Header: React.FC = () => {
   const previouslyFocusedElement = useRef<HTMLElement | null>(null);
 
   const collections = useMemo(() => [...new Set(products.map((product) => product.category))].filter(Boolean).sort(), [products]);
-  const itemCount = cart.reduce((total, item) => total + item.quantity, 0);
+  const itemCount = cart.length;
   const closeMenu = () => setIsMenuOpen(false);
   const goToCollection = (category: string) => { setFilters((current) => ({ ...current, category, searchQuery: '' })); navigate('shop'); closeMenu(); };
   const goToNewArrivals = () => { setFilters((current) => ({ ...current, category: 'All', sortBy: 'newest', searchQuery: '' })); navigate('shop'); closeMenu(); };

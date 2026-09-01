@@ -20,6 +20,27 @@ const accountLocalKey = (name: 'cart' | 'wishlist' | 'customer' | 'orders', uid:
 
 const guestLocalKey = (name: 'cart' | 'wishlist') => `mb_guest_${name}`;
 
+export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => [
+  item.product.id || item.product.sku,
+  item.selectedColor.trim().toLowerCase(),
+  item.selectedSize,
+  item.isCustomTailored ? 'tailored' : 'ready'
+].join('::');
+
+export const normalizeCartItems = (items: CartItem[]) => {
+  const normalized = new Map<string, CartItem>();
+  for (const item of items) {
+    if (!item?.product?.id) continue;
+    const quantity = Number.isFinite(item.quantity) && item.quantity > 0 ? Math.floor(item.quantity) : 1;
+    const key = cartLineKey(item);
+    const existing = normalized.get(key);
+    normalized.set(key, existing ? { ...existing, quantity: existing.quantity + quantity } : { ...item, quantity });
+  }
+  return [...normalized.values()];
+};
+
+export const normalizeWishlistProductIds = (productIds: string[]) => [...new Set(productIds.filter((productId): productId is string => typeof productId === 'string' && productId.trim().length > 0))];
+
 const privateDoc = (name: 'carts' | 'wishlists' | 'users', uid: string) => doc(firestore!, name, uid);
 const toFirestore = <T extends object>(data: T) => ({ ...data, updatedAt: serverTimestamp() });
 
@@ -80,15 +101,15 @@ export const commerceRepository = {
   async loadCustomerData(uid: string | null, fallback: CustomerDataSnapshot): Promise<CustomerDataSnapshot> {
     if (!uid) {
       return {
-        cart: readLocal(guestLocalKey('cart'), fallback.cart || []),
-        wishlist: readLocal(guestLocalKey('wishlist'), fallback.wishlist || []),
+        cart: normalizeCartItems(readLocal(guestLocalKey('cart'), fallback.cart || [])),
+        wishlist: normalizeWishlistProductIds(readLocal(guestLocalKey('wishlist'), fallback.wishlist || [])),
         profile: readLocal('mb_customer', fallback.profile!),
         orders: readLocal('mb_orders', fallback.orders || [])
       };
     }
     const accountFallback = {
-      cart: readLocal(accountLocalKey('cart', uid), fallback.cart || []),
-      wishlist: readLocal(accountLocalKey('wishlist', uid), fallback.wishlist || []),
+      cart: normalizeCartItems(readLocal(accountLocalKey('cart', uid), fallback.cart || [])),
+      wishlist: normalizeWishlistProductIds(readLocal(accountLocalKey('wishlist', uid), fallback.wishlist || [])),
       profile: readLocal(accountLocalKey('customer', uid), fallback.profile!),
       profileExists: false,
       orders: readLocal(accountLocalKey('orders', uid), fallback.orders || [])
@@ -104,8 +125,8 @@ export const commerceRepository = {
       ]);
       const legacy = legacyOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item));
       return {
-        cart: (cart.data()?.items as CartItem[] | undefined) || accountFallback.cart,
-        wishlist: (wishlist.data()?.productIds as string[] | undefined) || accountFallback.wishlist,
+        cart: normalizeCartItems((cart.data()?.items as CartItem[] | undefined) || accountFallback.cart),
+        wishlist: normalizeWishlistProductIds((wishlist.data()?.productIds as string[] | undefined) || accountFallback.wishlist),
         profile: (profile.data()?.profile as CustomerProfile | undefined) || accountFallback.profile,
         profileExists: profile.exists(),
         orders: mergeOrders(canonicalOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item)), legacy),
@@ -139,16 +160,16 @@ export const commerceRepository = {
     return onSnapshot(collection(firestore, 'orders'), () => onChange(), (error) => onError(error));
   },
   async saveCart(uid: string | null, items: CartItem[]) {
-    if (!uid) return writeLocal(guestLocalKey('cart'), items);
-    writeLocal(accountLocalKey('cart', uid), items);
-    if (!firestore) return;
-    try { await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items }), { merge: true }); } catch (error) { console.warn('Cart was retained in this account\'s local cache after Firestore write failed.', error); }
+    const normalizedItems = normalizeCartItems(items);
+    if (!uid) return writeLocal(guestLocalKey('cart'), normalizedItems);
+    if (firestore) await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items: normalizedItems }), { merge: true });
+    writeLocal(accountLocalKey('cart', uid), normalizedItems);
   },
   async saveWishlist(uid: string | null, productIds: string[]) {
-    if (!uid) return writeLocal(guestLocalKey('wishlist'), productIds);
-    writeLocal(accountLocalKey('wishlist', uid), productIds);
-    if (!firestore) return;
-    try { await setDoc(privateDoc('wishlists', uid), toFirestore({ ownerId: uid, productIds }), { merge: true }); } catch (error) { console.warn('Wishlist was retained in this account\'s local cache after Firestore write failed.', error); }
+    const normalizedProductIds = normalizeWishlistProductIds(productIds);
+    if (!uid) return writeLocal(guestLocalKey('wishlist'), normalizedProductIds);
+    if (firestore) await setDoc(privateDoc('wishlists', uid), toFirestore({ ownerId: uid, productIds: normalizedProductIds }), { merge: true });
+    writeLocal(accountLocalKey('wishlist', uid), normalizedProductIds);
   },
   async saveProfile(uid: string | null, profile: CustomerProfile) {
     if (!uid) return writeLocal('mb_customer', profile);

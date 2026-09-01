@@ -218,8 +218,9 @@ export const QuickViewModal: React.FC = () => {
             <button
               id="quickview-add-to-bag-btn"
               onClick={() => {
-                addToCart(product, activeColor, selectedSize, quantity, isCustomTailoring);
-                setQuickViewProduct(null);
+                void addToCart(product, activeColor, selectedSize, quantity, isCustomTailoring).then((added) => {
+                  if (added) setQuickViewProduct(null);
+                });
               }}
               className="flex-1 bg-[#8B1E3F] hover:bg-[#721C24] text-white font-semibold text-xs uppercase tracking-wider py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
             >

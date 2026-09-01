@@ -74,7 +74,7 @@ export const CartDrawer: React.FC = () => {
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-[#8B1E3F]" />
             <h2 className="text-lg font-serif font-bold text-[#1A1715]">
-              Your Shopping Bag ({cart.reduce((s, i) => s + i.quantity, 0)})
+              Your Shopping Bag ({cart.length})
             </h2>
           </div>
           <button
