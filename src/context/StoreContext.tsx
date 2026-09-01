@@ -200,23 +200,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('mb_cart');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [wishlist, setWishlist] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('mb_wishlist');
-      return saved ? JSON.parse(saved) : ['mb-kanjeevaram-01', 'mb-banarasi-03'];
-    } catch {
-      return [];
-    }
-  });
+  // Do not hydrate cart or wishlist before Firebase resolves the owner.
+  // This prevents a prior account's browser state from flashing for another user.
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
 
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
@@ -266,10 +253,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [pendingProtectedView, setPendingProtectedView] = useState<AppView | null>(null);
   const activePrivateUidRef = useRef<string | null>(null);
   const privateLoadVersionRef = useRef(0);
-  const guestDataRef = useRef({ cart, wishlist });
-  // Browser guest state may be migrated once, but only after it was created in
-  // a genuinely unauthenticated session. It is never populated from an account.
-  const guestDataDirtyRef = useRef(cart.length > 0 || wishlist.length > 0);
 
   const freeShippingThresholdINR = 5000;
 
@@ -309,10 +292,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [customer, firebaseUserId]);
 
-  useEffect(() => {
-    if (!firebaseUserId) guestDataRef.current = { cart, wishlist };
-  }, [cart, firebaseUserId, wishlist]);
-
   const resetPrivateState = (session: AuthSession = null) => {
     setPrivateDataReady(false);
     setCart([]);
@@ -351,16 +330,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
+    const loadVersion = ++privateLoadVersionRef.current;
+
     if (!firebaseUserId) {
-      setPrivateDataReady(true);
+      // Guest data is separate from customer records and loads only after
+      // Firebase has confirmed that no customer is signed in.
+      if (authStatus === 'loading') return;
+      void commerceRepository.loadCustomerData(null, { cart: [], wishlist: [], orders: [] }).then((snapshot) => {
+        if (privateLoadVersionRef.current !== loadVersion || activePrivateUidRef.current !== null) return;
+        setCart(snapshot.cart || []);
+        setWishlist(snapshot.wishlist || []);
+        setPrivateDataReady(true);
+      });
       return;
     }
+
     setPrivateDataReady(false);
-    const loadVersion = ++privateLoadVersionRef.current;
     const uid = firebaseUserId;
-    const shouldMigrateGuestData = guestDataDirtyRef.current;
-    const guestCart = guestDataRef.current.cart;
-    const guestWishlist = guestDataRef.current.wishlist;
     const sessionCustomer = authSession ? customerForSession(authSession) : INITIAL_CUSTOMER;
     void commerceRepository.loadCustomerData(uid, {
       cart: [],
@@ -370,15 +356,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }).then((snapshot) => {
       // Ignore stale reads from a previous user after a sign-out or account switch.
       if (privateLoadVersionRef.current !== loadVersion || activePrivateUidRef.current !== uid) return;
-      // Only migrate data that was changed while genuinely browsing as a guest.
-      // Authenticated data is never treated as guest data on an account switch.
-      const nextCart = shouldMigrateGuestData && !snapshot.cart?.length ? guestCart : (snapshot.cart || []);
-      const nextWishlist = shouldMigrateGuestData && !snapshot.wishlist?.length ? guestWishlist : (snapshot.wishlist || []);
-      if (shouldMigrateGuestData && !snapshot.cart?.length && guestCart.length) void commerceRepository.saveCart(uid, guestCart);
-      if (shouldMigrateGuestData && !snapshot.wishlist?.length && guestWishlist.length) void commerceRepository.saveWishlist(uid, guestWishlist);
-      guestDataDirtyRef.current = false;
-      setCart(nextCart);
-      setWishlist(nextWishlist);
+      setCart(snapshot.cart || []);
+      setWishlist(snapshot.wishlist || []);
       if (snapshot.profile) setCustomer(snapshot.profile);
       if (!snapshot.profileExists && authSession) {
         void commerceRepository.createProfile(uid, sessionCustomer);
@@ -395,7 +374,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
     // Authentication ownership changes are the only reason to rehydrate private state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUserId]);
+  }, [authStatus, firebaseUserId]);
 
   // Customer tracking reads the same canonical order documents that the
   // admin fulfils. Legacy subcollection records remain as read-only history.
@@ -500,7 +479,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     giftPackaging: boolean = false,
     giftNote?: string
   ) => {
-    if (!firebaseUserId) guestDataDirtyRef.current = true;
     const tailoringFee = isCustomTailored ? product.customStitchingFeeINR : 0;
     const existingIndex = cart.findIndex(
       (item) =>
@@ -538,7 +516,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateCartQuantity = (cartItemId: string, quantity: number) => {
-    if (!firebaseUserId) guestDataDirtyRef.current = true;
     if (quantity <= 0) {
       removeFromCart(cartItemId);
       return;
@@ -549,20 +526,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const removeFromCart = (cartItemId: string) => {
-    if (!firebaseUserId) guestDataDirtyRef.current = true;
     setCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId));
     showToast('Item Removed', 'Product removed from shopping bag.', 'info');
   };
 
   const clearCart = () => {
-    if (!firebaseUserId) guestDataDirtyRef.current = true;
     setCart([]);
     setAppliedCoupon(null);
   };
 
   // Wishlist
   const toggleWishlist = (productId: string) => {
-    if (!firebaseUserId) guestDataDirtyRef.current = true;
     const isSaved = wishlist.includes(productId);
     const prod = products.find((p) => p.id === productId);
     if (isSaved) {

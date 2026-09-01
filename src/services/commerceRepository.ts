@@ -18,6 +18,8 @@ const readLocal = <T>(key: string, fallback: T): T => {
 const writeLocal = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { console.warn(error); } };
 const accountLocalKey = (name: 'cart' | 'wishlist' | 'customer' | 'orders', uid: string) => `mb_${name}_${uid}`;
 
+const guestLocalKey = (name: 'cart' | 'wishlist') => `mb_guest_${name}`;
+
 const privateDoc = (name: 'carts' | 'wishlists' | 'users', uid: string) => doc(firestore!, name, uid);
 const toFirestore = <T extends object>(data: T) => ({ ...data, updatedAt: serverTimestamp() });
 
@@ -78,8 +80,8 @@ export const commerceRepository = {
   async loadCustomerData(uid: string | null, fallback: CustomerDataSnapshot): Promise<CustomerDataSnapshot> {
     if (!uid) {
       return {
-        cart: readLocal('mb_cart', fallback.cart || []),
-        wishlist: readLocal('mb_wishlist', fallback.wishlist || []),
+        cart: readLocal(guestLocalKey('cart'), fallback.cart || []),
+        wishlist: readLocal(guestLocalKey('wishlist'), fallback.wishlist || []),
         profile: readLocal('mb_customer', fallback.profile!),
         orders: readLocal('mb_orders', fallback.orders || [])
       };
@@ -137,13 +139,13 @@ export const commerceRepository = {
     return onSnapshot(collection(firestore, 'orders'), () => onChange(), (error) => onError(error));
   },
   async saveCart(uid: string | null, items: CartItem[]) {
-    if (!uid) return writeLocal('mb_cart', items);
+    if (!uid) return writeLocal(guestLocalKey('cart'), items);
     writeLocal(accountLocalKey('cart', uid), items);
     if (!firestore) return;
     try { await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items }), { merge: true }); } catch (error) { console.warn('Cart was retained in this account\'s local cache after Firestore write failed.', error); }
   },
   async saveWishlist(uid: string | null, productIds: string[]) {
-    if (!uid) return writeLocal('mb_wishlist', productIds);
+    if (!uid) return writeLocal(guestLocalKey('wishlist'), productIds);
     writeLocal(accountLocalKey('wishlist', uid), productIds);
     if (!firestore) return;
     try { await setDoc(privateDoc('wishlists', uid), toFirestore({ ownerId: uid, productIds }), { merge: true }); } catch (error) { console.warn('Wishlist was retained in this account\'s local cache after Firestore write failed.', error); }
