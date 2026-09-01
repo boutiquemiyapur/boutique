@@ -33,7 +33,8 @@ export const CartDrawer: React.FC = () => {
     applyCoupon,
     removeCoupon,
     freeShippingThresholdINR,
-    navigate
+    navigate,
+    requireAuth
   } = useStore();
 
   const [couponInput, setCouponInput] = useState('');
@@ -318,7 +319,7 @@ export const CartDrawer: React.FC = () => {
               id="proceed-to-checkout-btn"
               onClick={() => {
                 setIsCartDrawerOpen(false);
-                navigate('checkout');
+                requireAuth('checkout');
               }}
               className="w-full bg-[#8B1E3F] hover:bg-[#721C24] text-white font-semibold text-xs uppercase tracking-widest py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
             >

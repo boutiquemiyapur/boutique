@@ -21,13 +21,26 @@ const accountLocalKey = (name: 'cart' | 'wishlist' | 'customer' | 'orders', uid:
 const privateDoc = (name: 'carts' | 'wishlists' | 'users', uid: string) => doc(firestore!, name, uid);
 const toFirestore = <T extends object>(data: T) => ({ ...data, updatedAt: serverTimestamp() });
 
+/**
+ * Firestore does not accept `undefined` at any depth. Checkout values and
+ * optional product fields are normalized before the canonical document is made.
+ */
+const normalizeForFirestore = (value: unknown): unknown => {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) return value.map(normalizeForFirestore);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeForFirestore(item)]));
+  }
+  return value;
+};
+
 /** `/orders/{orderId}` is the canonical record for all new orders. */
 const canonicalOrderDocument = (uid: string, order: Order) => ({
   customerId: uid,
   orderNumber: order.orderNumber,
   paymentStatus: order.paymentStatus,
   orderStatus: order.orderStatus,
-  data: order,
+  data: normalizeForFirestore(order) as Order,
   createdAt: serverTimestamp(),
   updatedAt: serverTimestamp()
 });
@@ -162,25 +175,6 @@ export const commerceRepository = {
     await setDoc(doc(firestore, 'orders', order.id), canonicalOrderDocument(uid, order));
     const cachedOrders = readLocal<Order[]>(accountLocalKey('orders', uid), []);
     writeLocal(accountLocalKey('orders', uid), mergeOrders([order], cachedOrders));
-  },
-  async migrateLegacyOrders(uid: string, orders: Order[]) {
-    if (!firestore || !orders.length) return;
-    await Promise.all(orders.map(async (order) => {
-      const canonicalRef = doc(firestore, 'orders', order.id);
-      const existing = await getDoc(canonicalRef);
-      // Never overwrite a canonical record that may have admin updates.
-      if (!existing.exists()) await setDoc(canonicalRef, canonicalOrderDocument(uid, order));
-    }));
-  },
-  async migrateGuestOrders(uid: string, orders: Order[]) {
-    if (!firestore || !orders.length) return;
-    await Promise.all(orders.map(async (order) => {
-      const canonicalRef = doc(firestore, 'orders', order.id);
-      const existing = await getDoc(canonicalRef);
-      // A legacy browser order becomes canonical only once, after its customer
-      // authenticates. Existing records are never overwritten.
-      if (!existing.exists()) await setDoc(canonicalRef, canonicalOrderDocument(uid, order));
-    }));
   },
   async saveProduct(product: Product) {
     if (!firestore) return writeLocal('mb_products', product);

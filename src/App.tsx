@@ -34,6 +34,13 @@ const ProtectedAccount = () => {
   return <CustomerAccountPage />;
 };
 
+const ProtectedCheckout = () => {
+  const { authStatus, requireAuth } = useStore();
+  useEffect(() => { if (authStatus === 'unauthenticated') requireAuth('checkout'); }, [authStatus, requireAuth]);
+  if (authStatus !== 'authenticated') return <RouteLoading />;
+  return <CheckoutPage />;
+};
+
 const ProtectedAdmin = () => {
   const { authStatus, authSession, requireAuth } = useStore();
   if (authStatus === 'loading') return <RouteLoading />;
@@ -85,7 +92,7 @@ function AppContent() {
 
         {activeView === 'wishlist' && <WishlistPage />}
 
-        {activeView === 'checkout' && <CheckoutPage />}
+        {activeView === 'checkout' && <ProtectedCheckout />}
 
         {activeView === 'order-confirmation' && <OrderConfirmationPage />}
 

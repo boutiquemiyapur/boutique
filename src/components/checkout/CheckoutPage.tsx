@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { PaymentMethod, ShippingAddress, ShippingMethod } from '../../types';
 import {
@@ -17,6 +17,9 @@ export const CheckoutPage: React.FC = () => {
   const {
     cart,
     customer,
+    authStatus,
+    isCustomerDataReady,
+    requireAuth,
     formatPrice,
     cartSubtotalINR,
     cartTailoringTotalINR,
@@ -32,24 +35,42 @@ export const CheckoutPage: React.FC = () => {
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  // Address State
-  const [address, setAddress] = useState<ShippingAddress>(
-    customer.savedAddresses[0] || {
-      fullName: customer.fullName || '',
-      phone: customer.phone || '',
-      email: customer.email || '',
-      addressLine1: '',
-      addressLine2: '',
-      city: 'Hyderabad',
-      state: 'Telangana',
-      pincode: '500033',
-      country: 'India'
-    }
-  );
+  // Only real authenticated profile data may prefill checkout. Missing values
+  // remain blank; country defaults to India without inventing customer data.
+  const profileAddress = customer.savedAddresses[0];
+  const [address, setAddress] = useState<ShippingAddress>({
+    fullName: '', phone: '', email: '', addressLine1: '', addressLine2: '',
+    city: '', state: '', pincode: '', country: 'India'
+  });
+
+  useEffect(() => {
+    if (!isCustomerDataReady) return;
+    setAddress((current) => ({
+      fullName: current.fullName || profileAddress?.fullName || customer.fullName || '',
+      phone: current.phone || profileAddress?.phone || customer.phone || '',
+      email: current.email || profileAddress?.email || customer.email || '',
+      addressLine1: current.addressLine1 || profileAddress?.addressLine1 || '',
+      addressLine2: current.addressLine2 || profileAddress?.addressLine2 || '',
+      city: current.city || profileAddress?.city || '',
+      state: current.state || profileAddress?.state || '',
+      pincode: current.pincode || profileAddress?.pincode || '',
+      country: current.country || profileAddress?.country || 'India'
+    }));
+  }, [customer, isCustomerDataReady, profileAddress]);
 
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
   const [paymentMethod] = useState<PaymentMethod>('cod');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') requireAuth('checkout');
+  }, [authStatus, requireAuth]);
+
+  if (authStatus !== 'authenticated') return null;
+
+  if (!isCustomerDataReady) {
+    return <div className="grid min-h-[60vh] place-items-center text-sm text-stone-500">Loading your checkout details...</div>;
+  }
 
   if (cart.length === 0) {
     return (
@@ -69,6 +90,10 @@ export const CheckoutPage: React.FC = () => {
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isProcessingPayment) return;
+    if (authStatus !== 'authenticated') {
+      requireAuth('checkout');
+      return;
+    }
     setIsProcessingPayment(true);
     try {
       const newOrder = await createOrder(address, shippingMethod, paymentMethod);
@@ -170,7 +195,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.fullName}
                       onChange={(e) => setAddress({ ...address, fullName: e.target.value })}
-                      placeholder="Your full name"
+                      placeholder="Enter your full name"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -183,7 +208,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.phone}
                       onChange={(e) => setAddress({ ...address, phone: e.target.value })}
-                      placeholder="+91 98490 12345"
+                      placeholder="+91 XXXXX XXXXX"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -196,7 +221,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.email}
                       onChange={(e) => setAddress({ ...address, email: e.target.value })}
-                      placeholder="pooja.reddy@example.com"
+                      placeholder="Enter your email address"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -209,7 +234,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.addressLine1}
                       onChange={(e) => setAddress({ ...address, addressLine1: e.target.value })}
-                      placeholder="Villa 42, Palm Meadows, Jubilee Hills Road No. 36"
+                      placeholder="House / Flat / Street address"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -221,7 +246,7 @@ export const CheckoutPage: React.FC = () => {
                       type="text"
                       value={address.addressLine2 || ''}
                       onChange={(e) => setAddress({ ...address, addressLine2: e.target.value })}
-                      placeholder="Near Peddamma Temple"
+                      placeholder="Nearby landmark"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -234,7 +259,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.city}
                       onChange={(e) => setAddress({ ...address, city: e.target.value })}
-                      placeholder="Hyderabad"
+                      placeholder="Enter city"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -247,7 +272,7 @@ export const CheckoutPage: React.FC = () => {
                       required
                       value={address.state}
                       onChange={(e) => setAddress({ ...address, state: e.target.value })}
-                      placeholder="Telangana"
+                      placeholder="Enter state"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg"
                     />
                   </div>
@@ -261,7 +286,7 @@ export const CheckoutPage: React.FC = () => {
                       maxLength={6}
                       value={address.pincode}
                       onChange={(e) => setAddress({ ...address, pincode: e.target.value })}
-                      placeholder="500033"
+                      placeholder="500000"
                       className="w-full p-2.5 bg-[#FAF7F2] border border-[#E6D5B8] rounded-lg font-mono"
                     />
                   </div>

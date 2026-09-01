@@ -32,6 +32,8 @@ interface Toast {
 
 interface StoreContextType {
   authStatus: 'loading' | 'authenticated' | 'unauthenticated';
+  /** True once the signed-in customer's profile, cart, and orders have hydrated. */
+  isCustomerDataReady: boolean;
   authSession: AuthSession;
   products: Product[];
   cart: CartItem[];
@@ -265,9 +267,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const activePrivateUidRef = useRef<string | null>(null);
   const privateLoadVersionRef = useRef(0);
   const guestDataRef = useRef({ cart, wishlist });
-  const guestOrdersRef = useRef<Order[]>((() => {
-    try { const saved = localStorage.getItem('mb_orders'); return saved ? JSON.parse(saved) as Order[] : []; } catch { return []; }
-  })());
   // Browser guest state may be migrated once, but only after it was created in
   // a genuinely unauthenticated session. It is never populated from an account.
   const guestDataDirtyRef = useRef(cart.length > 0 || wishlist.length > 0);
@@ -384,19 +383,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!snapshot.profileExists && authSession) {
         void commerceRepository.createProfile(uid, sessionCustomer);
         setCustomer(sessionCustomer);
-      }
-      if (snapshot.legacyOrders?.length) {
-        void commerceRepository.migrateLegacyOrders(uid, snapshot.legacyOrders).catch((error) => {
-          console.warn('Legacy order compatibility migration could not complete.', error);
-        });
-      }
-      if (!authSession?.isAdmin && guestOrdersRef.current.length) {
-        const guestOrders = guestOrdersRef.current;
-        void commerceRepository.migrateGuestOrders(uid, guestOrders).then(() => {
-          guestOrdersRef.current = [];
-        }).catch((error) => {
-          console.warn('Guest order compatibility migration could not complete.', error);
-        });
       }
       if (authSession?.isAdmin) {
         void commerceRepository.loadAdminOrders(snapshot.orders || []).then((adminOrders) => {
@@ -658,7 +644,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       subtotalINR: cartSubtotalINR,
       tailoringTotalINR: cartTailoringTotalINR,
       couponDiscountINR: cartDiscountINR,
-      couponCodeApplied: appliedCoupon?.code,
+      // Keep the canonical schema stable and never send undefined to Firestore.
+      couponCodeApplied: appliedCoupon?.code ?? null,
       taxGstINR: cartTaxINR,
       totalINR: cartSubtotalINR + cartTailoringTotalINR - cartDiscountINR + cartTaxINR + (shippingMethod === 'express' ? 350 : cartShippingINR),
       currency: 'INR',
@@ -873,6 +860,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <StoreContext.Provider
       value={{
         authStatus,
+        isCustomerDataReady: privateDataReady,
         authSession,
         products,
         cart,

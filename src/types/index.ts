@@ -233,7 +233,7 @@ export interface Order {
   subtotalINR: number;
   tailoringTotalINR: number;
   couponDiscountINR: number;
-  couponCodeApplied?: string;
+  couponCodeApplied?: string | null;
   taxGstINR: number;
   totalINR: number;
   currency: CurrencyCode;
