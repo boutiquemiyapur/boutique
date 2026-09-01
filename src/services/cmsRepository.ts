@@ -83,16 +83,46 @@ export const cmsRepository = {
 
   async loadAdminSnapshot(): Promise<AdminSnapshot> {
     if (!firestore) throw new Error('Firebase is not configured for this deployment.');
-    const [productSnapshot, orderSnapshot, customerSnapshot] = await Promise.all([
+    const [productSnapshot, canonicalOrderSnapshot, legacyOrderSnapshot, customerSnapshot] = await Promise.all([
       getDocs(collection(firestore, 'products')),
+      getDocs(collection(firestore, 'orders')),
       getDocs(collectionGroup(firestore, 'orders')),
       getDocs(collection(firestore, 'users'))
     ]);
+    const orders = [...canonicalOrderSnapshot.docs, ...legacyOrderSnapshot.docs]
+      .map((item) => item.data().data as Order)
+      .filter((item): item is Order => Boolean(item?.id && item.orderNumber))
+      .reduce<Order[]>((all, order) => all.some((item) => item.id === order.id) ? all : [...all, order], [])
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     return {
       products: productSnapshot.docs.map((item) => asProduct(item.data())).filter((item): item is Product => Boolean(item)),
-      orders: orderSnapshot.docs.map((item) => item.data().data as Order).filter(Boolean),
+      orders,
       customers: customerSnapshot.docs.map((item) => item.data().profile as CustomerProfile).filter(Boolean)
     };
+  },
+
+  async migrateLegacyOrdersForAdmin(): Promise<void> {
+    if (!firestore) throw new Error('Firebase is not configured for this deployment.');
+    const legacyOrders = await getDocs(collectionGroup(firestore, 'orders'));
+    await Promise.all(legacyOrders.docs.map(async (legacyRef) => {
+      const legacy = legacyRef.data();
+      const order = legacy.data as Order | undefined;
+      const customerId = legacy.customerId as string | undefined;
+      if (!order?.id || !order.orderNumber || !customerId) return;
+      const canonicalRef = doc(firestore, 'orders', order.id);
+      if (legacyRef.ref.path === canonicalRef.path || (await getDoc(canonicalRef)).exists()) return;
+      // An admin may promote only an existing customer record. The identical
+      // id keeps this operation safe to retry and prevents duplicate orders.
+      await setDoc(canonicalRef, {
+        customerId,
+        orderNumber: order.orderNumber,
+        paymentStatus: order.paymentStatus,
+        orderStatus: order.orderStatus,
+        data: order,
+        createdAt: legacy.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }));
   },
 
   async loadAllBanners(): Promise<Banner[]> {

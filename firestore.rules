@@ -66,10 +66,29 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Reserved for canonical, server-validated orders. Browser clients must
-    // never create or change documents in this collection.
+    // Canonical customer order records. New orders are written only here;
+    // the nested user orders below remain read-compatible with older data.
     match /orders/{orderId} {
-      allow read, create, update, delete: if isAdmin();
+      allow read: if isAdmin() || (signedIn() && resource.data.customerId == request.auth.uid);
+      allow create: if isAdmin() || (signedIn()
+        && request.resource.data.keys().hasOnly(['customerId', 'orderNumber', 'paymentStatus', 'orderStatus', 'data', 'createdAt', 'updatedAt'])
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.orderNumber is string
+        && request.resource.data.paymentStatus == 'Pending'
+        && request.resource.data.orderStatus == 'Order Placed'
+        && request.resource.data.data.id == orderId
+        && request.resource.data.data.orderNumber == request.resource.data.orderNumber
+        && request.resource.data.data.paymentMethod == 'cod'
+        && request.resource.data.data.paymentStatus == 'Pending'
+        && request.resource.data.data.orderStatus == 'Order Placed'
+        && request.resource.data.data.items is list
+        && request.resource.data.data.items.size() > 0
+        && request.resource.data.data.shippingAddress.fullName is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time);
+      // Customers cannot alter submitted orders. Fulfilment changes are
+      // limited to the Firebase Authentication admin custom claim.
+      allow update, delete: if isAdmin();
     }
 
     // `collectionGroup('orders')` is used by the admin dashboard to read the
@@ -96,11 +115,10 @@ service cloud.firestore {
       // payment, fulfilment, tracking, prices, discount, or stock outcomes.
       match /orders/{orderId} {
         allow read: if owns(userId) || isAdmin();
-        allow create: if owns(userId)
-          && request.resource.data.keys().hasOnly(['customerId', 'data', 'createdAt', 'updatedAt'])
-          && request.resource.data.customerId == userId
-          && request.resource.data.data.paymentStatus == 'Pending'
-          && request.resource.data.data.orderStatus == 'Order Placed';
+        // Legacy documents are retained for customer/admin reads and an
+        // idempotent client-side compatibility migration. New checkout writes
+        // are intentionally not permitted in this non-canonical path.
+        allow create: if false;
         allow update, delete: if isAdmin();
       }
     }

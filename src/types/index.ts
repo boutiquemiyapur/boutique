@@ -204,6 +204,9 @@ export type PaymentMethod = 'cod';
 export type OrderStatus = 
   | 'Order Placed'
   | 'Artisan Tailoring'
+  | 'Confirmed'
+  | 'Processing'
+  | 'Ready for Dispatch'
   | 'Quality Inspection'
   | 'Dispatched'
   | 'In Transit'

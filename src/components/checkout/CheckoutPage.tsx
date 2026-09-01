@@ -66,16 +66,20 @@ export const CheckoutPage: React.FC = () => {
     );
   }
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isProcessingPayment) return;
     setIsProcessingPayment(true);
-
-    setTimeout(() => {
-      setIsProcessingPayment(false);
-      const newOrder = createOrder(address, shippingMethod, paymentMethod);
-      showToast('Order Placed Successfully!', `Order #${newOrder.orderNumber} confirmed.`);
+    try {
+      const newOrder = await createOrder(address, shippingMethod, paymentMethod);
+      showToast('Order Placed Successfully!', `Order #${newOrder.orderNumber} has been recorded.`);
       navigate('order-confirmation', undefined, newOrder.id);
-    }, 1200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The order could not be recorded. Please try again.';
+      showToast('Order not placed', message, 'error');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const finalShippingCost = shippingMethod === 'express' ? 350 : cartShippingINR;
@@ -397,11 +401,11 @@ export const CheckoutPage: React.FC = () => {
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-bold px-8 py-4 rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {isProcessingPayment ? (
-                      <span>Authorizing Payment...</span>
+                      <span>Recording order...</span>
                     ) : (
                       <>
                         <ShieldCheck className="w-4 h-4 text-[#DFBF77]" />
-                        <span>Pay {formatPrice(grandTotal)} & Confirm</span>
+                        <span>Place COD order - {formatPrice(grandTotal)}</span>
                       </>
                     )}
                   </button>

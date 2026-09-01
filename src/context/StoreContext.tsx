@@ -104,7 +104,7 @@ interface StoreContextType {
     shippingAddress: ShippingAddress,
     shippingMethod: ShippingMethod,
     paymentMethod: PaymentMethod
-  ) => Order;
+  ) => Promise<Order>;
   cancelOrder: (orderId: string) => void;
 
   // Customer Vault
@@ -114,7 +114,7 @@ interface StoreContextType {
   addSavedAddress: (address: ShippingAddress) => void;
 
   // Admin Operations
-  updateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string) => void;
+  updateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string) => Promise<void>;
   addProduct: (product: Product) => void;
   updateProduct: (product: Product) => void;
   deleteProduct: (productId: string) => void;
@@ -265,6 +265,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const activePrivateUidRef = useRef<string | null>(null);
   const privateLoadVersionRef = useRef(0);
   const guestDataRef = useRef({ cart, wishlist });
+  const guestOrdersRef = useRef<Order[]>((() => {
+    try { const saved = localStorage.getItem('mb_orders'); return saved ? JSON.parse(saved) as Order[] : []; } catch { return []; }
+  })());
   // Browser guest state may be migrated once, but only after it was created in
   // a genuinely unauthenticated session. It is never populated from an account.
   const guestDataDirtyRef = useRef(cart.length > 0 || wishlist.length > 0);
@@ -382,6 +385,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         void commerceRepository.createProfile(uid, sessionCustomer);
         setCustomer(sessionCustomer);
       }
+      if (snapshot.legacyOrders?.length) {
+        void commerceRepository.migrateLegacyOrders(uid, snapshot.legacyOrders).catch((error) => {
+          console.warn('Legacy order compatibility migration could not complete.', error);
+        });
+      }
+      if (!authSession?.isAdmin && guestOrdersRef.current.length) {
+        const guestOrders = guestOrdersRef.current;
+        void commerceRepository.migrateGuestOrders(uid, guestOrders).then(() => {
+          guestOrdersRef.current = [];
+        }).catch((error) => {
+          console.warn('Guest order compatibility migration could not complete.', error);
+        });
+      }
       if (authSession?.isAdmin) {
         void commerceRepository.loadAdminOrders(snapshot.orders || []).then((adminOrders) => {
           if (privateLoadVersionRef.current === loadVersion && activePrivateUidRef.current === uid) setOrders(adminOrders);
@@ -394,6 +410,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Authentication ownership changes are the only reason to rehydrate private state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firebaseUserId]);
+
+  // Customer tracking reads the same canonical order documents that the
+  // admin fulfils. Legacy subcollection records remain as read-only history.
+  useEffect(() => {
+    if (!firebaseUserId || authSession?.isAdmin) return;
+    return commerceRepository.subscribeToCustomerOrders(firebaseUserId, (canonicalOrders) => {
+      setOrders((current) => {
+        const legacy = current.filter((order) => !canonicalOrders.some((item) => item.id === order.id));
+        return [...canonicalOrders, ...legacy].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      });
+    }, (error) => console.warn('Customer order tracking listener failed.', error));
+  }, [authSession?.isAdmin, firebaseUserId]);
 
   const login = async (email: string, password: string, remember = true) => {
     try {
@@ -613,11 +641,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Checkout & Order creation
-  const createOrder = (
+  const createOrder = async (
     shippingAddress: ShippingAddress,
     shippingMethod: ShippingMethod,
     paymentMethod: PaymentMethod
-  ): Order => {
+  ): Promise<Order> => {
     const orderNum = `MB-${Math.floor(10000 + Math.random() * 90000)}`;
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
@@ -647,10 +675,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]
     };
 
-    setOrders((prev) => [newOrder, ...prev]);
+    // Firestore is the source of truth: success UI and cart clearing happen
+    // only after the canonical order document is committed.
+    await commerceRepository.saveOrder(firebaseUserId, newOrder);
+    setOrders((prev) => [newOrder, ...prev.filter((order) => order.id !== newOrder.id)]);
     setLastPlacedOrder(newOrder);
     setSelectedTrackingOrderId(newOrder.id);
-    void commerceRepository.saveOrder(firebaseUserId, newOrder);
     clearCart();
 
     // Trigger celebratory confetti
@@ -722,18 +752,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Admin actions
-  const updateOrderStatus = (orderId: string, status: OrderStatus, trackingNumber?: string) => {
+  const updateOrderStatus = async (orderId: string, status: OrderStatus, trackingNumber?: string) => {
     if (!authSession?.isAdmin) {
-      showToast('Admin Access Required', 'Only an authorized Firebase admin can update fulfilment status.', 'error');
-      return;
+      throw new Error('Only an authorized Firebase admin can update fulfilment status.');
     }
-    void orderId;
-    void status;
-    void trackingNumber;
-    // Privileged fulfilment writes must be made by a trusted Admin SDK/Cloud
-    // Function. Keeping this UI method truthful avoids showing a local-only
-    // update as a persisted operational change.
-    showToast('Fulfilment service required', 'Order status changes must be sent through the trusted admin fulfilment service.', 'info');
+    const order = orders.find((item) => item.id === orderId);
+    if (!order) throw new Error('Order could not be found. Refresh the admin dashboard and try again.');
+    const updated = await commerceRepository.updateOrderStatus(order, status, trackingNumber);
+    setOrders((current) => current.map((item) => item.id === updated.id ? updated : item));
   };
 
   const addProduct = (product: Product) => {

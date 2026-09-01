@@ -1,4 +1,4 @@
-import { collectionGroup, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
+import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
 import { firestore } from '../firebase/config';
 import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
 
@@ -8,6 +8,8 @@ export interface CustomerDataSnapshot {
   profile?: CustomerProfile;
   profileExists?: boolean;
   orders?: Order[];
+  /** Existing customer-subcollection orders which are read only for migration. */
+  legacyOrders?: Order[];
 }
 
 const readLocal = <T>(key: string, fallback: T): T => {
@@ -18,6 +20,27 @@ const accountLocalKey = (name: 'cart' | 'wishlist' | 'customer' | 'orders', uid:
 
 const privateDoc = (name: 'carts' | 'wishlists' | 'users', uid: string) => doc(firestore!, name, uid);
 const toFirestore = <T extends object>(data: T) => ({ ...data, updatedAt: serverTimestamp() });
+
+/** `/orders/{orderId}` is the canonical record for all new orders. */
+const canonicalOrderDocument = (uid: string, order: Order) => ({
+  customerId: uid,
+  orderNumber: order.orderNumber,
+  paymentStatus: order.paymentStatus,
+  orderStatus: order.orderStatus,
+  data: order,
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp()
+});
+
+const orderFromDocument = (value: Record<string, unknown>): Order | null => {
+  const order = value.data as Order | undefined;
+  return order?.id && order.orderNumber ? order : null;
+};
+
+const newestFirst = (orders: Order[]) => [...orders].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+const mergeOrders = (...groups: Order[][]) => newestFirst(
+  groups.flat().reduce<Order[]>((merged, order) => merged.some((item) => item.id === order.id) ? merged : [...merged, order], [])
+);
 
 export const commerceRepository = {
   async loadCatalog(fallback: Product[]) {
@@ -57,24 +80,48 @@ export const commerceRepository = {
     };
     if (!firestore) return accountFallback;
     try {
-      const [cart, wishlist, profile, orders] = await Promise.all([
-        getDoc(privateDoc('carts', uid)), getDoc(privateDoc('wishlists', uid)), getDoc(privateDoc('users', uid)), getDocs(collection(firestore, 'users', uid, 'orders'))
+      const [cart, wishlist, profile, canonicalOrders, legacyOrders] = await Promise.all([
+        getDoc(privateDoc('carts', uid)),
+        getDoc(privateDoc('wishlists', uid)),
+        getDoc(privateDoc('users', uid)),
+        getDocs(query(collection(firestore, 'orders'), where('customerId', '==', uid))),
+        getDocs(collection(firestore, 'users', uid, 'orders'))
       ]);
+      const legacy = legacyOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item));
       return {
         cart: (cart.data()?.items as CartItem[] | undefined) || accountFallback.cart,
         wishlist: (wishlist.data()?.productIds as string[] | undefined) || accountFallback.wishlist,
         profile: (profile.data()?.profile as CustomerProfile | undefined) || accountFallback.profile,
         profileExists: profile.exists(),
-        orders: orders.docs.map((item) => item.data().data as Order).filter(Boolean)
+        orders: mergeOrders(canonicalOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item)), legacy),
+        legacyOrders: legacy
       };
     } catch (error) { console.warn('Firestore private data unavailable; using account-local fallback.', error); return accountFallback; }
   },
   async loadAdminOrders(fallback: Order[]) {
     if (!firestore) return fallback;
     try {
-      const snapshot = await getDocs(collectionGroup(firestore, 'orders'));
-      return snapshot.docs.map((item) => item.data().data as Order).filter(Boolean);
+      const [canonical, legacy] = await Promise.all([
+        getDocs(collection(firestore, 'orders')),
+        getDocs(collectionGroup(firestore, 'orders'))
+      ]);
+      return mergeOrders(
+        canonical.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item)),
+        legacy.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item))
+      );
     } catch (error) { console.warn('Firestore admin orders unavailable; using current data.', error); return fallback; }
+  },
+  subscribeToCustomerOrders(uid: string, onOrders: (orders: Order[]) => void, onError: (error: Error) => void) {
+    if (!firestore) return () => undefined;
+    return onSnapshot(
+      query(collection(firestore, 'orders'), where('customerId', '==', uid)),
+      (snapshot) => onOrders(snapshot.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item))),
+      (error) => onError(error)
+    );
+  },
+  subscribeToCanonicalOrders(onChange: () => void, onError: (error: Error) => void) {
+    if (!firestore) return () => undefined;
+    return onSnapshot(collection(firestore, 'orders'), () => onChange(), (error) => onError(error));
   },
   async saveCart(uid: string | null, items: CartItem[]) {
     if (!uid) return writeLocal('mb_cart', items);
@@ -108,14 +155,32 @@ export const commerceRepository = {
     } catch (error) { console.warn('Profile was retained in this account\'s local cache after Firestore write failed.', error); }
   },
   async saveOrder(uid: string | null, order: Order) {
-    if (!uid) { const previous = readLocal<Order[]>('mb_orders', []); return writeLocal('mb_orders', [order, ...previous.filter((item) => item.id !== order.id)]); }
+    if (!uid) throw new Error('Please sign in before placing an order.');
+    if (!firestore) throw new Error('Order service is not configured for this deployment.');
+    // Do not clear the basket or confirm an order until this write succeeds.
+    // Retrying the same generated id remains idempotent.
+    await setDoc(doc(firestore, 'orders', order.id), canonicalOrderDocument(uid, order));
     const cachedOrders = readLocal<Order[]>(accountLocalKey('orders', uid), []);
-    writeLocal(accountLocalKey('orders', uid), [order, ...cachedOrders.filter((item) => item.id !== order.id)]);
-    if (!firestore) return;
-    try {
-      // Client documents are display snapshots only. A trusted Cloud Function must recalculate prices, stock, coupon and payment state before fulfilment.
-      await setDoc(doc(firestore, 'users', uid, 'orders', order.id), toFirestore({ customerId: uid, data: { ...order, paymentStatus: 'Pending', orderStatus: 'Order Placed' }, createdAt: serverTimestamp() }), { merge: true });
-    } catch (error) { console.warn('Order was retained in this account\'s local cache after Firestore write failed.', error); }
+    writeLocal(accountLocalKey('orders', uid), mergeOrders([order], cachedOrders));
+  },
+  async migrateLegacyOrders(uid: string, orders: Order[]) {
+    if (!firestore || !orders.length) return;
+    await Promise.all(orders.map(async (order) => {
+      const canonicalRef = doc(firestore, 'orders', order.id);
+      const existing = await getDoc(canonicalRef);
+      // Never overwrite a canonical record that may have admin updates.
+      if (!existing.exists()) await setDoc(canonicalRef, canonicalOrderDocument(uid, order));
+    }));
+  },
+  async migrateGuestOrders(uid: string, orders: Order[]) {
+    if (!firestore || !orders.length) return;
+    await Promise.all(orders.map(async (order) => {
+      const canonicalRef = doc(firestore, 'orders', order.id);
+      const existing = await getDoc(canonicalRef);
+      // A legacy browser order becomes canonical only once, after its customer
+      // authenticates. Existing records are never overwritten.
+      if (!existing.exists()) await setDoc(canonicalRef, canonicalOrderDocument(uid, order));
+    }));
   },
   async saveProduct(product: Product) {
     if (!firestore) return writeLocal('mb_products', product);
@@ -125,9 +190,23 @@ export const commerceRepository = {
     if (!firestore) return;
     await updateDoc(doc(firestore, 'products', productId), { status: 'archived', updatedAt: serverTimestamp() });
   },
-  async updateOrderStatus(orderId: string, customerId: string, status: OrderStatus, trackingNumber?: string) {
-    if (!firestore) return;
-    await updateDoc(doc(firestore, 'users', customerId, 'orders', orderId), { 'data.orderStatus': status, ...(trackingNumber ? { 'data.trackingNumber': trackingNumber } : {}), updatedAt: serverTimestamp() });
+  async updateOrderStatus(order: Order, status: OrderStatus, trackingNumber?: string) {
+    if (!firestore) throw new Error('Order service is not configured for this deployment.');
+    const timeline = [...order.timeline, {
+      status,
+      timestamp: new Date().toLocaleString('en-IN'),
+      description: `Order status updated to ${status}.`,
+      completed: true
+    }];
+    const updatedOrder: Order = { ...order, orderStatus: status, ...(trackingNumber ? { trackingNumber } : {}), timeline };
+    await updateDoc(doc(firestore, 'orders', order.id), {
+      orderStatus: status,
+      'data.orderStatus': status,
+      'data.timeline': timeline,
+      ...(trackingNumber ? { 'data.trackingNumber': trackingNumber } : {}),
+      updatedAt: serverTimestamp()
+    });
+    return updatedOrder;
   },
   async saveCoupon(coupon: Coupon) {
     if (!firestore) return writeLocal('mb_coupons', coupon);
