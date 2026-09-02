@@ -33,10 +33,10 @@ export const FeaturedGrid: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div>
             <span className="text-xs uppercase tracking-[0.25em] font-semibold text-[#8B1E3F]">
-              Handcrafted Haute Couture
+              Handcrafted Fashion
             </span>
             <h2 className="text-2xl sm:text-4xl font-serif font-bold text-[#1A1715] mt-1">
-              Curated Masterpieces
+              Selected Styles
             </h2>
             <div className="w-12 h-0.5 bg-[#C5A059] mt-2"></div>
           </div>
@@ -221,7 +221,7 @@ export const FeaturedGrid: React.FC = () => {
             onClick={() => navigate('shop')}
             className="inline-flex items-center gap-2 bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase font-semibold tracking-widest px-8 py-3.5 rounded-lg shadow-lg hover:shadow-xl transition-all"
           >
-            <span>View All Handloom Silks & Couture</span>
+            <span>View All Handloom Silks & Styles</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

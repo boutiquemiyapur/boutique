@@ -34,7 +34,7 @@ export const OrderConfirmationPage: React.FC = () => {
           onClick={() => navigate('shop')}
           className="mt-4 bg-[#8B1E3F] text-white text-xs uppercase px-6 py-3 rounded-lg"
         >
-          Return to Boutique
+          Return to Collection
         </button>
       </div>
     );
@@ -100,7 +100,7 @@ export const OrderConfirmationPage: React.FC = () => {
 
           {/* Items */}
           <div className="space-y-4">
-            <h3 className="font-serif font-bold text-base text-stone-900">Ensembles in Order</h3>
+            <h3 className="font-serif font-bold text-base text-stone-900">Items in Your Order</h3>
             <div className="divide-y divide-[#E6D5B8]/60">
               {currentOrder.items.map((item) => (
                 <div key={item.cartItemId} className="py-3 flex items-center gap-4 text-xs">
@@ -116,7 +116,7 @@ export const OrderConfirmationPage: React.FC = () => {
                     </p>
                     {item.isCustomTailored && (
                       <span className="text-[11px] text-[#8B1E3F] font-semibold flex items-center gap-1 mt-1">
-                        <Scissors className="w-3 h-3" /> Bespoke Made-to-Measure Custom Blouse Included
+                        <Scissors className="w-3 h-3" /> Custom Made-to-Measure Blouse Included
                       </span>
                     )}
                   </div>
@@ -175,7 +175,7 @@ export const OrderConfirmationPage: React.FC = () => {
             onClick={() => navigate('shop')}
             className="inline-flex items-center gap-2 text-xs uppercase tracking-widest font-bold text-[#8B1E3F] hover:text-[#721C24]"
           >
-            <span>Continue Exploring Collections</span>
+            <span>Continue Shopping</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

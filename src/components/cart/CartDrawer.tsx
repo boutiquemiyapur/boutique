@@ -119,7 +119,7 @@ export const CartDrawer: React.FC = () => {
               <ShoppingBag className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Bag is Empty</h3>
               <p className="text-xs text-stone-500 mt-1 max-w-xs mx-auto">
-                Discover our handwoven Kanjeevarams, bridal lehengas, and bespoke festive collections.
+                Explore our handwoven Kanjeevarams, bridal lehengas, and custom festive styles.
               </p>
               <button
                 id="empty-cart-shop-now-btn"
@@ -129,7 +129,7 @@ export const CartDrawer: React.FC = () => {
                 }}
                 className="mt-6 inline-flex items-center gap-1.5 bg-[#8B1E3F] text-white text-xs uppercase tracking-wider font-semibold px-6 py-3 rounded-lg hover:bg-[#721C24] transition-colors shadow-md"
               >
-                Explore Luxury Catalog <ArrowRight className="w-4 h-4" />
+                Explore Collection <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           ) : (
@@ -179,7 +179,7 @@ export const CartDrawer: React.FC = () => {
 
                     {item.isCustomTailored && (
                       <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-[#8B1E3F] bg-[#8B1E3F]/10 px-2 py-0.5 rounded-sm">
-                        <Scissors className="w-2.5 h-2.5" /> Bespoke Made-to-Measure (+{formatPrice(item.tailoringFeeINR)})
+                        <Scissors className="w-2.5 h-2.5" /> Custom Made-to-Measure (+{formatPrice(item.tailoringFeeINR)})
                       </div>
                     )}
                   </div>
@@ -218,7 +218,7 @@ export const CartDrawer: React.FC = () => {
             ))
           )}
 
-          {/* Luxury Gift Packaging Box */}
+          {/* Gift Packaging Box */}
           {cart.length > 0 && (
             <div className="bg-white border border-[#E6D5B8] rounded-xl p-3.5 space-y-2">
               <div

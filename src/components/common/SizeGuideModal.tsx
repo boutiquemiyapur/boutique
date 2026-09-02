@@ -44,7 +44,7 @@ export const SizeGuideModal: React.FC = () => {
 
         <div className="flex items-center gap-2.5 text-[#8B1E3F] mb-1">
           <Ruler className="w-5 h-5 text-[#C5A059]" />
-          <span className="text-xs uppercase tracking-widest font-semibold">Haute Couture Fit</span>
+          <span className="text-xs uppercase tracking-widest font-semibold">Fit Guide</span>
         </div>
         <h2 className="text-2xl font-serif font-bold text-[#1A1715]">Standard Size & Measurement Chart</h2>
         <p className="text-sm text-stone-600 mt-1">

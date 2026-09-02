@@ -201,7 +201,7 @@ export const ProductDetailPage: React.FC = () => {
                 )}
                 {product.isBestseller && (
                   <span className="bg-[#8B1E3F] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-lg shadow-md">
-                    Atelier Bestseller
+                    Popular Choice
                   </span>
                 )}
               </div>
@@ -362,7 +362,7 @@ export const ProductDetailPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Bespoke Made-to-Measure Custom Blouse Drawer */}
+            {/* Custom Made-to-Measure Blouse Drawer */}
             {product.customStitchingAvailable && (
               <div className="border border-[#DFBF77] rounded-2xl bg-[#FAF4ED] p-4 sm:p-5 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
@@ -372,7 +372,7 @@ export const ProductDetailPage: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="text-xs font-bold uppercase tracking-wider text-[#8B1E3F]">
-                        Bespoke Custom Blouse Tailoring
+                        Custom Blouse Tailoring
                       </h4>
                       <p className="text-[11px] text-stone-600">
                         {product.customStitchingFeeINR > 0
@@ -621,7 +621,7 @@ export const ProductDetailPage: React.FC = () => {
             {activeTab === 'details' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs sm:text-sm text-stone-700 leading-relaxed">
                 <div>
-                  <h3 className="font-serif font-bold text-lg text-[#1A1715] mb-3">Ensemble Description</h3>
+                  <h3 className="font-serif font-bold text-lg text-[#1A1715] mb-3">Product Description</h3>
                   <p>{product.description}</p>
                   {product.blouseLength && (
                     <div className="mt-4 p-3 bg-[#FAF7F2] rounded-lg border border-[#E6D5B8]">
@@ -732,7 +732,7 @@ export const ProductDetailPage: React.FC = () => {
 
                 {/* Review Submission Form */}
                 <form onSubmit={handleAddReview} className="p-6 bg-[#FAF7F2] border border-[#E6D5B8] rounded-xl space-y-4">
-                  <h4 className="font-serif font-bold text-base text-stone-900">Share Your Atelier Experience</h4>
+                  <h4 className="font-serif font-bold text-base text-stone-900">Share Your Experience</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <input
                       type="text"

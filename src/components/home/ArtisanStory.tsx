@@ -81,10 +81,10 @@ export const ArtisanStory: React.FC = () => {
                 <Scissors className="w-5 h-5 text-[#DFBF77] shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-semibold text-white uppercase tracking-wider">
-                    In-House Hyderabad Atelier
+                    Our Hyderabad Workshop
                   </h4>
                   <p className="text-[11px] text-[#EFE7DA]/70 mt-0.5">
-                    Bespoke blouse design with hand-sewn Maggam & Zardozi embroidery.
+                    Custom blouse design with hand-sewn Maggam & Zardozi embroidery.
                   </p>
                 </div>
               </div>

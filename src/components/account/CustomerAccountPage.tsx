@@ -35,7 +35,7 @@ export const CustomerAccountPage: React.FC = () => {
     logout
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<'vault' | 'orders' | 'wishlist' | 'profile' | 'addresses'>('vault');
+  const [activeTab, setActiveTab] = useState<'vault' | 'orders' | 'wishlist' | 'profile' | 'addresses'>('profile');
 
   // Profile fields
   const [name, setName] = useState(customer.fullName);
@@ -81,7 +81,7 @@ export const CustomerAccountPage: React.FC = () => {
   const handleSaveMeasurements = (e: React.FormEvent) => {
     e.preventDefault();
     saveMeasurements(measurements);
-    showToast('Measurements Saved in Vault', 'Your bespoke measurements are now saved for 1-click checkout.');
+    showToast('Measurements Saved', 'Your custom measurements are now ready for checkout.');
   };
 
   const handleSaveAddress = (event: React.FormEvent) => {
@@ -98,95 +98,70 @@ export const CustomerAccountPage: React.FC = () => {
     <div className="bg-[#FAF7F2] min-h-screen py-10 sm:py-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#E6D5B8] mb-8">
-          <div>
-            <span className="text-xs uppercase tracking-[0.25em] font-bold text-[#8B1E3F]">
-              AB Collection account
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#1A1715]">
-              My Couture Account & Vault
-            </h1>
+        <div className="mb-6 flex flex-col gap-4 border-b border-[#E6D5B8] pb-6 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#8B1E3F]">AB Collection account</span>
+            <h1 className="mt-1 break-words font-serif text-2xl font-bold text-[#1A1715] sm:text-3xl">My Account</h1>
           </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-stone-600">
-              Welcome, <strong>{customer.fullName || 'Valued Patron'}</strong>
-            </span>
-            <span className="bg-[#8B1E3F] text-[#DFBF77] text-[10px] uppercase font-bold px-3 py-1 rounded-full border border-[#DFBF77]/40">
-              VIP Bridal Member
-            </span>
-            <button onClick={() => void logout()} className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-600 hover:text-[#8B1E3F]" aria-label="Log out"><LogOut className="h-4 w-4" />Log out</button>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <span className="min-w-0 break-words text-xs leading-5 text-stone-600">Welcome, <strong>{customer.fullName || 'there'}</strong></span>
+            <button onClick={() => void logout()} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#2c2926] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#8B1E3F] active:scale-[0.98]" aria-label="Log out"><LogOut className="h-4 w-4" />Log out</button>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-[#E6D5B8] gap-4 sm:gap-8 mb-8 overflow-x-auto">
-          <button
-            id="tab-account-vault"
-            onClick={() => setActiveTab('vault')}
-            className={`pb-3 text-xs uppercase tracking-wider font-bold transition-all relative flex items-center gap-2 ${
-              activeTab === 'vault' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-            }`}
-          >
-            <Scissors className="w-4 h-4" /> Saved Measurement Vault
-            {activeTab === 'vault' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-          </button>
-
-          <button
-            id="tab-account-wishlist"
-            onClick={() => setActiveTab('wishlist')}
-            className={`pb-3 text-xs uppercase tracking-wider font-bold transition-all relative flex items-center gap-2 ${
-              activeTab === 'wishlist' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-            }`}
-          >
-            <Heart className="w-4 h-4" /> Wishlist ({wishlist.length})
-            {activeTab === 'wishlist' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-          </button>
-
-          <button
-            id="tab-account-addresses"
-            onClick={() => setActiveTab('addresses')}
-            className={`pb-3 text-xs uppercase tracking-wider font-bold transition-all relative flex items-center gap-2 ${
-              activeTab === 'addresses' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-            }`}
-          >
-            <MapPin className="w-4 h-4" /> Addresses ({customer.savedAddresses.length})
-            {activeTab === 'addresses' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-          </button>
-
-          <button
-            id="tab-account-orders"
-            onClick={() => setActiveTab('orders')}
-            className={`pb-3 text-xs uppercase tracking-wider font-bold transition-all relative flex items-center gap-2 ${
-              activeTab === 'orders' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-            }`}
-          >
-            <Package className="w-4 h-4" /> Order History ({orders.length})
-            {activeTab === 'orders' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-          </button>
-
+        <div className="mb-8 grid grid-cols-1 gap-2 rounded-2xl border border-[#E6D5B8] bg-white p-2 sm:flex sm:gap-6 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:bg-transparent sm:p-0 lg:gap-8">
           <button
             id="tab-account-profile"
             onClick={() => setActiveTab('profile')}
-            className={`pb-3 text-xs uppercase tracking-wider font-bold transition-all relative flex items-center gap-2 ${
-              activeTab === 'profile' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-            }`}
+            className={`relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-xs font-bold uppercase tracking-wider transition-all sm:min-h-0 sm:w-auto sm:rounded-none sm:px-0 sm:pb-3 ${activeTab === 'profile' ? 'bg-[#8B1E3F]/8 text-[#8B1E3F] sm:bg-transparent' : 'text-stone-600 hover:bg-stone-100 hover:text-black sm:hover:bg-transparent'}`}
           >
-            <User className="w-4 h-4" /> Personal Profile
-            {activeTab === 'profile' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
+            <User className="h-4 w-4 shrink-0" /> Personal Profile
+            {activeTab === 'profile' && <span className="absolute bottom-0 left-0 hidden h-0.5 w-full bg-[#8B1E3F] sm:block" />}
+          </button>
+          <button
+            id="tab-account-orders"
+            onClick={() => setActiveTab('orders')}
+            className={`relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-xs font-bold uppercase tracking-wider transition-all sm:min-h-0 sm:w-auto sm:rounded-none sm:px-0 sm:pb-3 ${activeTab === 'orders' ? 'bg-[#8B1E3F]/8 text-[#8B1E3F] sm:bg-transparent' : 'text-stone-600 hover:bg-stone-100 hover:text-black sm:hover:bg-transparent'}`}
+          >
+            <Package className="h-4 w-4 shrink-0" /> Order History
+            {activeTab === 'orders' && <span className="absolute bottom-0 left-0 hidden h-0.5 w-full bg-[#8B1E3F] sm:block" />}
+          </button>
+          <button
+            id="tab-account-addresses"
+            onClick={() => setActiveTab('addresses')}
+            className={`relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-xs font-bold uppercase tracking-wider transition-all sm:min-h-0 sm:w-auto sm:rounded-none sm:px-0 sm:pb-3 ${activeTab === 'addresses' ? 'bg-[#8B1E3F]/8 text-[#8B1E3F] sm:bg-transparent' : 'text-stone-600 hover:bg-stone-100 hover:text-black sm:hover:bg-transparent'}`}
+          >
+            <MapPin className="h-4 w-4 shrink-0" /> Addresses
+            {activeTab === 'addresses' && <span className="absolute bottom-0 left-0 hidden h-0.5 w-full bg-[#8B1E3F] sm:block" />}
+          </button>
+          <button
+            id="tab-account-wishlist"
+            onClick={() => setActiveTab('wishlist')}
+            className={`relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-xs font-bold uppercase tracking-wider transition-all sm:min-h-0 sm:w-auto sm:rounded-none sm:px-0 sm:pb-3 ${activeTab === 'wishlist' ? 'bg-[#8B1E3F]/8 text-[#8B1E3F] sm:bg-transparent' : 'text-stone-600 hover:bg-stone-100 hover:text-black sm:hover:bg-transparent'}`}
+          >
+            <Heart className="h-4 w-4 shrink-0" /> Wishlist
+            {activeTab === 'wishlist' && <span className="absolute bottom-0 left-0 hidden h-0.5 w-full bg-[#8B1E3F] sm:block" />}
+          </button>
+          <button
+            id="tab-account-vault"
+            onClick={() => setActiveTab('vault')}
+            className={`relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-xs font-bold uppercase tracking-wider transition-all sm:min-h-0 sm:w-auto sm:rounded-none sm:px-0 sm:pb-3 ${activeTab === 'vault' ? 'bg-[#8B1E3F]/8 text-[#8B1E3F] sm:bg-transparent' : 'text-stone-600 hover:bg-stone-100 hover:text-black sm:hover:bg-transparent'}`}
+          >
+            <Scissors className="h-4 w-4 shrink-0" /> Saved Measurement Vault
+            {activeTab === 'vault' && <span className="absolute bottom-0 left-0 hidden h-0.5 w-full bg-[#8B1E3F] sm:block" />}
           </button>
         </div>
-
         {/* Tab 1: Measurements Vault */}
         {activeTab === 'vault' && (
           <div className="bg-white border border-[#E6D5B8] rounded-3xl p-6 sm:p-10 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E6D5B8]">
               <div>
                 <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2">
-                  <Ruler className="w-5 h-5 text-[#8B1E3F]" /> Digital Blouse & Silhouette Vault
+                  <Ruler className="w-5 h-5 text-[#8B1E3F]" /> Saved Measurements
                 </h3>
                 <p className="text-xs text-stone-500 mt-0.5">
-                  Save your precise tailoring dimensions once. They will automatically auto-fill whenever you customize an ensemble.
+                  Save your measurements once. They will fill in automatically whenever you choose custom tailoring.
                 </p>
               </div>
 
@@ -348,7 +323,7 @@ export const CustomerAccountPage: React.FC = () => {
                   type="submit"
                   className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-wider font-semibold px-8 py-3.5 rounded-xl flex items-center gap-2 shadow-md transition-all"
                 >
-                  <Save className="w-4 h-4" /> Save to Measurements Vault
+                  <Save className="w-4 h-4" /> Save Measurements
                 </button>
               </div>
             </form>

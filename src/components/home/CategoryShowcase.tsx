@@ -22,16 +22,16 @@ const CATEGORIES: CategoryCard[] = [
   {
     title: 'Bridal Lehengas',
     category: 'Bridal Lehengas',
-    tagline: 'Opulent Velvet & Zardozi Handwork',
+    tagline: 'Velvet & Zardozi Handwork',
     image: 'https://images.unsplash.com/photo-1594744803329-e58b31de8bf5?auto=format&fit=crop&w=800&q=80',
-    itemCount: '24 Bespoke Sets'
+    itemCount: '24 Custom Sets'
   },
   {
     title: 'Banarasi Brocades',
     category: 'Banarasi Sarees',
     tagline: 'Authentic Varanasi Sonarupa Jaal',
     image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?auto=format&fit=crop&w=800&q=80',
-    itemCount: '36 Masterpieces'
+    itemCount: '36 Designs'
   },
   {
     title: 'Designer Organza & Chanderi',
@@ -45,14 +45,14 @@ const CATEGORIES: CategoryCard[] = [
     category: 'Unstitched Suits',
     tagline: 'Awadhi Mukaish & 32-Stitch Chikankari',
     image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=800&q=80',
-    itemCount: '40 Ensembles'
+    itemCount: '40 Outfits'
   },
   {
     title: 'Temple Heritage Jewelry',
     category: 'Temple Jewelry',
     tagline: '22K Antique Micron Gold & Kemp Rubies',
     image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=800&q=80',
-    itemCount: '20 Curated Pieces'
+    itemCount: '20 Selected Pieces'
   }
 ];
 
@@ -70,7 +70,7 @@ export const CategoryShowcase: React.FC = () => {
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto mb-12">
           <span className="text-xs uppercase tracking-[0.25em] font-semibold text-[#8B1E3F]">
-            Curated Boutiques
+            Selected Collections
           </span>
           <h2 className="text-2xl sm:text-4xl font-serif font-bold text-[#1A1715] mt-2">
             Explore Heritage Collections
@@ -112,7 +112,7 @@ export const CategoryShowcase: React.FC = () => {
                     {cat.title}
                   </h3>
                   <div className="pt-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#FAF7F2] group-hover:translate-x-1.5 transition-transform">
-                    <span>Explore Boutique</span>
+                    <span>Explore Collection</span>
                     <ArrowRight className="w-3.5 h-3.5 text-[#DFBF77]" />
                   </div>
                 </div>

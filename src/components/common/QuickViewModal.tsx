@@ -191,7 +191,7 @@ export const QuickViewModal: React.FC = () => {
               </div>
             </div>
 
-            {/* Bespoke Tailoring Option */}
+            {/* Custom Tailoring Option */}
             {product.customStitchingAvailable && (
               <div className="mt-4 p-3 bg-[#FAF4ED] border border-[#C5A059]/30 rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -251,7 +251,7 @@ export const QuickViewModal: React.FC = () => {
             }}
             className="mt-2 text-center text-xs font-semibold uppercase tracking-wider text-[#8B1E3F] hover:underline"
           >
-            View Full Atelier Details & Reviews →
+            View Full Product Details & Reviews →
           </button>
         </div>
       </motion.div>

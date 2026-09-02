@@ -62,7 +62,7 @@ export const WishlistDrawer: React.FC = () => {
               <Heart className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Wishlist is Empty</h3>
               <p className="text-xs text-stone-500 mt-1 max-w-xs mx-auto">
-                Explore our handcrafted silks and bridal collections to curate your dream ensemble.
+                Explore our handcrafted silks and bridal collections to find an outfit you love.
               </p>
               <button
                 id="explore-catalog-from-wishlist"

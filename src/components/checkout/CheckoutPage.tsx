@@ -76,7 +76,7 @@ export const CheckoutPage: React.FC = () => {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center">
         <h2 className="text-2xl font-serif font-bold text-stone-900">Your Shopping Bag is Empty</h2>
-        <p className="text-xs text-stone-500 mt-2">Add your dream handloom ensembles to proceed to checkout.</p>
+        <p className="text-xs text-stone-500 mt-2">Add your favourite handloom outfits to continue to checkout.</p>
         <button
           onClick={() => navigate('shop')}
           className="mt-6 bg-[#8B1E3F] text-white text-xs uppercase tracking-wider font-semibold px-6 py-3 rounded-lg"
@@ -376,7 +376,7 @@ export const CheckoutPage: React.FC = () => {
                         <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-[#DFBF77]" /> Priority Air Express (1-2 Days)
                         </h4>
-                        <p className="text-[11px] text-stone-500 mt-0.5">Same-day dispatch from Hyderabad with dedicated tracking concierge.</p>
+                        <p className="text-[11px] text-stone-500 mt-0.5">Same-day dispatch from Hyderabad with order tracking support.</p>
                       </div>
                     </div>
                     <span className="text-xs font-bold text-[#8B1E3F]">
@@ -408,7 +408,7 @@ export const CheckoutPage: React.FC = () => {
             {step === 3 && (
               <form onSubmit={handlePlaceOrder} className="bg-white border border-[#E6D5B8] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
                 <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2"><Banknote className="w-5 h-5 text-[#8B1E3F]" /> Cash on Delivery</h3>
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Cash on Delivery Confirmation</p><p className="text-[11px]">Our concierge will call on <strong>{address.phone}</strong> to confirm dispatch. Please keep the payable amount ready at delivery.</p></div>
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Cash on Delivery Confirmation</p><p className="text-[11px]">Our team will call <strong>{address.phone}</strong> to confirm dispatch. Please keep the payable amount ready at delivery.</p></div>
 
                 <div className="pt-4 flex items-center justify-between border-t border-[#E6D5B8]">
                   <button
@@ -461,7 +461,7 @@ export const CheckoutPage: React.FC = () => {
                       </p>
                       {item.isCustomTailored && (
                         <span className="text-[10px] text-[#8B1E3F] font-bold flex items-center gap-1 mt-0.5">
-                          <Scissors className="w-2.5 h-2.5" /> Bespoke Tailoring (+{formatPrice(item.tailoringFeeINR)})
+                          <Scissors className="w-2.5 h-2.5" /> Custom Tailoring (+{formatPrice(item.tailoringFeeINR)})
                         </span>
                       )}
                     </div>
@@ -480,7 +480,7 @@ export const CheckoutPage: React.FC = () => {
                 </div>
                 {cartTailoringTotalINR > 0 && (
                   <div className="flex justify-between">
-                    <span>Bespoke Tailoring Fee</span>
+                    <span>Custom Tailoring Fee</span>
                     <span className="font-semibold text-stone-900">+{formatPrice(cartTailoringTotalINR)}</span>
                   </div>
                 )}
@@ -511,7 +511,7 @@ export const CheckoutPage: React.FC = () => {
               <div className="text-xs text-stone-700">
                 <h4 className="font-bold text-[#8B1E3F]">AB Collection order information</h4>
                 <p className="mt-0.5 text-stone-600">
-                  Every order includes physical Silk Mark India hologram cards and arrives in our bespoke velvet trousseau box.
+                  Every order includes physical Silk Mark India hologram cards and arrives in our velvet gift box.
                 </p>
               </div>
             </div>

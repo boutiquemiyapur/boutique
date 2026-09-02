@@ -60,7 +60,7 @@ export const InstagramLookbook: React.FC = () => {
             <span>Social links coming soon</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-serif font-bold text-[#1A1715] mt-1">
-            Shoppable Haute Couture Gallery
+            Shop the Style Gallery
           </h2>
           <p className="text-xs text-stone-500 mt-2">
             Social profiles will be linked here once AB Collection provides them.

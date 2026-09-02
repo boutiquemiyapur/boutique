@@ -16,7 +16,6 @@ export const Header: React.FC = () => {
   const previouslyFocusedElement = useRef<HTMLElement | null>(null);
 
   const collections = useMemo(() => [...new Set(products.map((product) => product.category))].filter(Boolean).sort(), [products]);
-  const itemCount = cart.length;
   const closeMenu = () => setIsMenuOpen(false);
   const goToCollection = (category: string) => { setFilters((current) => ({ ...current, category, searchQuery: '' })); navigate('shop'); closeMenu(); };
   const goToNewArrivals = () => { setFilters((current) => ({ ...current, category: 'All', sortBy: 'newest', searchQuery: '' })); navigate('shop'); closeMenu(); };
@@ -74,14 +73,14 @@ export const Header: React.FC = () => {
       <div className="mx-auto hidden max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center px-7 py-2 lg:grid">
         <div><button onClick={() => navigate('home')} aria-label="AB Collection home" className="inline-flex items-center"><BrandMark className="h-14 w-14 sm:h-16 sm:w-16" /></button></div>
         <nav className="flex items-center gap-8" aria-label="Primary navigation"><NavLink view="home">Home</NavLink><NavLink view="shop">Shop</NavLink><NavLink view="about">About Us</NavLink><NavLink view="contact">Contact</NavLink></nav>
-        <div className="flex items-center justify-end gap-1"><button onClick={() => setIsSearchOpen((open) => !open)} className={iconButton} aria-label="Search"><Search className="h-4 w-4" /></button><button onClick={() => requireAuth('account')} className={iconButton} aria-label="Account"><User className="h-4 w-4" /></button><button onClick={() => setIsWishlistDrawerOpen(true)} className={iconButton} aria-label="Wishlist"><Heart className="h-4 w-4" />{wishlist.length > 0 && <Count value={wishlist.length} />}</button><button onClick={() => setIsCartDrawerOpen(true)} className={iconButton} aria-label="Shopping bag"><ShoppingBag className="h-4 w-4" />{itemCount > 0 && <Count value={itemCount} />}</button></div>
+        <div className="flex items-center justify-end gap-1"><button onClick={() => setIsSearchOpen((open) => !open)} className={iconButton} aria-label="Search"><Search className="h-4 w-4" /></button><button onClick={() => requireAuth('account')} className={iconButton} aria-label="Account"><User className="h-4 w-4" /></button><button onClick={() => setIsWishlistDrawerOpen(true)} className={iconButton} aria-label="Wishlist"><Heart className="h-4 w-4" />{wishlist.length > 0 && <StatusDot />}</button><button onClick={() => setIsCartDrawerOpen(true)} className={iconButton} aria-label="Shopping bag"><ShoppingBag className="h-4 w-4" />{cart.length > 0 && <StatusDot />}</button></div>
       </div>
       <div className="mx-auto grid max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center px-3 py-2 lg:hidden">
         <button type="button" onClick={() => setIsMenuOpen((open) => !open)} className={`${iconButton} justify-self-start`} aria-label={isMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={isMenuOpen} aria-controls="mobile-navigation-drawer">
           {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
         <button onClick={() => navigate('home')} aria-label="AB Collection home" className="inline-flex items-center"><BrandMark className="h-12 w-12" /></button>
-        <div className="flex justify-self-end gap-0.5"><button onClick={() => setIsWishlistDrawerOpen(true)} className={iconButton} aria-label="Wishlist"><Heart className="h-4 w-4" />{wishlist.length > 0 && <Count value={wishlist.length} />}</button><button onClick={() => setIsCartDrawerOpen(true)} className={iconButton} aria-label="Shopping bag"><ShoppingBag className="h-4 w-4" />{itemCount > 0 && <Count value={itemCount} />}</button></div>
+        <div className="flex justify-self-end gap-0.5"><button onClick={() => setIsWishlistDrawerOpen(true)} className={iconButton} aria-label="Wishlist"><Heart className="h-4 w-4" />{wishlist.length > 0 && <StatusDot />}</button><button onClick={() => setIsCartDrawerOpen(true)} className={iconButton} aria-label="Shopping bag"><ShoppingBag className="h-4 w-4" />{cart.length > 0 && <StatusDot />}</button></div>
       </div>
       {isSearchOpen && <form onSubmit={submitSearch} className="border-t border-[#ddd7cf] px-4 py-3"><div className="mx-auto flex max-w-[1440px] items-center gap-3"><Search className="h-4 w-4 text-stone-400" /><label className="sr-only" htmlFor="site-search">Search AB Collection</label><input id="site-search" autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search styles, fabric or SKU" className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none" /><button type="button" onClick={() => setIsSearchOpen(false)} className="text-[11px] font-semibold uppercase tracking-[.12em] text-stone-500 hover:text-stone-950">Close</button></div></form>}
     </header>
@@ -89,5 +88,5 @@ export const Header: React.FC = () => {
   </>;
 };
 
-const Count = ({ value }: { value: number }) => <span className="absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#2c2926] px-1 text-[8px] text-white">{value}</span>;
+const StatusDot = () => <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 h-2 w-2 rounded-full bg-[#8B1E3F] ring-2 ring-[#fffdf9]" />;
 const DrawerLink = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => <button type="button" onClick={onClick} className="block min-h-12 w-full border-b border-[#eee8e2] py-3 text-left text-sm font-medium uppercase tracking-[.12em] text-stone-700 transition hover:text-black">{children}</button>;

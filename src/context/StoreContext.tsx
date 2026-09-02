@@ -794,7 +794,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       void commerceRepository.saveProfile(firebaseUserId, next);
       return next;
     });
-    showToast('Measurements Saved', 'Your bespoke profile has been updated for 1-click tailoring.');
+    showToast('Measurements Saved', 'Your custom measurements are now ready for checkout.');
   };
 
   const currentOrder = lastPlacedOrder || orders.find((order) => order.id === selectedTrackingOrderId) || null;

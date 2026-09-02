@@ -11,10 +11,10 @@ export const TailoringGuidePage: React.FC = () => {
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto space-y-3">
           <div className="inline-flex items-center gap-2 bg-[#8B1E3F]/10 text-[#8B1E3F] text-xs uppercase tracking-widest font-bold px-3 py-1 rounded-full">
-            <Scissors className="w-3.5 h-3.5" /> Atelier Custom Master Craft
+            <Scissors className="w-3.5 h-3.5" /> Custom Tailoring
           </div>
           <h1 className="text-3xl sm:text-4xl font-serif font-bold text-[#1A1715]">
-            Bespoke Blouse & Lehenga Measuring Guide
+            Custom Blouse & Lehenga Measuring Guide
           </h1>
           <p className="text-xs sm:text-sm text-stone-600 leading-relaxed font-sans">
             Follow our master draper’s visual guide to capture exact inches. All custom stitched garments come with 2-inch inner side margins for effortless future alterations.
@@ -57,7 +57,7 @@ export const TailoringGuidePage: React.FC = () => {
         {/* Neckline Styles Overview */}
         <div className="bg-white border border-[#E6D5B8] rounded-3xl p-8 sm:p-10 shadow-xs space-y-6">
           <h2 className="text-xl sm:text-2xl font-serif font-bold text-stone-900">
-            Signature Haute Couture Blouse Cuts
+            Popular Blouse Styles
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-xs">
@@ -89,7 +89,7 @@ export const TailoringGuidePage: React.FC = () => {
           <div className="space-y-2 text-center sm:text-left">
             <h3 className="font-serif font-bold text-xl sm:text-2xl">Want a Master Tailor to Guide You on Video?</h3>
             <p className="text-xs text-[#EFE7DA]/90 max-w-lg">
-              Book a complimentary 15-minute 1-on-1 virtual video call with our Hyderabad atelier master cutter.
+              Book a complimentary 15-minute 1-on-1 virtual video call with our Hyderabad tailoring expert.
             </p>
           </div>
 
