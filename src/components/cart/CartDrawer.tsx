@@ -14,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export const CartDrawer: React.FC = () => {
   const {
@@ -36,6 +37,8 @@ export const CartDrawer: React.FC = () => {
     navigate,
     requireAuth
   } = useStore();
+
+  useBodyScrollLock(isCartDrawerOpen);
 
   const [couponInput, setCouponInput] = useState('');
   const [showGiftOptions, setShowGiftOptions] = useState(false);
@@ -110,7 +113,7 @@ export const CartDrawer: React.FC = () => {
         </div>
 
         {/* Line Items List */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
           {cart.length === 0 ? (
             <div className="text-center py-16">
               <ShoppingBag className="w-12 h-12 text-stone-300 mx-auto mb-3" />

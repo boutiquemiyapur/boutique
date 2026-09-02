@@ -22,8 +22,8 @@ const guestLocalKey = (name: 'cart' | 'wishlist') => `mb_guest_${name}`;
 
 export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => [
   item.product.id || item.product.sku,
-  item.selectedColor.trim().toLowerCase(),
-  item.selectedSize,
+  (item.selectedColor || '').trim().toLowerCase(),
+  item.selectedSize || 'Unstitched',
   item.isCustomTailored ? 'tailored' : 'ready'
 ].join('::');
 
@@ -162,7 +162,8 @@ export const commerceRepository = {
   async saveCart(uid: string | null, items: CartItem[]) {
     const normalizedItems = normalizeCartItems(items);
     if (!uid) return writeLocal(guestLocalKey('cart'), normalizedItems);
-    if (firestore) await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items: normalizedItems }), { merge: true });
+    const firestoreItems = normalizeForFirestore(normalizedItems) as CartItem[];
+    if (firestore) await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items: firestoreItems }), { merge: true });
     writeLocal(accountLocalKey('cart', uid), normalizedItems);
   },
   async saveWishlist(uid: string | null, productIds: string[]) {

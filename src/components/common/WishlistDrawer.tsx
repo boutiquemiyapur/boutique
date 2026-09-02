@@ -2,6 +2,7 @@ import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { X, Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export const WishlistDrawer: React.FC = () => {
   const {
@@ -14,6 +15,8 @@ export const WishlistDrawer: React.FC = () => {
     formatPrice,
     navigate
   } = useStore();
+
+  useBodyScrollLock(isWishlistDrawerOpen);
 
   if (!isWishlistDrawerOpen) return null;
 
@@ -53,7 +56,7 @@ export const WishlistDrawer: React.FC = () => {
         </div>
 
         {/* Item list */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
           {wishlistProducts.length === 0 ? (
             <div className="text-center py-16">
               <Heart className="w-12 h-12 text-stone-300 mx-auto mb-3" />

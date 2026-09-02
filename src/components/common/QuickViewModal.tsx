@@ -3,6 +3,7 @@ import { useStore } from '../../context/StoreContext';
 import { SizeOption } from '../../types';
 import { X, Heart, ShoppingBag, Check, Star, ShieldCheck, Sparkles, Scissors } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export const QuickViewModal: React.FC = () => {
   const {
@@ -22,6 +23,8 @@ export const QuickViewModal: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [isCustomTailoring, setIsCustomTailoring] = useState(false);
 
+  useBodyScrollLock(Boolean(quickViewProduct));
+
   if (!quickViewProduct) return null;
 
   const product = quickViewProduct;
@@ -40,7 +43,7 @@ export const QuickViewModal: React.FC = () => {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-[#FAF7F2] border border-[#C5A059]/40 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative grid grid-cols-1 md:grid-cols-2 gap-6 p-6 sm:p-8"
+        className="bg-[#FAF7F2] border border-[#C5A059]/40 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto overscroll-contain shadow-2xl relative grid grid-cols-1 md:grid-cols-2 gap-6 p-6 sm:p-8"
       >
         <button
           id="close-quickview-btn"

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Heart, Menu, Search, ShoppingBag, User, X } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { BrandMark } from '../../config/brand';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const iconButton = 'relative grid h-10 w-10 place-items-center text-stone-700 transition hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#625e59]';
 
@@ -22,22 +23,21 @@ export const Header: React.FC = () => {
   const closeMenuThen = (action: () => void) => () => { action(); closeMenu(); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); setFilters((current) => ({ ...current, category: 'All', searchQuery: search })); navigate('shop'); setIsSearchOpen(false); };
 
+  useBodyScrollLock(isMenuOpen);
+
   useEffect(() => {
     if (!isMenuOpen) return;
-    const originalOverflow = document.body.style.overflow;
     const desktopViewport = window.matchMedia('(min-width: 1024px)');
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') closeMenu(); };
     const closeOnDesktop = (event: MediaQueryListEvent) => { if (event.matches) closeMenu(); };
 
     previouslyFocusedElement.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', closeOnEscape);
     desktopViewport.addEventListener('change', closeOnDesktop);
     closeButtonRef.current?.focus();
     if (desktopViewport.matches) closeMenu();
 
     return () => {
-      document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', closeOnEscape);
       desktopViewport.removeEventListener('change', closeOnDesktop);
       previouslyFocusedElement.current?.focus();

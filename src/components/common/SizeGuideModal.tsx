@@ -3,10 +3,13 @@ import { useStore } from '../../context/StoreContext';
 import { SIZE_CHART_DATA } from '../../data/initialData';
 import { X, Ruler, CheckCircle2, Scissors } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export const SizeGuideModal: React.FC = () => {
   const { isSizeGuideOpen, setIsSizeGuideOpen, navigate } = useStore();
   const [unit, setUnit] = useState<'inches' | 'cm'>('inches');
+
+  useBodyScrollLock(isSizeGuideOpen);
 
   if (!isSizeGuideOpen) return null;
 
@@ -28,7 +31,7 @@ export const SizeGuideModal: React.FC = () => {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-[#FAF7F2] border border-[#C5A059]/40 rounded-xl max-w-2xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto shadow-2xl relative"
+        className="bg-[#FAF7F2] border border-[#C5A059]/40 rounded-xl max-w-2xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto overscroll-contain shadow-2xl relative"
       >
         <button
           id="close-size-guide-modal"
