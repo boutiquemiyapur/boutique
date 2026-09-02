@@ -16,9 +16,7 @@ const readLocal = <T>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
 };
 const writeLocal = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { console.warn(error); } };
-const accountLocalKey = (name: 'cart' | 'wishlist' | 'customer' | 'orders', uid: string) => `mb_${name}_${uid}`;
-
-const guestLocalKey = (name: 'cart' | 'wishlist') => `mb_guest_${name}`;
+const accountLocalKey = (name: 'customer' | 'orders', uid: string) => `mb_${name}_${uid}`;
 
 export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => [
   item.product.id || item.product.sku,
@@ -101,15 +99,15 @@ export const commerceRepository = {
   async loadCustomerData(uid: string | null, fallback: CustomerDataSnapshot): Promise<CustomerDataSnapshot> {
     if (!uid) {
       return {
-        cart: normalizeCartItems(readLocal(guestLocalKey('cart'), fallback.cart || [])),
-        wishlist: normalizeWishlistProductIds(readLocal(guestLocalKey('wishlist'), fallback.wishlist || [])),
+        cart: [],
+        wishlist: [],
         profile: readLocal('mb_customer', fallback.profile!),
         orders: readLocal('mb_orders', fallback.orders || [])
       };
     }
     const accountFallback = {
-      cart: normalizeCartItems(readLocal(accountLocalKey('cart', uid), fallback.cart || [])),
-      wishlist: normalizeWishlistProductIds(readLocal(accountLocalKey('wishlist', uid), fallback.wishlist || [])),
+      cart: [],
+      wishlist: [],
       profile: readLocal(accountLocalKey('customer', uid), fallback.profile!),
       profileExists: false,
       orders: readLocal(accountLocalKey('orders', uid), fallback.orders || [])
@@ -125,8 +123,8 @@ export const commerceRepository = {
       ]);
       const legacy = legacyOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item));
       return {
-        cart: normalizeCartItems((cart.data()?.items as CartItem[] | undefined) || accountFallback.cart),
-        wishlist: normalizeWishlistProductIds((wishlist.data()?.productIds as string[] | undefined) || accountFallback.wishlist),
+        cart: normalizeCartItems((cart.data()?.items as CartItem[] | undefined) || []),
+        wishlist: normalizeWishlistProductIds((wishlist.data()?.productIds as string[] | undefined) || []),
         profile: (profile.data()?.profile as CustomerProfile | undefined) || accountFallback.profile,
         profileExists: profile.exists(),
         orders: mergeOrders(canonicalOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item)), legacy),
@@ -159,18 +157,16 @@ export const commerceRepository = {
     if (!firestore) return () => undefined;
     return onSnapshot(collection(firestore, 'orders'), () => onChange(), (error) => onError(error));
   },
-  async saveCart(uid: string | null, items: CartItem[]) {
+  async saveCart(uid: string, items: CartItem[]) {
     const normalizedItems = normalizeCartItems(items);
-    if (!uid) return writeLocal(guestLocalKey('cart'), normalizedItems);
     const firestoreItems = normalizeForFirestore(normalizedItems) as CartItem[];
-    if (firestore) await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items: firestoreItems }), { merge: true });
-    writeLocal(accountLocalKey('cart', uid), normalizedItems);
+    if (!firestore) throw new Error('Shopping bag service is not configured for this deployment.');
+    await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items: firestoreItems }), { merge: true });
   },
-  async saveWishlist(uid: string | null, productIds: string[]) {
+  async saveWishlist(uid: string, productIds: string[]) {
     const normalizedProductIds = normalizeWishlistProductIds(productIds);
-    if (!uid) return writeLocal(guestLocalKey('wishlist'), normalizedProductIds);
-    if (firestore) await setDoc(privateDoc('wishlists', uid), toFirestore({ ownerId: uid, productIds: normalizedProductIds }), { merge: true });
-    writeLocal(accountLocalKey('wishlist', uid), normalizedProductIds);
+    if (!firestore) throw new Error('Wishlist service is not configured for this deployment.');
+    await setDoc(privateDoc('wishlists', uid), toFirestore({ ownerId: uid, productIds: normalizedProductIds }), { merge: true });
   },
   async saveProfile(uid: string | null, profile: CustomerProfile) {
     if (!uid) return writeLocal('mb_customer', profile);

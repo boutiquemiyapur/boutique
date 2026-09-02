@@ -28,6 +28,7 @@ export const ProductDetailPage: React.FC = () => {
     selectedProductId,
     formatPrice,
     addToCart,
+    buyNow,
     toggleWishlist,
     isInWishlist,
     customer,
@@ -37,8 +38,7 @@ export const ProductDetailPage: React.FC = () => {
     setIsSizeGuideOpen,
     navigate,
     showToast,
-    cms,
-    requireAuth
+    cms
 } = useStore();
 
   const product = products.find((p) => p.id === selectedProductId) || products[0];
@@ -551,10 +551,7 @@ export const ProductDetailPage: React.FC = () => {
                 <button
                   id="pdp-buy-now-btn"
                   disabled={isSoldOut}
-                  onClick={() => {
-                    addToCart(product, selectedColor, selectedSize, quantity, isCustomTailoring, measurements);
-                    requireAuth('checkout');
-                  }}
+                  onClick={() => buyNow(product, selectedColor, selectedSize, quantity, isCustomTailoring, measurements)}
                   className="flex-1 bg-[#1A1715] hover:bg-black text-white text-xs sm:text-sm font-semibold uppercase tracking-widest py-4 px-6 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span>Buy Now</span>
