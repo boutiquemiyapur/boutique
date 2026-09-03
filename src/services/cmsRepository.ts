@@ -1,7 +1,7 @@
 import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import { BRAND } from '../config/brand';
-import { firebaseStorage, firestore } from '../firebase/config';
+import { firestore } from '../firebase/config';
+import { uploadMedia } from './mediaUploadService';
 import { AboutContent, Banner, ContactInformation, CustomerProfile, Order, Product, SiteContent } from '../types';
 
 export interface AdminSnapshot {
@@ -176,16 +176,6 @@ export const cmsRepository = {
   },
 
   uploadImage(file: File, folder: 'products' | 'banners' | 'about', recordId: string, onProgress: (percent: number) => void): Promise<string> {
-    if (!firebaseStorage) return Promise.reject(new Error('Firebase Storage is not configured for this deployment.'));
-    if (!file.type.startsWith('image/')) return Promise.reject(new Error('Please choose an image file.'));
-    if (file.size > 8 * 1024 * 1024) return Promise.reject(new Error('Images must be 8 MB or smaller.'));
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-    const storageRef = ref(firebaseStorage, `${folder}/${recordId}/${Date.now()}-${safeName}`);
-    return new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
-      task.on('state_changed', (snapshot) => onProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)), () => reject(new Error('Image upload failed. Check Firebase Storage rules and your connection.')), async () => {
-        try { resolve(await getDownloadURL(task.snapshot.ref)); } catch { reject(new Error('Image uploaded but its URL could not be read.')); }
-      });
-    });
+    return uploadMedia(file, folder, recordId, onProgress).then((media) => media.secureUrl);
   }
 };
