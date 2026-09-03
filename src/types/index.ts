@@ -197,8 +197,7 @@ export interface ShippingAddress {
   isDefault?: boolean;
 }
 
-export type CancellationReason = 'Changed my mind' | 'Ordered by mistake' | 'Want to change the product/size' | 'Delivery taking too long' | 'Other';
-export interface OrderCancellation { reason: CancellationReason; cancelledAt: string; cancelledBy: string; }
+export interface OrderCancellation { reason?: string; cancelledAt: string; cancelledBy: string; }
 
 export type ShippingMethod = 'standard' | 'express';
 

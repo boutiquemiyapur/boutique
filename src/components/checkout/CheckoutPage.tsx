@@ -37,7 +37,8 @@ export const CheckoutPage: React.FC = () => {
 
   // Only real authenticated profile data may prefill checkout. Missing values
   // remain blank; country defaults to India without inventing customer data.
-  const profileAddress = customer.savedAddresses[0];
+  const profileAddress = customer.savedAddresses.find((item) => item.isDefault) || customer.savedAddresses[0];
+  const [selectedSavedAddressId, setSelectedSavedAddressId] = useState<string | null>(null);
   const [address, setAddress] = useState<ShippingAddress>({
     fullName: '', phone: '', email: '', addressLine1: '', addressLine2: '',
     city: '', state: '', pincode: '', country: 'India'
@@ -57,6 +58,14 @@ export const CheckoutPage: React.FC = () => {
       country: current.country || profileAddress?.country || 'India'
     }));
   }, [customer, isCustomerDataReady, profileAddress]);
+
+  const selectSavedAddress = (saved: ShippingAddress, index: number) => {
+    setSelectedSavedAddressId(saved.id || `legacy-${index}`);
+    setAddress({ ...saved }); // snapshot is copied into the order on placement
+  };
+  useEffect(() => {
+    if (isCustomerDataReady && customer.savedAddresses.length === 1) selectSavedAddress(customer.savedAddresses[0], 0);
+  }, [isCustomerDataReady, customer.savedAddresses]);
 
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
   const [paymentMethod] = useState<PaymentMethod>('cod');
@@ -186,7 +195,10 @@ export const CheckoutPage: React.FC = () => {
                   <Truck className="w-5 h-5 text-[#8B1E3F]" /> Shipping Destination
                 </h3>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                {customer.savedAddresses.length > 0 && <div className="space-y-3"><p className="text-xs font-semibold text-stone-700">Delivery address</p>{customer.savedAddresses.map((saved, index) => { const id = saved.id || `legacy-${index}`; const selected = selectedSavedAddressId === id; return <button type="button" key={id} onClick={() => selectSavedAddress(saved, index)} className={`w-full rounded-xl border p-4 text-left text-xs transition ${selected ? 'border-[#8B1E3F] bg-[#8B1E3F]/5' : 'border-[#E6D5B8] bg-[#FAF7F2]'}`}><span className="font-bold text-stone-900">{saved.fullName}{saved.isDefault ? ' · Default' : ''}</span><span className="mt-1 block text-stone-600">{saved.addressLine1}{saved.addressLine2 ? `, ${saved.addressLine2}` : ''}, {saved.city}, {saved.state} - {saved.pincode}</span><span className="mt-1 block text-stone-500">{saved.phone}</span></button>; })}<button type="button" onClick={() => setSelectedSavedAddressId(null)} className="text-xs font-semibold text-[#8B1E3F] underline">{customer.savedAddresses.length === 1 ? 'Change address' : 'Add a new address'}</button></div>}
+                {!customer.savedAddresses.length && <p className="rounded-lg bg-[#FAF7F2] p-3 text-xs text-stone-600">No saved address found. Add an address below to continue.</p>}
+
+                {!selectedSavedAddressId && <><div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
                     <label className="font-bold text-stone-700 block mb-1">Full Recipient Name *</label>
                     <input
@@ -320,7 +332,8 @@ export const CheckoutPage: React.FC = () => {
                     <span>Continue to Shipping Method</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
-                </div>
+                </div></>}
+                {selectedSavedAddressId && <div className="pt-2 flex justify-end"><button id="checkout-step1-continue-btn" onClick={() => setStep(2)} className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-semibold px-8 py-3.5 rounded-lg flex items-center gap-2 shadow-md transition-all"><span>Continue to Shipping Method</span><ArrowRight className="w-4 h-4" /></button></div>}
               </div>
             )}
 

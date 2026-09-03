@@ -93,13 +93,10 @@ service cloud.firestore {
         && resource.data.orderStatus in ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection']
         && request.resource.data.orderStatus == 'Cancelled'
         && request.resource.data.data.orderStatus == 'Cancelled'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orderStatus', 'cancellationReason', 'cancelledAt', 'cancelledBy', 'updatedAt', 'data'])
-        && request.resource.data.cancellationReason is string
-        && request.resource.data.cancellationReason in ['Changed my mind', 'Ordered by mistake', 'Want to change the product/size', 'Delivery taking too long', 'Other']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orderStatus', 'cancelledAt', 'cancelledBy', 'updatedAt', 'data'])
         && request.resource.data.cancelledAt == request.time
         && request.resource.data.cancelledBy == request.auth.uid
         && request.resource.data.data.diff(resource.data.data).affectedKeys().hasOnly(['orderStatus', 'cancellation', 'timeline'])
-        && request.resource.data.data.cancellation.reason == request.resource.data.cancellationReason
         && request.resource.data.data.cancellation.cancelledBy == request.auth.uid);
       allow delete: if isAdmin();
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { CancellationReason, CustomMeasurements, Order, ShippingAddress } from '../../types';
+import { CustomMeasurements, Order, ShippingAddress } from '../../types';
 import {
   User,
   Scissors,
@@ -16,7 +16,7 @@ import {
   Mail,
   Ruler,
   Heart,
-  LogOut, Eye, X, MessageCircle
+  LogOut, Eye, X
 } from 'lucide-react';
 
 export const CustomerAccountPage: React.FC = () => {
@@ -49,7 +49,6 @@ export const CustomerAccountPage: React.FC = () => {
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
-  const [cancellationReason, setCancellationReason] = useState<CancellationReason>('Changed my mind');
   const [isSaving, setIsSaving] = useState(false);
 
   // Measurements fields
@@ -111,7 +110,7 @@ export const CustomerAccountPage: React.FC = () => {
   const cancelSelectedOrder = async () => {
     if (!cancellingOrder) return;
     setIsSaving(true);
-    try { await cancelOrder(cancellingOrder.id, cancellationReason); setCancellingOrder(null); }
+    try { await cancelOrder(cancellingOrder.id); setCancellingOrder(null); }
     catch (error) { showToast('Could not cancel order', error instanceof Error ? error.message : 'Please try again.', 'error'); }
     finally { setIsSaving(false); }
   };
@@ -374,7 +373,7 @@ export const CustomerAccountPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${order.orderStatus === 'Cancelled' ? 'bg-stone-200 text-stone-700' : order.orderStatus === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{order.paymentStatus} · {order.orderStatus}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${order.orderStatus === 'Cancelled' ? 'bg-stone-200 text-stone-700' : order.orderStatus === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{order.orderStatus}</span>
                   </div>
                 </div>
 
@@ -412,7 +411,6 @@ export const CustomerAccountPage: React.FC = () => {
                   <button onClick={() => setSelectedOrder(order)} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-[#D8C9BC] px-3 text-xs font-semibold text-stone-700"><Eye className="h-4 w-4" />View details</button>
                   {['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection'].includes(order.orderStatus) && <button onClick={() => setCancellingOrder(order)} className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700">Cancel order</button>}
                   {(order.orderStatus === 'Delivered' || order.orderStatus === 'Cancelled') && <button disabled={isSaving} onClick={() => void buyAgain(order)} className="min-h-10 rounded-lg bg-[#1A1715] px-3 text-xs font-semibold text-white disabled:opacity-50">Buy again</button>}
-                  {order.orderStatus === 'Delivered' && <button onClick={() => window.open('https://wa.me/', '_blank', 'noopener,noreferrer')} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[#8B1E3F]"><MessageCircle className="h-4 w-4" />Need help?</button>}
                 </div>
               </div>
             ))}
@@ -491,7 +489,7 @@ export const CustomerAccountPage: React.FC = () => {
       {(selectedOrder || cancellingOrder) && <div className="fixed inset-0 z-50 flex items-end bg-black/45 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true">
         <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-3xl">
           <div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="font-serif text-xl font-bold text-stone-900">{cancellingOrder ? 'Cancel order' : 'Order details'}</h2><p className="mt-1 text-xs text-stone-500">{(cancellingOrder || selectedOrder)?.orderNumber}</p></div><button onClick={() => { setSelectedOrder(null); setCancellingOrder(null); }} className="rounded-lg p-2 text-stone-600"><X className="h-5 w-5" /></button></div>
-          {cancellingOrder ? <div className="space-y-5 text-sm text-stone-700"><p>Are you sure you want to cancel this order? This cannot be undone.</p><label className="block text-xs font-semibold">Reason for cancellation<select value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value as CancellationReason)} className="mt-2 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-3 font-normal"><option>Changed my mind</option><option>Ordered by mistake</option><option>Want to change the product/size</option><option>Delivery taking too long</option><option>Other</option></select></label><div className="flex justify-end gap-3"><button onClick={() => setCancellingOrder(null)} className="min-h-11 px-4 text-xs font-semibold">Keep order</button><button disabled={isSaving} onClick={() => void cancelSelectedOrder()} className="min-h-11 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white disabled:opacity-50">{isSaving ? 'Cancelling…' : 'Cancel order'}</button></div></div> : selectedOrder && <div className="space-y-5 text-xs text-stone-700"><div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF7F2] p-4"><p><b>Status</b><br />{selectedOrder.orderStatus}</p><p><b>Payment</b><br />{selectedOrder.paymentMethod === 'cod' ? 'Cash on delivery' : selectedOrder.paymentMethod} · {selectedOrder.paymentStatus}</p><p><b>Order date</b><br />{new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}</p><p><b>Total</b><br />{formatPrice(selectedOrder.totalINR)}</p></div><div><b>Items</b>{selectedOrder.items.map((item) => <p key={item.cartItemId} className="mt-2">{item.product.title} — {item.selectedColor}, {item.selectedSize}, Qty {item.quantity}</p>)}</div><div><b>Delivery address</b><p className="mt-1">{selectedOrder.shippingAddress.fullName}, {selectedOrder.shippingAddress.addressLine1}, {selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.pincode}</p></div><div><b>Price breakdown</b><p className="mt-1">Subtotal {formatPrice(selectedOrder.subtotalINR)} · Shipping {formatPrice(selectedOrder.shippingCostINR)} · GST {formatPrice(selectedOrder.taxGstINR)}</p></div>{selectedOrder.cancellation && <div className="rounded-xl bg-stone-100 p-4"><b>Cancellation</b><p className="mt-1">{selectedOrder.cancellation.reason}<br />Cancelled on {selectedOrder.cancellation.cancelledAt}</p></div>}</div>}
+          {cancellingOrder ? <div className="space-y-5 text-sm text-stone-700"><p>Are you sure you want to cancel this order? This cannot be undone.</p><div className="flex justify-end gap-3"><button onClick={() => setCancellingOrder(null)} className="min-h-11 px-4 text-xs font-semibold">Keep order</button><button disabled={isSaving} onClick={() => void cancelSelectedOrder()} className="min-h-11 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white disabled:opacity-50">{isSaving ? 'Cancelling…' : 'Cancel order'}</button></div></div> : selectedOrder && <div className="space-y-5 text-xs text-stone-700"><div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF7F2] p-4"><p><b>Status</b><br />{selectedOrder.orderStatus}</p><p><b>Payment</b><br />{selectedOrder.paymentMethod === 'cod' ? 'Cash on delivery' : selectedOrder.paymentMethod} · {selectedOrder.paymentStatus}</p><p><b>Order date</b><br />{new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}</p><p><b>Total</b><br />{formatPrice(selectedOrder.totalINR)}</p></div><div><b>Items</b>{selectedOrder.items.map((item) => <p key={item.cartItemId} className="mt-2">{item.product.title} — {item.selectedColor}, {item.selectedSize}, Qty {item.quantity}</p>)}</div><div><b>Delivery address</b><p className="mt-1">{selectedOrder.shippingAddress.fullName}, {selectedOrder.shippingAddress.addressLine1}, {selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.pincode}</p></div><div><b>Price breakdown</b><p className="mt-1">Subtotal {formatPrice(selectedOrder.subtotalINR)} · Shipping {formatPrice(selectedOrder.shippingCostINR)} · GST {formatPrice(selectedOrder.taxGstINR)}</p></div>{selectedOrder.cancellation && <div className="rounded-xl bg-stone-100 p-4"><b>Cancellation</b><p className="mt-1">Cancelled on {selectedOrder.cancellation.cancelledAt}</p></div>}</div>}
         </div>
       </div>}
     </div>

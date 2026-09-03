@@ -1,6 +1,6 @@
 import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
 import { firestore } from '../firebase/config';
-import { CartItem, CancellationReason, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
+import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
 
 export interface CustomerDataSnapshot {
   cart?: CartItem[];
@@ -187,12 +187,12 @@ export const commerceRepository = {
     // Retrying the same generated id remains idempotent.
     await setDoc(doc(firestore, 'orders', order.id), canonicalOrderDocument(uid, order));
   },
-  async cancelCustomerOrder(uid: string, order: Order, reason: CancellationReason) {
+  async cancelCustomerOrder(uid: string, order: Order) {
     if (!firestore) throw new Error('Order service is not configured for this deployment.');
     const timestamp = new Date().toLocaleString('en-IN');
-    const cancellation = { reason, cancelledAt: timestamp, cancelledBy: uid };
-    const timeline = [...order.timeline, { status: 'Cancelled' as const, timestamp, description: `Cancelled by customer: ${reason}.`, completed: true }];
-    await updateDoc(doc(firestore, 'orders', order.id), { orderStatus: 'Cancelled', cancellationReason: reason, cancelledAt: serverTimestamp(), cancelledBy: uid, 'data.orderStatus': 'Cancelled', 'data.cancellation': cancellation, 'data.timeline': timeline, updatedAt: serverTimestamp() });
+    const cancellation = { cancelledAt: timestamp, cancelledBy: uid };
+    const timeline = [...order.timeline, { status: 'Cancelled' as const, timestamp, description: 'Order cancelled by customer.', completed: true }];
+    await updateDoc(doc(firestore, 'orders', order.id), { orderStatus: 'Cancelled', cancelledAt: serverTimestamp(), cancelledBy: uid, 'data.orderStatus': 'Cancelled', 'data.cancellation': cancellation, 'data.timeline': timeline, updatedAt: serverTimestamp() });
     return { ...order, orderStatus: 'Cancelled' as const, cancellation, timeline };
   },
   async saveProduct(product: Product) {

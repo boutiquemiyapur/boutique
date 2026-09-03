@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   AppView,
-  CancellationReason,
   CartItem,
   Category,
   Coupon,
@@ -118,7 +117,7 @@ interface StoreContextType {
     shippingMethod: ShippingMethod,
     paymentMethod: PaymentMethod
   ) => Promise<Order>;
-  cancelOrder: (orderId: string, reason: CancellationReason) => Promise<void>;
+  cancelOrder: (orderId: string) => Promise<void>;
 
   // Customer Vault
   updateCustomerMeasurements: (measurements: CustomMeasurements) => void;
@@ -744,12 +743,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newOrder;
   };
 
-  const cancelOrder = async (orderId: string, reason: CancellationReason) => {
+  const cancelOrder = async (orderId: string) => {
     if (!firebaseUserId) throw new Error('Please sign in to cancel an order.');
     const order = orders.find((item) => item.id === orderId);
     const cancellable = ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection'];
     if (!order || !cancellable.includes(order.orderStatus)) throw new Error('This order can no longer be cancelled.');
-    const updated = await commerceRepository.cancelCustomerOrder(firebaseUserId, order, reason);
+    const updated = await commerceRepository.cancelCustomerOrder(firebaseUserId, order);
     setOrders((current) => current.map((item) => item.id === updated.id ? updated : item));
     showToast('Order Cancelled', 'Your order has been cancelled.', 'info');
   };
