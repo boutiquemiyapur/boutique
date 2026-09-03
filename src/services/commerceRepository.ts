@@ -1,6 +1,6 @@
 import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
 import { firestore } from '../firebase/config';
-import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
+import { CartItem, CancellationReason, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
 
 export interface CustomerDataSnapshot {
   cart?: CartItem[];
@@ -16,7 +16,6 @@ const readLocal = <T>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
 };
 const writeLocal = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { console.warn(error); } };
-const accountLocalKey = (name: 'customer' | 'orders', uid: string) => `mb_${name}_${uid}`;
 
 export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => [
   item.product.id || item.product.sku,
@@ -101,16 +100,16 @@ export const commerceRepository = {
       return {
         cart: [],
         wishlist: [],
-        profile: readLocal('mb_customer', fallback.profile!),
-        orders: readLocal('mb_orders', fallback.orders || [])
+        profile: fallback.profile,
+        orders: []
       };
     }
     const accountFallback = {
       cart: [],
       wishlist: [],
-      profile: readLocal(accountLocalKey('customer', uid), fallback.profile!),
+      profile: fallback.profile,
       profileExists: false,
-      orders: readLocal(accountLocalKey('orders', uid), fallback.orders || [])
+      orders: []
     };
     if (!firestore) return accountFallback;
     try {
@@ -130,7 +129,7 @@ export const commerceRepository = {
         orders: mergeOrders(canonicalOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item)), legacy),
         legacyOrders: legacy
       };
-    } catch (error) { console.warn('Firestore private data unavailable; using account-local fallback.', error); return accountFallback; }
+    } catch (error) { console.warn('Firestore private data unavailable.', error); return accountFallback; }
   },
   async loadAdminOrders(fallback: Order[]) {
     if (!firestore) return fallback;
@@ -169,23 +168,17 @@ export const commerceRepository = {
     await setDoc(privateDoc('wishlists', uid), toFirestore({ ownerId: uid, productIds: normalizedProductIds }), { merge: true });
   },
   async saveProfile(uid: string | null, profile: CustomerProfile) {
-    if (!uid) return writeLocal('mb_customer', profile);
-    writeLocal(accountLocalKey('customer', uid), profile);
-    if (!firestore) return;
-    try { await setDoc(privateDoc('users', uid), toFirestore({ profile: { ...profile, id: uid } }), { merge: true }); } catch (error) { console.warn('Profile was retained in this account\'s local cache after Firestore write failed.', error); }
+    if (!uid || !firestore) throw new Error('Please sign in to save account details.');
+    await setDoc(privateDoc('users', uid), toFirestore({ profile: { ...profile, id: uid } }), { merge: true });
   },
   async createProfile(uid: string | null, profile: CustomerProfile) {
-    if (!uid) return writeLocal('mb_customer', profile);
-    writeLocal(accountLocalKey('customer', uid), profile);
-    if (!firestore) return;
-    try {
-      await setDoc(privateDoc('users', uid), {
+    if (!uid || !firestore) throw new Error('Account service is not configured.');
+    await setDoc(privateDoc('users', uid), {
         profile: { ...profile, id: uid },
         role: 'customer',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-    } catch (error) { console.warn('Profile was retained in this account\'s local cache after Firestore write failed.', error); }
   },
   async saveOrder(uid: string | null, order: Order) {
     if (!uid) throw new Error('Please sign in before placing an order.');
@@ -193,8 +186,14 @@ export const commerceRepository = {
     // Do not clear the basket or confirm an order until this write succeeds.
     // Retrying the same generated id remains idempotent.
     await setDoc(doc(firestore, 'orders', order.id), canonicalOrderDocument(uid, order));
-    const cachedOrders = readLocal<Order[]>(accountLocalKey('orders', uid), []);
-    writeLocal(accountLocalKey('orders', uid), mergeOrders([order], cachedOrders));
+  },
+  async cancelCustomerOrder(uid: string, order: Order, reason: CancellationReason) {
+    if (!firestore) throw new Error('Order service is not configured for this deployment.');
+    const timestamp = new Date().toLocaleString('en-IN');
+    const cancellation = { reason, cancelledAt: timestamp, cancelledBy: uid };
+    const timeline = [...order.timeline, { status: 'Cancelled' as const, timestamp, description: `Cancelled by customer: ${reason}.`, completed: true }];
+    await updateDoc(doc(firestore, 'orders', order.id), { orderStatus: 'Cancelled', cancellationReason: reason, cancelledAt: serverTimestamp(), cancelledBy: uid, 'data.orderStatus': 'Cancelled', 'data.cancellation': cancellation, 'data.timeline': timeline, updatedAt: serverTimestamp() });
+    return { ...order, orderStatus: 'Cancelled' as const, cancellation, timeline };
   },
   async saveProduct(product: Product) {
     if (!firestore) return writeLocal('mb_products', product);
@@ -243,5 +242,4 @@ export const commerceRepository = {
   },
   saveLocalCatalog(products: Product[]) { writeLocal('mb_products', products); },
   saveLocalCoupons(coupons: Coupon[]) { writeLocal('mb_coupons', coupons); },
-  saveLocalOrders(orders: Order[]) { writeLocal('mb_orders', orders); }
 };

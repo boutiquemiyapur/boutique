@@ -184,6 +184,7 @@ export interface CurrencyConfig {
 }
 
 export interface ShippingAddress {
+  id?: string;
   fullName: string;
   phone: string;
   email: string;
@@ -195,6 +196,9 @@ export interface ShippingAddress {
   country: string;
   isDefault?: boolean;
 }
+
+export type CancellationReason = 'Changed my mind' | 'Ordered by mistake' | 'Want to change the product/size' | 'Delivery taking too long' | 'Other';
+export interface OrderCancellation { reason: CancellationReason; cancelledAt: string; cancelledBy: string; }
 
 export type ShippingMethod = 'standard' | 'express';
 
@@ -246,6 +250,7 @@ export interface Order {
   /** An estimate is optional until the boutique confirms fulfilment. */
   estimatedDeliveryDate?: string;
   timeline: OrderTimelineEvent[];
+  cancellation?: OrderCancellation;
 }
 
 export interface Coupon {

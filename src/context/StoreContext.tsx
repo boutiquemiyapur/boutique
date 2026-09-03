@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   AppView,
+  CancellationReason,
   CartItem,
   Category,
   Coupon,
@@ -117,13 +118,15 @@ interface StoreContextType {
     shippingMethod: ShippingMethod,
     paymentMethod: PaymentMethod
   ) => Promise<Order>;
-  cancelOrder: (orderId: string) => void;
+  cancelOrder: (orderId: string, reason: CancellationReason) => Promise<void>;
 
   // Customer Vault
   updateCustomerMeasurements: (measurements: CustomMeasurements) => void;
   saveMeasurements: (measurements: CustomMeasurements) => void;
   updateCustomerProfile: (profile: Partial<CustomerProfile>) => void;
-  addSavedAddress: (address: ShippingAddress) => void;
+  addSavedAddress: (address: ShippingAddress) => Promise<void>;
+  updateSavedAddress: (addressId: string, address: ShippingAddress) => Promise<void>;
+  deleteSavedAddress: (addressId: string) => Promise<void>;
 
   // Admin Operations
   updateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string) => Promise<void>;
@@ -215,14 +218,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
 
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem('mb_orders');
-      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
-    } catch {
-      return INITIAL_ORDERS;
-    }
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
 
   const [coupons, setCoupons] = useState<Coupon[]>(() => {
     try {
@@ -233,14 +229,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   });
 
-  const [customer, setCustomer] = useState<CustomerProfile>(() => {
-    try {
-      const saved = localStorage.getItem('mb_customer');
-      return saved ? JSON.parse(saved) : INITIAL_CUSTOMER;
-    } catch {
-      return INITIAL_CUSTOMER;
-    }
-  });
+  const [customer, setCustomer] = useState<CustomerProfile>(INITIAL_CUSTOMER);
 
   const [cms, setCms] = useState<PublicCms>(DEFAULT_CMS);
   const selectedCurrency = 'INR' as const;
@@ -286,15 +275,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [coupons]);
 
 
-  useEffect(() => {
-    if (!firebaseUserId) commerceRepository.saveLocalOrders(orders);
-  }, [orders, firebaseUserId]);
-
-  useEffect(() => {
-    if (!firebaseUserId) {
-      try { localStorage.setItem('mb_customer', JSON.stringify(customer)); } catch { /* browser storage is only a guest fallback */ }
-    }
-  }, [customer, firebaseUserId]);
 
   const resetPrivateState = (session: AuthSession = null) => {
     pendingCartLineKeysRef.current.clear();
@@ -764,27 +744,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newOrder;
   };
 
-  const cancelOrder = (orderId: string) => {
-    setOrders((prev) =>
-      prev.map((ord) =>
-        ord.id === orderId
-          ? {
-              ...ord,
-              orderStatus: 'Cancelled',
-              timeline: [
-                ...ord.timeline,
-                {
-                  status: 'Cancelled',
-                  timestamp: 'Just now',
-                  description: 'Order cancelled by customer. Refund initiated to source account.',
-                  completed: true
-                }
-              ]
-            }
-          : ord
-      )
-    );
-    showToast('Order Cancelled', 'Your order was cancelled. Refund processed.', 'info');
+  const cancelOrder = async (orderId: string, reason: CancellationReason) => {
+    if (!firebaseUserId) throw new Error('Please sign in to cancel an order.');
+    const order = orders.find((item) => item.id === orderId);
+    const cancellable = ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection'];
+    if (!order || !cancellable.includes(order.orderStatus)) throw new Error('This order can no longer be cancelled.');
+    const updated = await commerceRepository.cancelCustomerOrder(firebaseUserId, order, reason);
+    setOrders((current) => current.map((item) => item.id === updated.id ? updated : item));
+    showToast('Order Cancelled', 'Your order has been cancelled.', 'info');
   };
 
   // Customer Profile & Measurements
@@ -808,13 +775,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Profile Updated', 'Account details have been saved.');
   };
 
-  const addSavedAddress = (address: ShippingAddress) => {
-    setCustomer((prev) => {
-      const next = { ...prev, savedAddresses: [...prev.savedAddresses, address] };
-      void commerceRepository.saveProfile(firebaseUserId, next);
-      return next;
-    });
+  const saveAddresses = async (savedAddresses: ShippingAddress[]) => {
+    const next = { ...customer, savedAddresses };
+    await commerceRepository.saveProfile(firebaseUserId, next);
+    setCustomer(next);
+  };
+  const addSavedAddress = async (address: ShippingAddress) => {
+    await saveAddresses([...customer.savedAddresses, { ...address, id: crypto.randomUUID(), isDefault: customer.savedAddresses.length === 0 || Boolean(address.isDefault) }]);
     showToast('Address Saved', 'New delivery destination added to your address book.');
+  };
+  const updateSavedAddress = async (addressId: string, address: ShippingAddress) => {
+    const legacyIndex = addressId.startsWith('legacy-') ? Number(addressId.slice(7)) : -1;
+    const matches = (item: ShippingAddress, index: number) => item.id === addressId || index === legacyIndex;
+    const wasDefault = customer.savedAddresses.find(matches)?.isDefault;
+    const savedAddresses = customer.savedAddresses.map((item, index) => ({ ...item, ...(matches(item, index) ? { ...address, id: item.id || crypto.randomUUID(), isDefault: Boolean(address.isDefault || wasDefault) } : {}), isDefault: address.isDefault && !matches(item, index) ? false : item.isDefault }));
+    await saveAddresses(savedAddresses);
+    showToast('Address Updated', 'Your delivery address has been saved.');
+  };
+  const deleteSavedAddress = async (addressId: string) => {
+    const legacyIndex = addressId.startsWith('legacy-') ? Number(addressId.slice(7)) : -1;
+    const matches = (item: ShippingAddress, index: number) => item.id === addressId || index === legacyIndex;
+    const removed = customer.savedAddresses.find(matches);
+    let savedAddresses = customer.savedAddresses.filter((item, index) => !matches(item, index));
+    if (removed?.isDefault && savedAddresses.length) savedAddresses = savedAddresses.map((item, index) => ({ ...item, isDefault: index === 0 }));
+    await saveAddresses(savedAddresses);
+    showToast('Address Deleted', 'The selected delivery address was removed.');
   };
 
   // Admin actions
@@ -992,6 +977,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         saveMeasurements: updateCustomerMeasurements,
         updateCustomerProfile,
         addSavedAddress,
+        updateSavedAddress,
+        deleteSavedAddress,
         updateOrderStatus,
         addProduct,
         updateProduct,
