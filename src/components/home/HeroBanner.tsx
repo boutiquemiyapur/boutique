@@ -2,9 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useStore } from '../../context/StoreContext';
-import bannerOne from '../../../media/B1.png';
-import bannerTwo from '../../../media/B2.png';
-import bannerThree from '../../../media/B3.png';
 
 type HeroSlide = {
   id: string;
@@ -20,30 +17,6 @@ type HeroSlide = {
   mobilePositionClass: string;
 };
 
-const SLIDES: HeroSlide[] = [
-  {
-    id: 'timeless-elegance', image: bannerOne,
-    alt: 'AB Collection embroidered occasionwear in emerald, blue, and maroon',
-    eyebrow: 'AB Collection', title: 'Timeless Elegance',
-    description: 'Discover refined styles for every special moment.', cta: 'Shop now', ctaDestination: '/shop',
-    desktopPositionClass: 'lg:object-[50%_36%]', mobilePositionClass: 'object-[50%_50%]'
-  },
-  {
-    id: 'every-occasion', image: bannerTwo,
-    alt: 'AB Collection boutique styles with detailed embroidery',
-    eyebrow: 'The Collection', title: 'Crafted for Every Occasion',
-    description: 'Explore beautifully detailed boutique styles designed to make an impression.', cta: 'Explore collection', ctaDestination: '/shop',
-    desktopPositionClass: 'lg:object-[50%_34%]', mobilePositionClass: 'object-[62%_50%]'
-  },
-  {
-    id: 'new-arrivals', image: bannerThree,
-    alt: 'AB Collection maroon embroidered outfit from the latest collection',
-    eyebrow: 'New Arrivals', title: 'Elegance in Every Detail',
-    description: 'Discover our latest boutique collection.', cta: 'View new arrivals', ctaDestination: '/shop',
-    desktopPositionClass: 'lg:object-[50%_35%]', mobilePositionClass: 'object-[52%_50%]'
-  }
-];
-
 const AUTOPLAY_INTERVAL = 5000;
 const INTERACTION_PAUSE = 7000;
 const SWIPE_THRESHOLD = 48;
@@ -55,11 +28,11 @@ export const HeroBanner: React.FC = () => {
   const [isPaused, setIsPaused] = useState(false);
   const pauseTimeoutRef = useRef<number | null>(null);
   const touchStartXRef = useRef<number | null>(null);
-  const slides: HeroSlide[] = cms.banners.length ? cms.banners.map((banner) => ({
+  const slides: HeroSlide[] = cms.banners.map((banner) => ({
     id: banner.id, image: banner.image, mobileImage: banner.mobileImage || banner.image, alt: banner.title, eyebrow: cms.content.homeEyebrow,
     title: banner.title, description: banner.subtitle, cta: banner.ctaText, ctaDestination: banner.ctaDestination,
     desktopPositionClass: 'lg:object-[50%_36%]', mobilePositionClass: 'object-[50%_50%]'
-  })) : SLIDES;
+  }));
 
   const clearInteractionPause = () => {
     if (pauseTimeoutRef.current !== null) {
@@ -84,16 +57,17 @@ export const HeroBanner: React.FC = () => {
 
   const next = () => goToSlide(currentIndex + 1);
   const previous = () => goToSlide(currentIndex - 1);
-  const currentSlide = slides[currentIndex] || slides[0];
+  const currentSlide = slides[currentIndex] || null;
 
   useEffect(() => {
     // Cache the next Vite-bundled visual while the current banner is visible.
+    if (!slides.length) return;
     const nextImage = new Image();
     nextImage.src = slides[(currentIndex + 1) % slides.length].image;
   }, [currentIndex, slides]);
 
   useEffect(() => {
-    if (isPaused || prefersReducedMotion) return undefined;
+    if (!slides.length || isPaused || prefersReducedMotion) return undefined;
     const timer = window.setInterval(() => setCurrentIndex((index) => (index + 1) % slides.length), AUTOPLAY_INTERVAL);
     return () => window.clearInterval(timer);
   }, [isPaused, slides.length]);
@@ -109,6 +83,7 @@ export const HeroBanner: React.FC = () => {
     if (endX < startX) next(); else previous();
   };
 
+  if (!currentSlide) return null;
   return <section
     className="relative isolate min-h-[540px] overflow-hidden bg-[#2a201d] sm:min-h-[590px] lg:h-[620px] lg:min-h-0 xl:h-[650px]"
     aria-roledescription="carousel"
@@ -129,12 +104,12 @@ export const HeroBanner: React.FC = () => {
 
     <div className="relative mx-auto flex min-h-[540px] max-w-[1440px] items-end px-6 pb-24 pt-20 sm:min-h-[590px] sm:px-10 sm:pb-28 lg:h-[620px] lg:min-h-0 lg:items-center lg:px-16 lg:py-20 xl:h-[650px]">
       <motion.div key={`content-${currentSlide.id}`} initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.55, delay: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }} className="max-w-xs text-white sm:max-w-md">
-        <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-white/90 sm:text-[11px]">{currentSlide.eyebrow}</p>
-        <h1 className="mt-4 font-serif text-[2.65rem] leading-[.92] drop-shadow-[0_2px_12px_rgba(0,0,0,.28)] sm:text-6xl lg:text-7xl">{currentSlide.title}</h1>
-        <p className="mt-4 max-w-sm text-sm leading-6 text-white/95 sm:mt-5 sm:text-base sm:leading-7">{currentSlide.description}</p>
-        <button onClick={() => navigate(currentSlide.ctaDestination === '/about' ? 'about' : currentSlide.ctaDestination === '/contact' ? 'contact' : 'shop')} className="mt-8 inline-flex items-center gap-2 border border-white/80 bg-white px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#2c2926] transition hover:bg-transparent hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+        {currentSlide.eyebrow && <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-white/90 sm:text-[11px]">{currentSlide.eyebrow}</p>}
+        {currentSlide.title && <h1 className="mt-4 font-serif text-[2.65rem] leading-[.92] drop-shadow-[0_2px_12px_rgba(0,0,0,.28)] sm:text-6xl lg:text-7xl">{currentSlide.title}</h1>}
+        {currentSlide.description && <p className="mt-4 max-w-sm text-sm leading-6 text-white/95 sm:mt-5 sm:text-base sm:leading-7">{currentSlide.description}</p>}
+        {currentSlide.cta && currentSlide.ctaDestination && <button onClick={() => navigate(currentSlide.ctaDestination === '/about' ? 'about' : currentSlide.ctaDestination === '/contact' ? 'contact' : 'shop')} className="mt-8 inline-flex items-center gap-2 border border-white/80 bg-white px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#2c2926] transition hover:bg-transparent hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
           {currentSlide.cta}<ArrowRight className="h-4 w-4" />
-        </button>
+        </button>}
       </motion.div>
     </div>
 

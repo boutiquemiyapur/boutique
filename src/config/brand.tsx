@@ -1,4 +1,4 @@
-import logoSrc from '../../media/abcollectionslogo.png';
+const logoSrc = 'https://res.cloudinary.com/fflrcufi/image/upload/v1788420352/abcollectionslogo.png';
 
 /**
  * Client-approved public business details. Keep this file (and the Settings
