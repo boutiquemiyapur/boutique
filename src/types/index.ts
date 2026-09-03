@@ -109,6 +109,8 @@ export interface Product {
 export interface Banner {
   id: string;
   image: string;
+  /** Optional 4:5 asset. `image` remains the desktop and legacy fallback. */
+  mobileImage?: string;
   title: string;
   subtitle: string;
   ctaText: string;

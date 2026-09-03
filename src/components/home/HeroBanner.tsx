@@ -9,6 +9,7 @@ import bannerThree from '../../../media/B3.png';
 type HeroSlide = {
   id: string;
   image: string;
+  mobileImage?: string;
   alt: string;
   eyebrow: string;
   title: string;
@@ -55,7 +56,7 @@ export const HeroBanner: React.FC = () => {
   const pauseTimeoutRef = useRef<number | null>(null);
   const touchStartXRef = useRef<number | null>(null);
   const slides: HeroSlide[] = cms.banners.length ? cms.banners.map((banner) => ({
-    id: banner.id, image: banner.image, alt: banner.title, eyebrow: cms.content.homeEyebrow,
+    id: banner.id, image: banner.image, mobileImage: banner.mobileImage || banner.image, alt: banner.title, eyebrow: cms.content.homeEyebrow,
     title: banner.title, description: banner.subtitle, cta: banner.ctaText, ctaDestination: banner.ctaDestination,
     desktopPositionClass: 'lg:object-[50%_36%]', mobilePositionClass: 'object-[50%_50%]'
   })) : SLIDES;
@@ -121,7 +122,7 @@ export const HeroBanner: React.FC = () => {
   >
     <AnimatePresence initial={false} mode="sync">
       <motion.div key={currentSlide.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: 'easeInOut' }} className="absolute inset-0">
-        <img src={currentSlide.image} alt={currentSlide.alt} className={`h-full w-full object-cover ${currentSlide.mobilePositionClass} ${currentSlide.desktopPositionClass}`} fetchPriority={currentIndex === 0 ? 'high' : 'auto'} loading={currentIndex === 0 ? 'eager' : 'lazy'} />
+        <picture className="block h-full w-full"><source media="(max-width: 767px)" srcSet={currentSlide.mobileImage || currentSlide.image} /><img src={currentSlide.image} alt={currentSlide.alt} className={`h-full w-full object-cover ${currentSlide.mobilePositionClass} ${currentSlide.desktopPositionClass}`} fetchPriority={currentIndex === 0 ? 'high' : 'auto'} loading={currentIndex === 0 ? 'eager' : 'lazy'} /></picture>
         <div className="absolute inset-0 bg-gradient-to-t from-[#201613]/72 via-[#201613]/18 to-transparent sm:bg-gradient-to-r sm:from-[#201613]/48 sm:via-[#201613]/12 sm:to-transparent" aria-hidden="true" />
       </motion.div>
     </AnimatePresence>

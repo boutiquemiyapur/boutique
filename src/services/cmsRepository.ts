@@ -154,7 +154,9 @@ export const cmsRepository = {
     if (!firestore) throw new Error('Firebase is not configured for this deployment.');
     const bannerRef = doc(firestore, 'banners', banner.id);
     const exists = (await getDoc(bannerRef)).exists();
-    await setDoc(bannerRef, { data: banner, updatedAt: serverTimestamp(), ...(!exists ? { createdAt: serverTimestamp() } : {}) }, { merge: true });
+    const { mobileImage, ...legacyCompatibleBanner } = banner;
+    const data = mobileImage ? { ...legacyCompatibleBanner, mobileImage } : legacyCompatibleBanner;
+    await setDoc(bannerRef, { data, updatedAt: serverTimestamp(), ...(!exists ? { createdAt: serverTimestamp() } : {}) }, { merge: true });
   },
 
   async deleteBanner(bannerId: string) {
