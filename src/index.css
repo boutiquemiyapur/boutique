@@ -5,17 +5,19 @@
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-display: "Cormorant Garamond", Georgia, serif;
 
-  --color-boutique-ruby: #625e59;
-  --color-boutique-crimson: #494541;
-  --color-boutique-rose: #9a9187;
-  --color-boutique-gold: #a89785;
-  --color-boutique-gold-light: #d8c8b7;
-  --color-boutique-champagne: #ebe7e1;
-  --color-boutique-sand: #f7f5f2;
-  --color-boutique-ivory: #fffdf9;
-  --color-boutique-charcoal: #2c2926;
-  --color-boutique-emerald: #16423C;
-  --color-boutique-navy: #152238;
+  /* AB Collection's shared luxury palette: navy is the anchor, while gold
+     stays deliberately quiet as an editorial detail. */
+  --color-boutique-ruby: #17335c;
+  --color-boutique-crimson: #102847;
+  --color-boutique-rose: #6f87a5;
+  --color-boutique-gold: #b69755;
+  --color-boutique-gold-light: #e5d5ad;
+  --color-boutique-champagne: #f1eadb;
+  --color-boutique-sand: #f8f5ee;
+  --color-boutique-ivory: #fffdf8;
+  --color-boutique-charcoal: #17263d;
+  --color-boutique-emerald: #244a78;
+  --color-boutique-navy: #102847;
 }
 
 @layer base {
@@ -29,6 +31,7 @@
 
   h1, h2, h3, .font-luxury {
     font-family: var(--font-serif);
+    letter-spacing: -0.018em;
   }
 
   .font-brand {
@@ -38,25 +41,28 @@
 
 button, input, select, textarea { border-radius: 0 !important; }
 button { cursor: pointer; }
-input, select, textarea { outline-color: #625e59; }
-.stitch-shell { background: #f7f5f2; color: #2c2926; }
-.stitch-panel { background: #fff; border: 1px solid #ddd7cf; }
+button, a, input, select, textarea { transition: color .2s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+input, select, textarea { outline-color: #244a78; }
+input:focus, select:focus, textarea:focus { border-color: #244a78 !important; box-shadow: 0 0 0 3px rgb(36 74 120 / .12); }
+.stitch-shell { background: #f8f5ee; color: #17263d; }
+.stitch-panel { background: #fffdf8; border: 1px solid #d9d4c8; }
 
 /* The legacy screens share the original ruby/gold utility classes. Keep them
    visually coherent with the new neutral Stitch system while those screens use
    their existing, working interaction markup. */
-.bg-\[\#8B1E3F\], .hover\:bg-\[\#8B1E3F\]:hover { background-color: #625e59 !important; }
-.bg-\[\#721C24\], .hover\:bg-\[\#721C24\]:hover { background-color: #494541 !important; }
-.bg-\[\#1A1715\], .hover\:bg-\[\#1A1715\]:hover { background-color: #2c2926 !important; }
-.bg-\[\#FAF7F2\] { background-color: #f7f5f2 !important; }
-.bg-\[\#FAF4ED\] { background-color: #f3f0eb !important; }
-.bg-\[\#EFE7DA\] { background-color: #ebe7e1 !important; }
-.text-\[\#8B1E3F\], .hover\:text-\[\#8B1E3F\]:hover { color: #625e59 !important; }
-.text-\[\#721C24\], .hover\:text-\[\#721C24\]:hover { color: #494541 !important; }
-.text-\[\#1A1715\] { color: #2c2926 !important; }
-.text-\[\#C5A059\], .text-\[\#DFBF77\] { color: #8e8175 !important; }
-.border-\[\#8B1E3F\], .hover\:border-\[\#8B1E3F\]:hover { border-color: #625e59 !important; }
-.border-\[\#E6D5B8\], .border-\[\#C5A059\] { border-color: #ddd7cf !important; }
+.bg-\[\#8B1E3F\], .hover\:bg-\[\#8B1E3F\]:hover, .bg-\[\#625e59\] { background-color: #17335c !important; }
+.bg-\[\#721C24\], .hover\:bg-\[\#721C24\]:hover { background-color: #102847 !important; }
+.bg-\[\#1A1715\], .hover\:bg-\[\#1A1715\]:hover, .bg-\[\#2c2926\], .hover\:bg-\[\#2c2926\]:hover, .bg-\[\#272421\] { background-color: #102847 !important; }
+.bg-\[\#FAF7F2\], .bg-\[\#f7f5f2\] { background-color: #f8f5ee !important; }
+.bg-\[\#FAF4ED\] { background-color: #f5f0e5 !important; }
+.bg-\[\#EFE7DA\], .bg-\[\#eee9e2\] { background-color: #f1eadb !important; }
+.bg-\[\#fffdf9\] { background-color: #fffdf8 !important; }
+.text-\[\#8B1E3F\], .hover\:text-\[\#8B1E3F\]:hover, .text-\[\#625e59\] { color: #17335c !important; }
+.text-\[\#721C24\], .hover\:text-\[\#721C24\]:hover { color: #102847 !important; }
+.text-\[\#1A1715\], .text-\[\#2c2926\], .text-\[\#252220\] { color: #17263d !important; }
+.text-\[\#C5A059\], .text-\[\#DFBF77\] { color: #a47f34 !important; }
+.border-\[\#8B1E3F\], .hover\:border-\[\#8B1E3F\]:hover { border-color: #17335c !important; }
+.border-\[\#E6D5B8\], .border-\[\#C5A059\], .border-\[\#ddd7cf\], .border-\[\#cfc6bd\] { border-color: #d9d4c8 !important; }
 
 /* Custom smooth scrollbar */
 ::-webkit-scrollbar {
@@ -64,36 +70,64 @@ input, select, textarea { outline-color: #625e59; }
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #FAF7F2;
+  background: #f8f5ee;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D8C8B8;
+  background: #b7c7da;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #C5A059;
+  background: #17335c;
 }
 
 /* Elegant gold gradient */
 .bg-gold-gradient {
-  background: linear-gradient(135deg, #D4AF37 0%, #C5A059 50%, #A67C1E 100%);
+  background: linear-gradient(135deg, #d7bd79 0%, #b69755 50%, #8f6e30 100%);
 }
 
 .text-gold-gradient {
-  background: linear-gradient(135deg, #DFBF77 0%, #C5A059 50%, #A67C1E 100%);
+  background: linear-gradient(135deg, #d7bd79 0%, #b69755 50%, #8f6e30 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .border-gold-gradient {
-  border-image: linear-gradient(135deg, #DFBF77, #C5A059, #A67C1E) 1;
+  border-image: linear-gradient(135deg, #d7bd79, #b69755, #8f6e30) 1;
 }
 
 /* Glass & soft shadow */
 .luxury-card-shadow {
-  box-shadow: 0 10px 30px -10px rgba(26, 23, 21, 0.07);
+  box-shadow: 0 14px 34px -18px rgba(16, 40, 71, 0.18);
 }
 
 .luxury-card-shadow-hover:hover {
-  box-shadow: 0 20px 40px -15px rgba(139, 30, 63, 0.12);
+  box-shadow: 0 22px 45px -18px rgba(16, 40, 71, 0.28);
 }
+
+/* Editorial details are intentionally low contrast and never obscure product imagery. */
+.boutique-surface { background: radial-gradient(circle at 7% 0%, rgb(202 217 236 / .48), transparent 25rem), #fffdf8; }
+.boutique-rule::after { content: ''; display: block; width: 3.25rem; height: 1px; margin-top: .8rem; background: #b69755; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .group:hover .boutique-image { transform: scale(1.035); }
+}
+
+/* Shared refinements for existing storefront and dashboard controls. These
+   deliberately target the established utility palette, so no business-view
+   markup or interaction logic needs to be replaced. */
+.bg-\[\#f1efeb\], .bg-\[\#f5f3f1\], .bg-\[\#fbf9f7\] { background-color: #f8f5ee !important; }
+.bg-\[\#d0c4bc\] { background-color: #dce6f0 !important; }
+.border-\[\#d8d1c9\], .border-\[\#d7d0c8\], .border-\[\#d8c9bc\], .border-\[\#d0c4bc\] { border-color: #d9dfe5 !important; }
+.text-\[\#4d453f\], .text-\[\#4f453c\], .text-\[\#615e5c\] { color: #52657c !important; }
+.bg-\[\#16423C\] { background-color: #244a78 !important; }
+.text-\[\#16423C\] { color: #244a78 !important; }
+.border-\[\#16423C\] { border-color: #244a78 !important; }
+.bg-\[\#2a201d\] { background-color: #102847 !important; }
+
+footer { position: relative; }
+footer::before { content: ''; position: absolute; inset: 0 0 auto; height: 1px; background: linear-gradient(90deg, transparent, #b69755 50%, transparent); }
+footer h2 { color: #f7edcf !important; }
+footer svg { color: #d5b86f; }
+
+.bg-white { background-color: #fffdf8; }
+.shadow-xl, .shadow-2xl { box-shadow: 0 22px 50px -28px rgb(16 40 71 / .32) !important; }

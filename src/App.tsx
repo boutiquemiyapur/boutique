@@ -77,7 +77,7 @@ function AppContent() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#1A1715] selection:bg-[#8B1E3F] selection:text-white font-sans antialiased">
+    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#1A1715] selection:bg-[#8B1E3F] selection:text-white font-sans antialiased boutique-surface">
       {!isStandaloneView && <Header />}
 
       {/* Main View Router */}

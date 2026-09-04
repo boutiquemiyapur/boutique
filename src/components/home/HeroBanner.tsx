@@ -85,7 +85,7 @@ export const HeroBanner: React.FC = () => {
 
   if (!currentSlide) return null;
   return <section
-    className="relative isolate min-h-[540px] overflow-hidden bg-[#2a201d] sm:min-h-[590px] lg:h-[620px] lg:min-h-0 xl:h-[650px]"
+    className="relative isolate min-h-[540px] overflow-hidden bg-[#102847] sm:min-h-[590px] lg:h-[620px] lg:min-h-0 xl:h-[650px]"
     aria-roledescription="carousel"
     aria-label="AB Collection highlights"
     onMouseEnter={() => setIsPaused(true)}
@@ -98,16 +98,16 @@ export const HeroBanner: React.FC = () => {
     <AnimatePresence initial={false} mode="sync">
       <motion.div key={currentSlide.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: 'easeInOut' }} className="absolute inset-0">
         <picture className="block h-full w-full"><source media="(max-width: 767px)" srcSet={currentSlide.mobileImage || currentSlide.image} /><img src={currentSlide.image} alt={currentSlide.alt} className={`h-full w-full object-cover ${currentSlide.mobilePositionClass} ${currentSlide.desktopPositionClass}`} fetchPriority={currentIndex === 0 ? 'high' : 'auto'} loading={currentIndex === 0 ? 'eager' : 'lazy'} /></picture>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#201613]/72 via-[#201613]/18 to-transparent sm:bg-gradient-to-r sm:from-[#201613]/48 sm:via-[#201613]/12 sm:to-transparent" aria-hidden="true" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#102847]/78 via-[#102847]/18 to-transparent sm:bg-gradient-to-r sm:from-[#102847]/58 sm:via-[#102847]/10 sm:to-transparent" aria-hidden="true" />
       </motion.div>
     </AnimatePresence>
 
     <div className="relative mx-auto flex min-h-[540px] max-w-[1440px] items-end px-6 pb-24 pt-20 sm:min-h-[590px] sm:px-10 sm:pb-28 lg:h-[620px] lg:min-h-0 lg:items-center lg:px-16 lg:py-20 xl:h-[650px]">
       <motion.div key={`content-${currentSlide.id}`} initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.55, delay: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }} className="max-w-xs text-white sm:max-w-md">
-        {currentSlide.eyebrow && <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-white/90 sm:text-[11px]">{currentSlide.eyebrow}</p>}
+        {currentSlide.eyebrow && <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-[#f1dfae] sm:text-[11px]">{currentSlide.eyebrow}</p>}
         {currentSlide.title && <h1 className="mt-4 font-serif text-[2.65rem] leading-[.92] drop-shadow-[0_2px_12px_rgba(0,0,0,.28)] sm:text-6xl lg:text-7xl">{currentSlide.title}</h1>}
         {currentSlide.description && <p className="mt-4 max-w-sm text-sm leading-6 text-white/95 sm:mt-5 sm:text-base sm:leading-7">{currentSlide.description}</p>}
-        {currentSlide.cta && currentSlide.ctaDestination && <button onClick={() => navigate(currentSlide.ctaDestination === '/about' ? 'about' : currentSlide.ctaDestination === '/contact' ? 'contact' : 'shop')} className="mt-8 inline-flex items-center gap-2 border border-white/80 bg-white px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#2c2926] transition hover:bg-transparent hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+        {currentSlide.cta && currentSlide.ctaDestination && <button onClick={() => navigate(currentSlide.ctaDestination === '/about' ? 'about' : currentSlide.ctaDestination === '/contact' ? 'contact' : 'shop')} className="mt-8 inline-flex items-center gap-2 border border-[#e5d5ad] bg-[#fffdf8] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#102847] transition hover:bg-[#17335c] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
           {currentSlide.cta}<ArrowRight className="h-4 w-4" />
         </button>}
       </motion.div>

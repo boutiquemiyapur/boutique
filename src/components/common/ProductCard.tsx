@@ -10,10 +10,10 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
   const isSoldOut = product.stockCount <= 0;
   const image = showAlternate && product.images[1] ? product.images[1] : product.images[0];
 
-  return <article className="group relative min-w-0">
+  return <article className="group relative min-w-0 border border-[#ddd7cf] bg-[#fffdf9] p-2 transition duration-300 hover:-translate-y-1 hover:border-[#b69755] hover:shadow-[0_18px_36px_-24px_rgba(16,40,71,.38)]">
     <div className="relative aspect-[3/4] overflow-hidden bg-[#eee9e2]" onMouseEnter={() => setShowAlternate(true)} onMouseLeave={() => setShowAlternate(false)}>
       <button onClick={() => navigate('product-detail', product.id)} className="block h-full w-full text-left" aria-label={`View ${product.title}`}>
-        <img src={image} alt={product.title} loading={priority ? 'eager' : 'lazy'} className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]" />
+        <img src={image} alt={product.title} loading={priority ? 'eager' : 'lazy'} className="boutique-image h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]" />
       </button>
       <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5 text-[9px] font-semibold uppercase tracking-[.14em]">
         {product.isNewArrival && <span className="bg-[#fffdf9] px-2 py-1 text-[#2c2926]">New</span>}
@@ -28,8 +28,8 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
         <button disabled={isSoldOut} onClick={() => addToCart(product, product.colors[0]?.colorName || 'Default', product.availableSizes[0] || 'Unstitched')} className="grid h-10 w-10 place-items-center bg-[#2c2926] text-white disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Add ${product.title} to bag`}><ShoppingBag className="h-4 w-4" /></button>
       </div>
     </div>
-    <div className="pt-3">
-      <p className="text-[10px] uppercase tracking-[.14em] text-stone-500">{product.category}</p>
+    <div className="px-1 pb-1 pt-4">
+      <p className="text-[10px] uppercase tracking-[.16em] text-[#6f87a5]">{product.category}</p>
       <button onClick={() => navigate('product-detail', product.id)} className="mt-1 line-clamp-1 text-left text-sm font-medium text-[#2c2926] hover:underline">{product.title}</button>
       <div className="mt-1.5 flex items-center gap-2"><span className="font-serif text-base text-[#2c2926]">{formatPrice(product.priceINR)}</span>{product.originalPriceINR && <span className="text-xs text-stone-400 line-through">{formatPrice(product.originalPriceINR)}</span>}</div>
       <p className={`mt-1 text-[10px] ${isSoldOut ? 'text-stone-500' : product.stockCount <= 3 ? 'text-[#8a5738]' : 'text-stone-500'}`}>{isSoldOut ? 'Unavailable' : product.stockCount <= 3 ? `Only ${product.stockCount} left` : product.isReadyToShip ? 'Ready to ship' : 'Made to order'}</p>

@@ -5,7 +5,7 @@ import { useStore } from '../../context/StoreContext';
 import { BRAND, BrandMark } from '../../config/brand';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
-const iconButton = 'relative grid h-10 w-10 place-items-center text-stone-700 transition hover:bg-stone-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#625e59]';
+const iconButton = 'relative grid h-10 w-10 place-items-center text-[#17263d] transition hover:bg-[#edf2f8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17335c]';
 
 export const Header: React.FC = () => {
   const { navigate, setFilters, products, wishlist, cart, requireAuth, setIsCartDrawerOpen, setIsWishlistDrawerOpen } = useStore();
@@ -44,7 +44,7 @@ export const Header: React.FC = () => {
     };
   }, [isMenuOpen]);
 
-  const NavLink = ({ view, children }: { view: 'home' | 'shop' | 'about' | 'contact'; children: React.ReactNode }) => <button onClick={() => navigate(view)} className="relative py-1 text-[11px] font-medium uppercase tracking-[.14em] text-stone-600 transition hover:text-[#2c2926] after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0 after:bg-[#625e59] after:transition hover:after:scale-x-100">{children}</button>;
+  const NavLink = ({ view, children }: { view: 'home' | 'shop' | 'about' | 'contact'; children: React.ReactNode }) => <button onClick={() => navigate(view)} className="relative py-1 text-[11px] font-medium uppercase tracking-[.18em] text-[#52657c] transition hover:text-[#102847] after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0 after:bg-[#b69755] after:transition hover:after:scale-x-100">{children}</button>;
 
   const mobileDrawer = isMenuOpen && typeof document !== 'undefined'
     ? createPortal(
@@ -69,7 +69,7 @@ export const Header: React.FC = () => {
     : null;
 
   return <>
-    <header className="sticky top-0 z-40 border-b border-[#ddd7cf] bg-[#fffdf9]/95 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-[#ddd7cf] bg-[#fffdf9]/95 shadow-[0_1px_0_rgba(182,151,85,.18)] backdrop-blur">
       <div className="mx-auto hidden max-w-[1440px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-8 px-7 py-1 lg:grid">
         <div className="flex min-w-0 items-center"><button onClick={() => navigate('home')} aria-label={`${BRAND.title} home`} className="inline-flex max-w-full items-center"><BrandMark /></button></div>
         <nav className="flex items-center gap-8" aria-label="Primary navigation"><NavLink view="home">Home</NavLink><NavLink view="shop">Shop</NavLink><NavLink view="about">About Us</NavLink><NavLink view="contact">Contact</NavLink></nav>
@@ -88,5 +88,5 @@ export const Header: React.FC = () => {
   </>;
 };
 
-const StatusDot = () => <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 h-2 w-2 rounded-full bg-[#8B1E3F] ring-2 ring-[#fffdf9]" />;
+const StatusDot = () => <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 h-2 w-2 rounded-full bg-[#b69755] ring-2 ring-[#fffdf9]" />;
 const DrawerLink = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => <button type="button" onClick={onClick} className="block min-h-12 w-full border-b border-[#eee8e2] py-3 text-left text-sm font-medium uppercase tracking-[.12em] text-stone-700 transition hover:text-black">{children}</button>;
