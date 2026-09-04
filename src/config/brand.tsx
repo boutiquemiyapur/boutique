@@ -9,6 +9,7 @@ const logoSrc = 'https://res.cloudinary.com/fflrcufi/image/upload/v1788420352/ab
 export const BRAND = {
   name: 'AB Collection',
   displayName: 'AB COLLECTION',
+  title: 'AB Collection by Aadya',
   contactPerson: 'Yesodha Vimala',
   phone: '9014461462',
   email: 'boutiquemiyapur@gmail.com',
@@ -24,9 +25,15 @@ export const BRAND = {
   logoSrc
 } as const;
 
-export const BrandMark = ({ className = '', inverse = false }: { className?: string; inverse?: boolean }) => {
-  if (BRAND.logoSrc) {
-    return <img src={BRAND.logoSrc} alt={BRAND.name} className={`h-11 w-11 shrink-0 object-contain sm:h-12 sm:w-12 ${className}`} />;
-  }
-  return <span className={`font-serif font-semibold tracking-[.14em] ${inverse ? 'text-white' : 'text-[#2c2926]'} ${className}`}>{BRAND.displayName}</span>;
-};
+export const BrandMark = ({ className = '', inverse = false }: { className?: string; inverse?: boolean }) => (
+  <span className={`inline-flex min-w-0 max-w-full items-center gap-2.5 leading-none sm:gap-3 lg:gap-3.5 ${className}`}>
+    <img
+      src={BRAND.logoSrc}
+      alt=""
+      className="block h-16 w-auto shrink-0 object-contain object-center sm:h-[4.5rem] lg:h-[5.5rem] xl:h-24"
+    />
+    <span className={`min-w-0 text-left font-serif font-semibold leading-[1.2] tracking-[-0.01em] text-sm whitespace-normal sm:whitespace-nowrap sm:text-[17px] lg:text-[21px] xl:text-[23px] ${inverse ? 'text-white' : 'text-[#2c2926]'}`}>
+      {BRAND.title}
+    </span>
+  </span>
+);

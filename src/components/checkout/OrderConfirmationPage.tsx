@@ -45,7 +45,7 @@ export const OrderConfirmationPage: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Success Card Header */}
         <div className="bg-white border border-[#E6D5B8] rounded-3xl p-8 sm:p-12 shadow-sm text-center space-y-4">
-          <div className="flex justify-center"><BrandMark className="text-lg" /></div>
+          <div className="flex justify-center"><BrandMark /></div>
           <div className="w-16 h-16 rounded-full bg-emerald-100 border-2 border-emerald-500 text-emerald-600 mx-auto flex items-center justify-center shadow-md">
             <CheckCircle2 className="w-10 h-10" />
           </div>
