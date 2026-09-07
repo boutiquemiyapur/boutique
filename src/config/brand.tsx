@@ -10,14 +10,18 @@ export const BRAND = {
   name: 'AB Collection',
   displayName: 'AB COLLECTION',
   title: 'AB Collection by Aadya',
+  website: 'https://abcollectionbyaadya.in',
+  seoStreetAddress: 'Suvarna Heights, Plot No. 1049/1, Near EuroKids School, Calvary Temple Road, Mathrusri Nagar, Miyapur',
   contactPerson: 'Yesodha Vimala',
   phone: '9014461462',
   email: 'boutiquemiyapur@gmail.com',
   addressLines: [
-    'AB Collection / Aadya Boutique',
+    'AB Collection by Aadya',
     'Suvarna Heights',
-    '1049/1, Matrusri Nagar',
+    'Plot No. 1049/1, Near EuroKids School',
+    'Calvary Temple Road, Mathrusri Nagar',
     'Miyapur, Hyderabad – 500049',
+    'Telangana',
     'India'
   ],
   mapsUrl: 'https://maps.app.goo.gl/YWUASJtbLWpz5DiaA',
@@ -29,7 +33,7 @@ export const BrandMark = ({ className = '', inverse = false }: { className?: str
   <span className={`inline-flex min-w-0 max-w-full items-center gap-2.5 leading-none sm:gap-3 lg:gap-3.5 ${className}`}>
     <img
       src={BRAND.logoSrc}
-      alt=""
+      alt="AB Collection by Aadya"
       className="block h-16 w-auto shrink-0 object-contain object-center sm:h-[4.5rem] lg:h-[5.5rem] xl:h-24"
     />
     <span className={`min-w-0 text-left font-serif font-semibold leading-[1.2] tracking-[-0.01em] text-sm whitespace-normal sm:whitespace-nowrap sm:text-[17px] lg:text-[21px] xl:text-[23px] ${inverse ? 'text-white' : 'text-[#2c2926]'}`}>

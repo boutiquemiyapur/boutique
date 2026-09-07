@@ -41,7 +41,7 @@ export const ProductDetailPage: React.FC = () => {
     cms
 } = useStore();
 
-  const product = products.find((p) => p.id === selectedProductId) || products[0];
+  const product = products.find((p) => p.id === selectedProductId && p.isActive !== false);
 
   const [activeImgIndex, setActiveImgIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState(product?.colors[0]?.colorName || 'Default');
@@ -104,7 +104,7 @@ export const ProductDetailPage: React.FC = () => {
   if (!product) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <h2 className="text-xl font-serif">Product Not Found</h2>
+        <h1 className="text-xl font-serif">Product Not Found</h1>
         <button onClick={() => navigate('shop')} className="mt-4 text-[#8B1E3F] underline">
           Return to Shop
         </button>

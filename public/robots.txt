@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /checkout
+Disallow: /cart
+Disallow: /wishlist
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /orders
+Disallow: /order-confirmation
+Disallow: /api/
+
+Sitemap: https://abcollectionbyaadya.in/sitemap.xml

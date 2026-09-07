@@ -24,6 +24,7 @@ import { CartPage } from './components/cart/CartPage';
 import { NotFoundPage, StaticPage } from './components/pages/StaticPage';
 import { AuthPage } from './components/auth/AuthPage';
 import { LoaderCircle, ShieldAlert } from 'lucide-react';
+import { SeoManager } from './components/common/SeoManager';
 
 const RouteLoading = () => <div className="grid min-h-[65vh] place-items-center"><LoaderCircle className="h-6 w-6 animate-spin text-[#685c53]" /></div>;
 
@@ -78,6 +79,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#1A1715] selection:bg-[#8B1E3F] selection:text-white font-sans antialiased boutique-surface">
+      <SeoManager />
       {!isStandaloneView && <Header />}
 
       {/* Main View Router */}
