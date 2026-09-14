@@ -1,35 +1,46 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
+import { ProductOptions } from './ProductOptions';
+import { ProductImage } from './ProductImage';
+import { productImages, stockMessage } from '../../utils/productData';
 import { SizeOption } from '../../types';
-import { X, Heart, ShoppingBag, Check, Star, ShieldCheck, Sparkles, Scissors } from 'lucide-react';
+import { X, Heart, ShoppingBag, Star, ShieldCheck, Scissors } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export const QuickViewModal: React.FC = () => {
   const {
     quickViewProduct,
+    products,
+    cms,
     setQuickViewProduct,
     addToCart,
     toggleWishlist,
     isInWishlist,
     formatPrice,
-    setIsSizeGuideOpen,
     navigate
   } = useStore();
 
   const [selectedImgIndex, setSelectedImgIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState<string>('');
-  const [selectedSize, setSelectedSize] = useState<SizeOption>('Unstitched');
+  const [selectedSize, setSelectedSize] = useState<SizeOption>('');
   const [quantity, setQuantity] = useState(1);
   const [isCustomTailoring, setIsCustomTailoring] = useState(false);
 
   useBodyScrollLock(Boolean(quickViewProduct));
 
-  if (!quickViewProduct) return null;
-
-  const product = quickViewProduct;
+  const product = products.find((item) => item.id === quickViewProduct?.id);
+  useEffect(() => {
+    setSelectedImgIndex(0); setQuantity(1); setIsCustomTailoring(false);
+    setSelectedColor((value) => product?.colors.some((item) => item.colorName === value) ? value : product?.colors[0]?.colorName || '');
+    setSelectedSize((value) => product?.availableSizes.includes(value) ? value : product?.availableSizes[0] || '');
+  }, [product]);
+  useEffect(() => { if (quickViewProduct && !product) setQuickViewProduct(null); }, [quickViewProduct, product]);
+  if (!product) return null;
   const isSaved = isInWishlist(product.id);
-  const activeColor = selectedColor || product.colors[0]?.colorName || 'Standard';
+  const activeColor = selectedColor;
+
+  const gallery = productImages(product, activeColor);
 
   return (
     <div
@@ -57,20 +68,20 @@ export const QuickViewModal: React.FC = () => {
         {/* Gallery */}
         <div className="space-y-3">
           <div className="aspect-3/4 rounded-xl overflow-hidden bg-stone-100 border border-[#E6D5B8] relative">
-            <img
-              src={product.images[selectedImgIndex] || product.images[0]}
+            <ProductImage
+              src={gallery[selectedImgIndex] || gallery[0]}
               alt={product.title}
               className="w-full h-full object-cover transition-all duration-300"
             />
             {product.isHandloomCertified && (
               <span className="absolute top-3 left-3 bg-[#16423C] text-white text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
-                <ShieldCheck className="w-3 h-3 text-[#DFBF77]" /> Silk Mark Certified
+                <ShieldCheck className="w-3 h-3 text-[#DFBF77]" /> Handloom certified
               </span>
             )}
           </div>
-          {product.images.length > 1 && (
+          {gallery.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {product.images.map((img, idx) => (
+              {gallery.map((img, idx) => (
                 <button
                   key={idx}
                   id={`quickview-thumb-${idx}`}
@@ -79,7 +90,7 @@ export const QuickViewModal: React.FC = () => {
                     selectedImgIndex === idx ? 'border-[#8B1E3F] shadow-sm' : 'border-transparent opacity-70 hover:opacity-100'
                   }`}
                 >
-                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  <ProductImage src={img} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
@@ -98,7 +109,7 @@ export const QuickViewModal: React.FC = () => {
               {product.title}
             </h2>
 
-            <div className="flex items-center gap-2 mt-2">
+            {product.reviewCount > 0 && <div className="flex items-center gap-2 mt-2">
               <div className="flex items-center text-amber-500">
                 {[...Array(5)].map((_, i) => (
                   <Star
@@ -111,19 +122,19 @@ export const QuickViewModal: React.FC = () => {
               </div>
               <span className="text-xs font-semibold text-stone-700">{product.rating}</span>
               <span className="text-xs text-stone-400">({product.reviewCount} reviews)</span>
-            </div>
+            </div>}
 
             {/* Price */}
             <div className="flex items-baseline gap-3 mt-4">
               <span className="text-2xl font-serif font-bold text-[#8B1E3F]">
                 {formatPrice(product.priceINR)}
               </span>
-              {product.originalPriceINR && (
+              {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
                 <span className="text-sm line-through text-stone-400 font-serif">
                   {formatPrice(product.originalPriceINR)}
                 </span>
               )}
-              {product.discountPercentage && (
+              {product.discountPercentage > 0 && (
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                   Save {product.discountPercentage}%
                 </span>
@@ -134,62 +145,8 @@ export const QuickViewModal: React.FC = () => {
               {product.description}
             </p>
 
-            {/* Colors */}
-            {product.colors.length > 0 && (
-              <div className="mt-4">
-                <label className="text-xs font-semibold uppercase tracking-wider text-stone-700 block mb-1.5">
-                  Color: <span className="text-[#8B1E3F] font-bold">{activeColor}</span>
-                </label>
-                <div className="flex gap-2">
-                  {product.colors.map((c) => (
-                    <button
-                      key={c.colorName}
-                      id={`quickview-color-${c.colorName.replace(/\s+/g, '-')}`}
-                      onClick={() => setSelectedColor(c.colorName)}
-                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${
-                        activeColor === c.colorName ? 'border-[#8B1E3F] scale-110 shadow-xs' : 'border-stone-200'
-                      }`}
-                      style={{ backgroundColor: c.colorHex }}
-                      title={c.colorName}
-                    >
-                      {activeColor === c.colorName && <Check className="w-3.5 h-3.5 text-white drop-shadow-xs" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Size selection */}
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-stone-700">
-                  Select Size
-                </label>
-                <button
-                  id="quickview-size-guide-link"
-                  onClick={() => setIsSizeGuideOpen(true)}
-                  className="text-xs text-[#8B1E3F] underline font-medium hover:text-[#721C24]"
-                >
-                  Size Guide
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {product.availableSizes.map((size) => (
-                  <button
-                    key={size}
-                    id={`quickview-size-${size.replace(/\s+/g, '-')}`}
-                    onClick={() => setSelectedSize(size)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-all ${
-                      selectedSize === size
-                        ? 'bg-[#8B1E3F] text-white border-[#8B1E3F] shadow-xs'
-                        : 'bg-white text-stone-700 border-[#E6D5B8] hover:border-[#8B1E3F]'
-                    }`}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <div className="mt-4"><ProductOptions product={product} color={activeColor} size={selectedSize} onColor={(value) => { setSelectedColor(value); setSelectedImgIndex(0); }} onSize={setSelectedSize} /></div>
+            <p className="mt-3 text-xs">{stockMessage(product, cms.lowStockThreshold)}</p>
 
             {/* Custom Tailoring Option */}
             {product.customStitchingAvailable && (
@@ -201,7 +158,7 @@ export const QuickViewModal: React.FC = () => {
                     <p className="text-[11px] text-stone-500">
                       {product.customStitchingFeeINR > 0
                         ? `+${formatPrice(product.customStitchingFeeINR)} Made-to-measure`
-                        : 'Complimentary bridal stitching'}
+                        : 'No additional tailoring fee'}
                     </p>
                   </div>
                 </div>
@@ -220,6 +177,7 @@ export const QuickViewModal: React.FC = () => {
           <div className="mt-6 pt-4 border-t border-[#E6D5B8] flex items-center gap-3">
             <button
               id="quickview-add-to-bag-btn"
+              disabled={product.stockCount <= 0}
               onClick={() => {
                 void addToCart(product, activeColor, selectedSize, quantity, isCustomTailoring).then((added) => {
                   if (added) setQuickViewProduct(null);

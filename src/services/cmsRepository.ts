@@ -1,4 +1,5 @@
 import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { productFromDocument, productForStorage } from '../utils/productData';
 import { BRAND } from '../config/brand';
 import { firestore } from '../firebase/config';
 import { uploadMedia } from './mediaUploadService';
@@ -19,21 +20,11 @@ export interface PublicCms {
 }
 
 const defaultContent: SiteContent = {
-  homeEyebrow: 'AB Collection',
-  collectionHeading: 'Crafted for every occasion',
-  collectionDescription: 'Discover boutique styles selected for celebrations and special moments.',
-  newArrivalsHeading: 'New arrivals',
-  newArrivalsDescription: 'Discover the newest additions to the AB Collection.',
-  footerDescription: 'AB Collection is a boutique destination in Miyapur, Hyderabad. Discover the current catalog and contact us for store assistance.'
+  homeEyebrow: '', collectionHeading: '', collectionDescription: '',
+  newArrivalsHeading: '', newArrivalsDescription: '', footerDescription: ''
 };
-
 const defaultAbout: AboutContent = {
-  businessName: BRAND.displayName,
-  heading: 'A story ready to be told.',
-  introduction: 'AB Collection’s final brand history has not yet been supplied. This page is reserved for approved business information.',
-  brandStory: 'Add the approved AB Collection brand story here from the secure admin panel.',
-  philosophy: 'Add the values behind the collection once they are confirmed.',
-  additionalInformation: 'Current collection descriptions and product details are managed as catalog data.'
+  businessName: '', heading: '', introduction: '', brandStory: '', philosophy: '', additionalInformation: ''
 };
 
 const defaultContact: ContactInformation = {
@@ -47,12 +38,6 @@ const defaultContact: ContactInformation = {
 
 export const DEFAULT_CMS: PublicCms = {
   banners: [], content: defaultContent, about: defaultAbout, contact: defaultContact, lowStockThreshold: 3
-};
-
-const asProduct = (value: Record<string, unknown>): Product | null => {
-  const product = value.data as Product | undefined;
-  if (!product || !product.id || value.status === 'archived') return null;
-  return { ...product, isActive: value.status !== 'inactive' && product.isActive !== false };
 };
 
 const readDocument = async <T extends object>(name: string, id: string, fallback: T): Promise<T> => {
@@ -95,7 +80,7 @@ export const cmsRepository = {
       .reduce<Order[]>((all, order) => all.some((item) => item.id === order.id) ? all : [...all, order], [])
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     return {
-      products: productSnapshot.docs.map((item) => asProduct(item.data())).filter((item): item is Product => Boolean(item)),
+      products: productSnapshot.docs.map((item) => productFromDocument(item.id, item.data())).filter((item): item is Product => Boolean(item)),
       orders,
       customers: customerSnapshot.docs.map((item) => item.data().profile as CustomerProfile).filter(Boolean)
     };
@@ -133,6 +118,7 @@ export const cmsRepository = {
 
   async saveProduct(product: Product) {
     if (!firestore) throw new Error('Firebase is not configured for this deployment.');
+    product = productForStorage(product);
     const productRef = doc(firestore, 'products', product.id);
     const exists = (await getDoc(productRef)).exists();
     await setDoc(productRef, {

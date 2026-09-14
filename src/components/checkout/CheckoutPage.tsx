@@ -1,3 +1,5 @@
+import { ProductImage } from '../common/ProductImage';
+import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { PaymentMethod, ShippingAddress, ShippingMethod } from '../../types';
@@ -16,6 +18,7 @@ import {
 export const CheckoutPage: React.FC = () => {
   const {
     cart,
+    cartIssue,
     customer,
     authStatus,
     isCustomerDataReady,
@@ -85,7 +88,7 @@ export const CheckoutPage: React.FC = () => {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center">
         <h2 className="text-2xl font-serif font-bold text-stone-900">Your Shopping Bag is Empty</h2>
-        <p className="text-xs text-stone-500 mt-2">Add your favourite handloom outfits to continue to checkout.</p>
+        <p className="text-xs text-stone-500 mt-2">Add products to continue to checkout.</p>
         <button
           onClick={() => navigate('shop')}
           className="mt-6 bg-[#8B1E3F] text-white text-xs uppercase tracking-wider font-semibold px-6 py-3 rounded-lg"
@@ -95,6 +98,8 @@ export const CheckoutPage: React.FC = () => {
       </div>
     );
   }
+
+  if (cartIssue) return <div className="mx-auto max-w-xl px-4 py-20 text-center"><p role="alert">{cartIssue}</p><button onClick={() => navigate('cart')} className="mt-4 underline">Review shopping bag</button></div>;
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -361,12 +366,12 @@ export const CheckoutPage: React.FC = () => {
                         className="mt-1 accent-[#8B1E3F]"
                       />
                       <div>
-                        <h4 className="text-xs font-bold text-stone-900">Standard Insured Courier (BlueDart / Delhivery)</h4>
-                        <p className="text-[11px] text-stone-500 mt-0.5">Delivered in 4-6 business days with tamper-proof packaging.</p>
+                        <h4 className="text-xs font-bold text-stone-900">Standard shipping</h4>
+                        <p className="text-[11px] text-stone-500 mt-0.5">Delivery timing is confirmed by the store.</p>
                       </div>
                     </div>
                     <span className="text-xs font-bold text-stone-900">
-                      {cartSubtotalINR >= 5000 ? 'FREE' : formatPrice(450)}
+                      {cartShippingINR === 0 ? 'FREE' : formatPrice(cartShippingINR)}
                     </span>
                   </label>
 
@@ -387,9 +392,9 @@ export const CheckoutPage: React.FC = () => {
                       />
                       <div>
                         <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-[#DFBF77]" /> Priority Air Express (1-2 Days)
+                          <Sparkles className="w-3.5 h-3.5 text-[#DFBF77]" /> Express shipping
                         </h4>
-                        <p className="text-[11px] text-stone-500 mt-0.5">Same-day dispatch from Hyderabad with order tracking support.</p>
+                        <p className="text-[11px] text-stone-500 mt-0.5">Contact the store to confirm express service availability.</p>
                       </div>
                     </div>
                     <span className="text-xs font-bold text-[#8B1E3F]">
@@ -462,15 +467,15 @@ export const CheckoutPage: React.FC = () => {
               <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                 {cart.map((item) => (
                   <div key={item.cartItemId} className="flex gap-3 text-xs">
-                    <img
-                      src={item.product.images[0]}
+                    <ProductImage
+                      src={productImages(item.product, item.selectedColor)[0]}
                       alt=""
                       className="w-14 h-18 object-cover rounded-md shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-stone-900 truncate">{item.product.title}</h4>
                       <p className="text-[11px] text-stone-500 mt-0.5">
-                        {item.selectedColor} • {item.selectedSize} (Qty: {item.quantity})
+                        {variantSummary(item)} (Qty: {item.quantity})
                       </p>
                       {item.isCustomTailored && (
                         <span className="text-[10px] text-[#8B1E3F] font-bold flex items-center gap-1 mt-0.5">
@@ -524,7 +529,7 @@ export const CheckoutPage: React.FC = () => {
               <div className="text-xs text-stone-700">
                 <h4 className="font-bold text-[#8B1E3F]">AB Collection order information</h4>
                 <p className="mt-0.5 text-stone-600">
-                  Every order includes physical Silk Mark India hologram cards and arrives in our velvet gift box.
+                  Review your selected products and delivery address before placing your order.
                 </p>
               </div>
             </div>

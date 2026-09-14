@@ -1,4 +1,5 @@
 import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
+import { productFromDocument, productForStorage } from '../utils/productData';
 import { firestore } from '../firebase/config';
 import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
 
@@ -12,15 +13,10 @@ export interface CustomerDataSnapshot {
   legacyOrders?: Order[];
 }
 
-const readLocal = <T>(key: string, fallback: T): T => {
-  try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
-};
-const writeLocal = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { console.warn(error); } };
-
 export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => [
   item.product.id || item.product.sku,
   (item.selectedColor || '').trim().toLowerCase(),
-  item.selectedSize || 'Unstitched',
+  (item.selectedSize || '').trim().toLowerCase(),
   item.isCustomTailored ? 'tailored' : 'ready'
 ].join('::');
 
@@ -76,24 +72,26 @@ const mergeOrders = (...groups: Order[][]) => newestFirst(
 );
 
 export const commerceRepository = {
-  async loadCatalog(fallback: Product[]) {
-    if (!firestore) return readLocal('mb_products', fallback);
-    try {
-      const snapshot = await getDocs(collection(firestore, 'products'));
-      const products = snapshot.docs
-        .filter((item) => item.data().status !== 'archived' && item.data().status !== 'inactive')
-        .map((item) => item.data().data as Product)
-        .filter((item): item is Product => Boolean(item && item.isActive !== false));
-      return products.length ? products : fallback;
-    } catch (error) { console.warn('Firestore catalog unavailable; using local catalog fallback.', error); return readLocal('mb_products', fallback); }
+  async loadCatalog(): Promise<Product[]> {
+    if (!firestore) throw new Error('Catalog service is not configured.');
+    const snapshot = await getDocs(collection(firestore, 'products'));
+    return snapshot.docs.map((item) => productFromDocument(item.id, item.data()))
+      .filter((item): item is Product => Boolean(item && item.isActive !== false));
   },
-  async loadCoupons(fallback: Coupon[]) {
-    if (!firestore) return readLocal('mb_coupons', fallback);
+  subscribeToCatalog(onProducts: (products: Product[]) => void, onError: (error: Error) => void) {
+    if (!firestore) { onError(new Error('Catalog service is not configured.')); return () => undefined; }
+    return onSnapshot(collection(firestore, 'products'), (snapshot) => {
+      onProducts(snapshot.docs.map((item) => productFromDocument(item.id, item.data()))
+        .filter((item): item is Product => Boolean(item && item.isActive !== false)));
+    }, onError);
+  },
+  async loadCoupons(): Promise<Coupon[]> {
+    if (!firestore) return [];
     try {
       const snapshot = await getDocs(collection(firestore, 'coupons'));
-      const coupons = snapshot.docs.map((item) => item.data().data as Coupon).filter(Boolean);
-      return coupons.length ? coupons : fallback;
-    } catch (error) { console.warn('Firestore coupons unavailable; using local fallback.', error); return readLocal('mb_coupons', fallback); }
+      return snapshot.docs.filter((item) => !['inactive', 'archived'].includes(item.data().status))
+        .map((item) => item.data().data as Coupon).filter((item) => item?.isActive);
+    } catch (error) { console.warn('Firestore coupons unavailable.', error); return []; }
   },
   async loadCustomerData(uid: string | null, fallback: CustomerDataSnapshot): Promise<CustomerDataSnapshot> {
     if (!uid) {
@@ -196,7 +194,8 @@ export const commerceRepository = {
     return { ...order, orderStatus: 'Cancelled' as const, cancellation, timeline };
   },
   async saveProduct(product: Product) {
-    if (!firestore) return writeLocal('mb_products', product);
+    if (!firestore) throw new Error('Catalog service is not configured.');
+    product = productForStorage(product);
     await setDoc(doc(firestore, 'products', product.id), toFirestore({ data: product, category: product.category, sku: product.sku, status: product.isActive === false ? 'inactive' : 'active', createdAt: serverTimestamp() }), { merge: true });
   },
   async deleteProduct(productId: string) {
@@ -222,7 +221,7 @@ export const commerceRepository = {
     return updatedOrder;
   },
   async saveCoupon(coupon: Coupon) {
-    if (!firestore) return writeLocal('mb_coupons', coupon);
+    if (!firestore) throw new Error('Coupon service is not configured.');
     await setDoc(doc(firestore, 'coupons', coupon.code), toFirestore({ data: coupon, code: coupon.code, status: coupon.isActive ? 'active' : 'inactive' }), { merge: true });
   },
   async deleteCoupon(couponCode: string) {
@@ -234,12 +233,10 @@ export const commerceRepository = {
     try {
       const snapshot = await getDocs(query(collection(firestore, 'reviews'), where('productId', '==', productId)));
       return snapshot.docs.map((item) => item.data().data as ReviewItem).filter(Boolean);
-    } catch (error) { console.warn('Firestore reviews unavailable; using bundled reviews.', error); return [] as ReviewItem[]; }
+    } catch (error) { console.warn('Firestore reviews unavailable; returning no reviews.', error); return [] as ReviewItem[]; }
   },
   async saveReview(uid: string, productId: string, review: ReviewItem) {
     if (!firestore) return;
     await setDoc(doc(firestore, 'reviews', review.id), toFirestore({ productId, userId: uid, data: { ...review, verifiedBuyer: false }, verifiedBuyer: false }));
   },
-  saveLocalCatalog(products: Product[]) { writeLocal('mb_products', products); },
-  saveLocalCoupons(coupons: Coupon[]) { writeLocal('mb_coupons', coupons); },
 };

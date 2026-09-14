@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, ReviewItem, SizeOption } from '../../types';
+import { productImages, productSpecifications, stockMessage } from '../../utils/productData';
+import { ProductOptions } from '../common/ProductOptions';
+import { ProductImage } from '../common/ProductImage';
 import { ProductCard } from '../common/ProductCard';
 import { whatsappChatUrl } from '../../utils/whatsapp';
 import {
@@ -10,21 +13,18 @@ import {
   Truck,
   ShieldCheck,
   Star,
-  Sparkles,
-  Ruler,
   Share2,
   CheckCircle2,
   Phone,
   Clock,
-  RotateCcw,
-  Check,
   ChevronRight,
-  Info
 } from 'lucide-react';
 
 export const ProductDetailPage: React.FC = () => {
   const {
     products,
+    catalogStatus,
+    setFilters,
     selectedProductId,
     formatPrice,
     addToCart,
@@ -35,7 +35,6 @@ export const ProductDetailPage: React.FC = () => {
     authSession,
     loadProductReviews,
     submitReview,
-    setIsSizeGuideOpen,
     navigate,
     showToast,
     cms
@@ -44,10 +43,10 @@ export const ProductDetailPage: React.FC = () => {
   const product = products.find((p) => p.id === selectedProductId && p.isActive !== false);
 
   const [activeImgIndex, setActiveImgIndex] = useState(0);
-  const [selectedColor, setSelectedColor] = useState(product?.colors[0]?.colorName || 'Default');
-  const [selectedSize, setSelectedSize] = useState<SizeOption>(product?.availableSizes[0] || 'Unstitched');
+  const [selectedColor, setSelectedColor] = useState(product?.colors[0]?.colorName || '');
+  const [selectedSize, setSelectedSize] = useState<SizeOption>(product?.availableSizes[0] || '');
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState<'details' | 'craft' | 'shipping' | 'reviews'>('details');
+  const [requestedTab, setActiveTab] = useState<'details' | 'craft' | 'reviews'>('details');
 
   // Custom tailoring state
   const [isCustomTailoring, setIsCustomTailoring] = useState(false);
@@ -63,15 +62,14 @@ export const ProductDetailPage: React.FC = () => {
       backNeckDepth: 9,
       blouseLength: 14.5,
       blouseStyle: 'Princess Cut',
-      liningPreference: 'Butter Silk',
       paddingOption: 'With Bra Pads',
       specialNotes: ''
     }
   );
 
   // Pincode checker state
-  const [pincode, setPincode] = useState('500033');
-  const [pincodeChecked, setPincodeChecked] = useState(true);
+  const [pincode, setPincode] = useState('');
+  const [pincodeChecked, setPincodeChecked] = useState(false);
 
   // New review state
   const [newReviewAuthor, setNewReviewAuthor] = useState('');
@@ -83,24 +81,34 @@ export const ProductDetailPage: React.FC = () => {
   useEffect(() => {
     if (!product) return;
     setActiveImgIndex(0);
-    setSelectedColor(product.colors[0]?.colorName || 'Default');
-    setSelectedSize(product.availableSizes[0] || 'Unstitched');
-  }, [product?.id]);
+    setSelectedColor((current) => product.colors.some((color) => color.colorName === current) ? current : product.colors[0]?.colorName || '');
+    setSelectedSize((current) => product.availableSizes.includes(current) ? current : product.availableSizes[0] || '');
+    if (!product.customStitchingAvailable) setIsCustomTailoring(false);
+  }, [product]);
 
   useEffect(() => {
     if (!product) return;
+    let cancelled = false;
     const bundledReviews = product.reviews || [];
     setVisibleReviews(bundledReviews);
     void loadProductReviews(product.id).then((cloudReviews) => {
-      if (!cloudReviews.length) return;
+      if (cancelled || !cloudReviews.length) return;
       const ids = new Set(bundledReviews.map((review) => review.id));
       setVisibleReviews([...cloudReviews.filter((review) => !ids.has(review.id)), ...bundledReviews]);
     });
+    return () => { cancelled = true; };
   // The repository callback is provided by context and is recreated with the
   // provider render. Product identity is the actual review-load boundary.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id]);
 
+  const specifications = product ? productSpecifications(product) : [];
+  const hasDetails = Boolean(product?.description || specifications.length);
+  const activeTab = requestedTab === 'details' && !hasDetails ? (product?.craftDetails ? 'craft' : 'reviews')
+    : requestedTab === 'craft' && !product?.craftDetails ? (hasDetails ? 'details' : 'reviews') : requestedTab;
+  useEffect(() => { setActiveTab('details'); setQuantity(1); setIsCustomTailoring(false); }, [product?.id]);
+
+  if (catalogStatus !== 'ready') return <div role="status" className="px-4 py-20 text-center">{catalogStatus === 'loading' ? 'Loading product...' : 'Products are currently unavailable. Please refresh or try again later.'}</div>;
   if (!product) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
@@ -112,15 +120,16 @@ export const ProductDetailPage: React.FC = () => {
     );
   }
 
+  const gallery = productImages(product, selectedColor);
   const isSaved = isInWishlist(product.id);
   const isSoldOut = product.stockCount <= 0;
-  const relatedProducts = products.filter((item) => item.id !== product.id && (item.category === product.category || item.fabric === product.fabric)).slice(0, 4);
+  const relatedProducts = products.filter((item) => item.id !== product.id && (item.category === product.category || (product.fabric && item.fabric === product.fabric))).slice(0, 4);
 
   const handlePincodeCheck = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pincode.length === 6) {
+    if (/^[1-9][0-9]{5}$/.test(pincode)) {
       setPincodeChecked(true);
-      showToast('Delivery Available', `Express delivery available for pincode ${pincode} in 2-3 business days.`);
+      showToast('Pincode format checked', 'Please contact the store to confirm delivery availability.', 'info');
     } else {
       showToast('Invalid Pincode', 'Please enter a valid 6-digit Indian delivery pincode.', 'error');
     }
@@ -137,7 +146,7 @@ export const ProductDetailPage: React.FC = () => {
       const newRev: ReviewItem = {
         id: `rev-${Date.now()}`,
         userName: newReviewAuthor,
-        userCity: newReviewCity || 'Hyderabad',
+        userCity: newReviewCity.trim(),
         rating: newReviewRating,
         date: 'Today',
         title: 'Customer Experience',
@@ -176,7 +185,7 @@ export const ProductDetailPage: React.FC = () => {
         <nav className="flex items-center gap-2 text-xs text-stone-500 mb-6">
           <button onClick={() => navigate('home')} className="hover:text-[#8B1E3F]">Home</button>
           <span>/</span>
-          <button onClick={() => navigate('shop')} className="hover:text-[#8B1E3F]">{product.category}</button>
+          <button onClick={() => { setFilters((current) => ({ ...current, category: product.category, searchQuery: '' })); navigate('shop'); }} className="hover:text-[#8B1E3F]">{product.category}</button>
           <span>/</span>
           <span className="text-stone-800 font-semibold truncate max-w-xs">{product.title}</span>
         </nav>
@@ -186,8 +195,8 @@ export const ProductDetailPage: React.FC = () => {
           {/* Left Column: Gallery (7 Cols) */}
           <div className="lg:col-span-7 space-y-4">
             <div className="relative aspect-3/4 rounded-2xl overflow-hidden bg-stone-100 border border-[#E6D5B8] shadow-md group">
-              <img
-                src={product.images[activeImgIndex] || product.images[0]}
+              <ProductImage
+                src={gallery[activeImgIndex] || gallery[0]}
                 alt={product.title}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
@@ -196,7 +205,7 @@ export const ProductDetailPage: React.FC = () => {
               <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
                 {product.isHandloomCertified && (
                   <span className="bg-[#16423C] text-[#DFBF77] text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-md flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4" /> Silk Mark India Certified
+                    <ShieldCheck className="w-4 h-4" /> Handloom certified
                   </span>
                 )}
                 {product.isBestseller && (
@@ -232,9 +241,9 @@ export const ProductDetailPage: React.FC = () => {
             </div>
 
             {/* Thumbnail Row */}
-            {product.images.length > 1 && (
+            {gallery.length > 1 && (
               <div className="flex gap-3 overflow-x-auto pb-2">
-                {product.images.map((img, idx) => (
+                {gallery.map((img, idx) => (
                   <button
                     key={idx}
                     id={`pdp-thumb-${idx}`}
@@ -243,7 +252,7 @@ export const ProductDetailPage: React.FC = () => {
                       activeImgIndex === idx ? 'border-[#8B1E3F] shadow-md scale-102' : 'border-stone-200 opacity-70 hover:opacity-100'
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <ProductImage src={img} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
@@ -267,7 +276,7 @@ export const ProductDetailPage: React.FC = () => {
               </p>
 
               {/* Rating */}
-              <div className="flex items-center gap-2 mt-3">
+              {product.reviewCount > 0 && <div className="flex items-center gap-2 mt-3">
                 <div className="flex items-center text-amber-500">
                   {[...Array(5)].map((_, i) => (
                     <Star
@@ -280,87 +289,28 @@ export const ProductDetailPage: React.FC = () => {
                 </div>
                 <span className="text-xs font-bold text-stone-800">{product.rating} / 5.0</span>
                 <span className="text-xs text-stone-400">({product.reviewCount} client reviews)</span>
-              </div>
+              </div>}
 
               {/* Pricing */}
               <div className="flex items-baseline gap-3 mt-4 p-3.5 bg-white border border-[#E6D5B8] rounded-xl">
                 <span className="text-2xl sm:text-3xl font-serif font-bold text-[#8B1E3F]">
                   {formatPrice(product.priceINR)}
                 </span>
-                {product.originalPriceINR && (
+                {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
                   <span className="text-sm line-through text-stone-400 font-serif">
                     {formatPrice(product.originalPriceINR)}
                   </span>
                 )}
-                {product.discountPercentage && (
+                {product.discountPercentage > 0 && (
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
                     Save {product.discountPercentage}%
                   </span>
                 )}
-                <span className="text-[11px] text-stone-400 ml-auto">Inclusive of all GST taxes</span>
+
               </div>
             </div>
 
-            {/* Color Swatches */}
-            {product.colors.length > 0 && (
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-stone-800 block mb-2">
-                  Select Shade: <span className="text-[#8B1E3F]">{selectedColor}</span>
-                </label>
-                <div className="flex gap-2.5">
-                  {product.colors.map((c) => (
-                    <button
-                      key={c.colorName}
-                      id={`pdp-color-${c.colorName.replace(/\s+/g, '-')}`}
-                      onClick={() => setSelectedColor(c.colorName)}
-                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${
-                        selectedColor === c.colorName ? 'border-[#8B1E3F] scale-110 shadow-sm' : 'border-stone-200'
-                      }`}
-                      style={{ backgroundColor: c.colorHex }}
-                      title={c.colorName}
-                    >
-                      {selectedColor === c.colorName && <Check className="w-4 h-4 text-white drop-shadow-xs" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Size Selector */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-stone-800">
-                  Select Size
-                </label>
-                <button
-                  id="pdp-size-guide-btn"
-                  onClick={() => setIsSizeGuideOpen(true)}
-                  className="text-xs text-[#8B1E3F] underline font-semibold hover:text-[#721C24] flex items-center gap-1"
-                >
-                  <Ruler className="w-3.5 h-3.5" /> Size Guide
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {product.availableSizes.map((size) => (
-                  <button
-                    key={size}
-                    id={`pdp-size-${size.replace(/\s+/g, '-')}`}
-                    onClick={() => {
-                      setSelectedSize(size);
-                      if (size === 'Custom Made-to-Measure') setIsCustomTailoring(true);
-                    }}
-                    className={`px-4 py-2 text-xs font-semibold rounded-lg border transition-all ${
-                      selectedSize === size
-                        ? 'bg-[#8B1E3F] text-white border-[#8B1E3F] shadow-sm'
-                        : 'bg-white text-stone-700 border-[#E6D5B8] hover:border-[#8B1E3F]'
-                    }`}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ProductOptions product={product} color={selectedColor} size={selectedSize} onColor={(value) => { setSelectedColor(value); setActiveImgIndex(0); }} onSize={setSelectedSize} />
 
             {/* Custom Made-to-Measure Blouse Drawer */}
             {product.customStitchingAvailable && (
@@ -376,8 +326,8 @@ export const ProductDetailPage: React.FC = () => {
                       </h4>
                       <p className="text-[11px] text-stone-600">
                         {product.customStitchingFeeINR > 0
-                          ? `+${formatPrice(product.customStitchingFeeINR)} Hand-tailored to your measurements`
-                          : 'Complimentary Made-to-Measure with 2-inch inner margin'}
+                          ? `+${formatPrice(product.customStitchingFeeINR)} Tailoring fee`
+                          : 'No additional tailoring fee'}
                       </p>
                     </div>
                   </div>
@@ -502,7 +452,7 @@ export const ProductDetailPage: React.FC = () => {
             {/* Pincode & Delivery Checker */}
             <div className="p-4 bg-white border border-[#E6D5B8] rounded-xl space-y-2">
               <span className="text-xs font-bold uppercase tracking-wider text-stone-800 flex items-center gap-1.5">
-                <Truck className="w-4 h-4 text-[#8B1E3F]" /> Check Delivery & Courier Schedule
+                <Truck className="w-4 h-4 text-[#8B1E3F]" /> Delivery enquiry
               </span>
               <form onSubmit={handlePincodeCheck} className="flex gap-2">
                 <input
@@ -510,7 +460,7 @@ export const ProductDetailPage: React.FC = () => {
                   type="text"
                   maxLength={6}
                   value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
+                  onChange={(e) => { setPincode(e.target.value); setPincodeChecked(false); }}
                   placeholder="Enter 6-digit Pincode"
                   className="flex-1 px-3 py-2 text-xs border border-[#E6D5B8] rounded-lg font-mono focus:outline-hidden focus:border-[#8B1E3F]"
                 />
@@ -519,21 +469,21 @@ export const ProductDetailPage: React.FC = () => {
                   type="submit"
                   className="bg-[#1A1715] hover:bg-[#8B1E3F] text-white text-xs uppercase font-semibold px-4 py-2 rounded-lg transition-colors"
                 >
-                  Verify
+                  Check format
                 </button>
               </form>
               {pincodeChecked && (
                 <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded-md flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Delivery is available to <strong>{pincode}</strong>. Estimated dispatch timing is shared after order confirmation.</span>
+                  <span>The format of <strong>{pincode}</strong> is valid. Courier availability and delivery dates have not been checked. <button onClick={() => navigate('contact')} className="underline">Contact the store to confirm delivery.</button></span>
                 </div>
               )}
             </div>
 
             {/* Urgency Meter */}
-            <div className={`flex items-center gap-2 text-xs font-semibold border p-2.5 rounded-lg ${isSoldOut ? 'border-stone-300 bg-stone-100 text-stone-600' : product.stockCount <= 3 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+            <div className={`flex items-center gap-2 text-xs font-semibold border p-2.5 rounded-lg ${isSoldOut ? 'border-stone-300 bg-stone-100 text-stone-600' : product.stockCount <= cms.lowStockThreshold ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
               <Clock className="w-4 h-4 shrink-0" />
-              <span>{isSoldOut ? 'Currently unavailable' : product.stockCount <= 3 ? `Only ${product.stockCount} handcrafted pieces remaining.` : 'In stock and ready for your selection.'}</span>
+              <span>{stockMessage(product, cms.lowStockThreshold)}</span>
             </div>
 
             {/* CTA Action Buttons */}
@@ -571,38 +521,8 @@ export const ProductDetailPage: React.FC = () => {
         <div className="mt-16 bg-white border border-[#E6D5B8] rounded-2xl p-6 sm:p-10 shadow-xs">
           {/* Tab headers */}
           <div className="flex border-b border-[#E6D5B8] gap-4 sm:gap-8 overflow-x-auto">
-            <button
-              id="tab-btn-details"
-              onClick={() => setActiveTab('details')}
-              className={`pb-4 text-xs sm:text-sm uppercase tracking-wider font-bold transition-all relative ${
-                activeTab === 'details' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-              }`}
-            >
-              Product & Fabric Details
-              {activeTab === 'details' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-            </button>
-
-            <button
-              id="tab-btn-craft"
-              onClick={() => setActiveTab('craft')}
-              className={`pb-4 text-xs sm:text-sm uppercase tracking-wider font-bold transition-all relative ${
-                activeTab === 'craft' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-              }`}
-            >
-              Artisan Weave & Zari Heritage
-              {activeTab === 'craft' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-            </button>
-
-            <button
-              id="tab-btn-shipping"
-              onClick={() => setActiveTab('shipping')}
-              className={`pb-4 text-xs sm:text-sm uppercase tracking-wider font-bold transition-all relative ${
-                activeTab === 'shipping' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
-              }`}
-            >
-              Shipping & 7-Day Returns
-              {activeTab === 'shipping' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
-            </button>
+            {hasDetails && <button id="tab-btn-details" onClick={() => setActiveTab('details')} className={`pb-4 text-xs font-bold uppercase ${activeTab === 'details' ? 'text-[#8B1E3F]' : 'text-stone-500'}`}>Product details</button>}
+            {product.craftDetails && <button id="tab-btn-craft" onClick={() => setActiveTab('craft')} className={`pb-4 text-xs font-bold uppercase ${activeTab === 'craft' ? 'text-[#8B1E3F]' : 'text-stone-500'}`}>Additional details</button>}
 
             <button
               id="tab-btn-reviews"
@@ -611,100 +531,25 @@ export const ProductDetailPage: React.FC = () => {
                 activeTab === 'reviews' ? 'text-[#8B1E3F]' : 'text-stone-500 hover:text-black'
               }`}
             >
-              Client Reviews ({product.reviewCount})
+              Reviews ({visibleReviews.length})
               {activeTab === 'reviews' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#8B1E3F]" />}
             </button>
           </div>
 
           {/* Tab Content */}
           <div className="pt-8">
-            {activeTab === 'details' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs sm:text-sm text-stone-700 leading-relaxed">
-                <div>
-                  <h3 className="font-serif font-bold text-lg text-[#1A1715] mb-3">Product Description</h3>
-                  <p>{product.description}</p>
-                  {product.blouseLength && (
-                    <div className="mt-4 p-3 bg-[#FAF7F2] rounded-lg border border-[#E6D5B8]">
-                      <strong>Blouse Fabric:</strong> {product.blouseLength}
-                    </div>
-                  )}
-                  {product.sareeLength && (
-                    <div className="mt-2 p-3 bg-[#FAF7F2] rounded-lg border border-[#E6D5B8]">
-                      <strong>Saree Length:</strong> {product.sareeLength}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="font-serif font-bold text-lg text-[#1A1715]">Fabric Specifications</h3>
-                  <table className="w-full text-xs">
-                    <tbody className="divide-y divide-[#E6D5B8]/60">
-                      <tr>
-                        <td className="py-2 font-semibold text-stone-500">Fabric Composition</td>
-                        <td className="py-2 font-bold text-stone-900">{product.fabric}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 font-semibold text-stone-500">Zari Specification</td>
-                        <td className="py-2 text-stone-900">{product.zariType || 'Pure Tested Metallic Zari'}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 font-semibold text-stone-500">Weight</td>
-                        <td className="py-2 text-stone-900">{product.weightGrams ? `${product.weightGrams} grams (Pure Silk Density)` : 'Standard'}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 font-semibold text-stone-500">Care Instructions</td>
-                        <td className="py-2 text-stone-900">{product.careInstructions}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'craft' && (
-              <div className="space-y-4 text-xs sm:text-sm text-stone-700 leading-relaxed max-w-3xl">
-                <div className="flex items-center gap-3 p-4 bg-[#16423C]/10 border border-[#16423C]/30 rounded-xl text-[#16423C]">
-                  <ShieldCheck className="w-6 h-6 shrink-0" />
-                  <div>
-                    <h4 className="font-bold text-sm">Silk Mark Organization of India Certification</h4>
-                    <p className="text-xs">
-                      100% natural pure mulberry silk verified through burning & laboratory warp-weft testing.
-                    </p>
-                  </div>
-                </div>
-                <p>{product.craftDetails}</p>
-              </div>
-            )}
-
-            {activeTab === 'shipping' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs sm:text-sm text-stone-700">
-                <div className="space-y-3">
-                  <h4 className="font-bold text-stone-900 flex items-center gap-2">
-                    <Truck className="w-4 h-4 text-[#8B1E3F]" /> Domestic & Global Air Transit
-                  </h4>
-                  <ul className="space-y-2 list-disc list-inside text-stone-600">
-                    <li>Free Express Insured shipping on orders above ₹5,000.</li>
-                    <li>Orders dispatched in custom velvet heirloom keepsake boxes.</li>
-                    <li>Worldwide delivery to USA, UK, UAE, Australia within 4-7 business days via DHL.</li>
-                  </ul>
-                </div>
-                <div className="space-y-3">
-                  <h4 className="font-bold text-stone-900 flex items-center gap-2">
-                    <RotateCcw className="w-4 h-4 text-[#8B1E3F]" /> 7-Day Exchange Guarantee
-                  </h4>
-                  <p className="text-stone-600 leading-relaxed">
-                    Unstitched sarees and jewelry may be exchanged within 7 days of delivery. Custom tailored items include complimentary alteration support.
-                  </p>
-                </div>
-              </div>
-            )}
+            {activeTab === 'details' && hasDetails && <div className="grid grid-cols-1 gap-8 text-sm leading-relaxed md:grid-cols-2">
+              {product.description && <div><h3 className="mb-3 font-serif text-lg font-bold">Product description</h3><p className="whitespace-pre-wrap break-words">{product.description}</p></div>}
+              {specifications.length > 0 && <div className="min-w-0"><h3 className="mb-3 font-serif text-lg font-bold">Specifications</h3><table className="w-full table-fixed text-xs"><tbody className="divide-y divide-stone-200">{specifications.map((row) => <tr key={row.label}><th scope="row" className="w-2/5 break-words py-3 pr-3 text-left align-top font-semibold text-stone-500">{row.label}</th><td className="whitespace-pre-wrap break-words py-3 align-top">{row.value}</td></tr>)}</tbody></table></div>}
+            </div>}
+            {activeTab === 'craft' && product.craftDetails && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{product.craftDetails}</p>}
 
             {activeTab === 'reviews' && (
               <div className="space-y-8">
                 {/* Existing Reviews */}
                 <div className="space-y-4">
                   {visibleReviews.length === 0 ? (
-                    <p className="text-xs text-stone-500 italic">No reviews yet for this limited edition masterweave. Be the first bride to review!</p>
+                    <p className="text-xs text-stone-500 italic">No reviews yet. Be the first to review this product.</p>
                   ) : (
                     visibleReviews.map((rev) => (
                       <div key={rev.id} className="p-4 bg-[#FAF7F2] border border-[#E6D5B8] rounded-xl space-y-2">
@@ -772,7 +617,7 @@ export const ProductDetailPage: React.FC = () => {
                     rows={3}
                     value={newReviewComment}
                     onChange={(e) => setNewReviewComment(e.target.value)}
-                    placeholder="Tell us about the drape, zari luster, tailoring fit, and fabric quality..."
+                    placeholder="Share your experience with this product..."
                     className="w-full text-xs p-3 bg-white border border-[#E6D5B8] rounded-lg focus:outline-hidden focus:border-[#8B1E3F]"
                   />
 

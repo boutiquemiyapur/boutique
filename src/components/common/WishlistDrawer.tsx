@@ -1,3 +1,4 @@
+import { ProductImage } from '../common/ProductImage';
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
 import { X, Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
@@ -12,6 +13,7 @@ export const WishlistDrawer: React.FC = () => {
     products,
     toggleWishlist,
     addToCart,
+    setQuickViewProduct,
     formatPrice,
     navigate
   } = useStore();
@@ -62,7 +64,7 @@ export const WishlistDrawer: React.FC = () => {
               <Heart className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Wishlist is Empty</h3>
               <p className="text-xs text-stone-500 mt-1 max-w-xs mx-auto">
-                Explore our handcrafted silks and bridal collections to find an outfit you love.
+                Explore the current collection to find an item you love.
               </p>
               <button
                 id="explore-catalog-from-wishlist"
@@ -82,7 +84,7 @@ export const WishlistDrawer: React.FC = () => {
                 id={`wishlist-item-${product.id}`}
                 className="flex gap-4 p-3.5 bg-white border border-[#E6D5B8] rounded-lg shadow-xs hover:border-[#C5A059] transition-all"
               >
-                <img
+                <ProductImage
                   src={product.images[0]}
                   alt={product.title}
                   className="w-20 h-24 object-cover rounded-md cursor-pointer shrink-0"
@@ -113,11 +115,15 @@ export const WishlistDrawer: React.FC = () => {
                   <div className="flex items-center gap-2 mt-3">
                     <button
                       id={`move-to-bag-${product.id}`}
+                      disabled={product.stockCount <= 0}
                       onClick={() => {
+                        if (product.availableSizes.length || product.colors.length) {
+                          setIsWishlistDrawerOpen(false); setQuickViewProduct(product); return;
+                        }
                         void addToCart(
                           product,
-                          product.colors[0]?.colorName || 'Default',
-                          product.availableSizes[0] || 'Unstitched'
+                          product.colors[0]?.colorName || '',
+                          product.availableSizes[0] || ''
                         ).then((added) => {
                           if (added) void toggleWishlist(product.id);
                         });

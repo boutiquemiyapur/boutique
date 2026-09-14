@@ -12,27 +12,9 @@ export interface StoreCategory {
   sortOrder: number;
 }
 
-export type FabricType = 
-  | 'Pure Mulberry Silk'
-  | 'Kanjeevaram Silk'
-  | 'Banarasi Katan Silk'
-  | 'Organza Silk'
-  | 'Raw Silk'
-  | 'Chanderi'
-  | 'Georgette'
-  | 'Velvet'
-  | 'Tussar Silk'
-  | 'Chikankari Cotton';
-
-export type OccasionType = 
-  | 'Bridal Trousseau'
-  | 'Wedding Guest'
-  | 'Festive & Puja'
-  | 'Reception & Party'
-  | 'Sangeet & Mehendi'
-  | 'Cocktail & Evening';
-
-export type SizeOption = 'Unstitched' | 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Custom Made-to-Measure';
+export type FabricType = string;
+export type OccasionType = string;
+export type SizeOption = string;
 
 export interface CustomMeasurements {
   bust: number; // inches
@@ -90,11 +72,12 @@ export interface Product {
   isBestseller?: boolean;
   isNewArrival?: boolean;
   isHandloomCertified?: boolean;
-  zariType?: 'Pure Gold Zari' | 'Tested Zari' | 'Silver Zari' | 'Antique Zari' | 'Thread Embroidery';
+  zariType?: string;
+  specifications?: Array<{ label: string; value: string }>;
   description: string;
   craftDetails: string;
   careInstructions: string;
-  includesBlousePiece: boolean;
+  includesBlousePiece?: boolean;
   blouseLength?: string;
   sareeLength?: string;
   weightGrams?: number;

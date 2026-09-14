@@ -1,3 +1,5 @@
+import { ProductImage } from '../common/ProductImage';
+import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, Order, ShippingAddress } from '../../types';
@@ -380,15 +382,15 @@ export const CustomerAccountPage: React.FC = () => {
                 <div className="divide-y divide-[#E6D5B8]/60">
                   {order.items.map((item) => (
                     <div key={item.cartItemId} className="py-3 flex items-center gap-4 text-xs">
-                      <img
-                        src={item.product.images[0]}
+                      <ProductImage
+                        src={productImages(item.product, item.selectedColor)[0]}
                         alt=""
                         className="w-14 h-18 object-cover rounded-md shrink-0 border border-[#E6D5B8]"
                       />
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-stone-900 truncate">{item.product.title}</h4>
                         <p className="text-stone-500">
-                          {item.selectedColor} • {item.selectedSize} (Qty: {item.quantity})
+                          {variantSummary(item)} (Qty: {item.quantity})
                         </p>
                         {item.isCustomTailored && (
                           <span className="text-[10px] text-[#8B1E3F] font-bold flex items-center gap-1 mt-0.5">
@@ -422,7 +424,7 @@ export const CustomerAccountPage: React.FC = () => {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {products.filter((product) => wishlist.includes(product.id)).map((product) => (
               <article key={product.id} className="overflow-hidden rounded-2xl border border-[#E6D5B8] bg-white">
-                <button onClick={() => navigate('product-detail', product.id)} className="block w-full text-left"><img src={product.images[0]} alt={product.title} className="h-64 w-full object-cover" /></button>
+                <button onClick={() => navigate('product-detail', product.id)} className="block w-full text-left"><ProductImage src={product.images[0]} alt={product.title} className="h-64 w-full object-cover" /></button>
                 <div className="flex items-start justify-between gap-3 p-4"><div><button onClick={() => navigate('product-detail', product.id)} className="font-serif text-lg text-stone-900">{product.title}</button><p className="mt-1 text-xs text-stone-500">{product.category}</p><p className="mt-2 font-semibold text-[#8B1E3F]">{formatPrice(product.priceINR)}</p></div><button onClick={() => toggleWishlist(product.id)} className="p-2 text-[#8B1E3F]" aria-label={`Remove ${product.title} from wishlist`}><Heart className="h-5 w-5 fill-current" /></button></div>
               </article>
             ))}
@@ -489,7 +491,7 @@ export const CustomerAccountPage: React.FC = () => {
       {(selectedOrder || cancellingOrder) && <div className="fixed inset-0 z-50 flex items-end bg-black/45 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true">
         <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-3xl">
           <div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="font-serif text-xl font-bold text-stone-900">{cancellingOrder ? 'Cancel order' : 'Order details'}</h2><p className="mt-1 text-xs text-stone-500">{(cancellingOrder || selectedOrder)?.orderNumber}</p></div><button onClick={() => { setSelectedOrder(null); setCancellingOrder(null); }} className="rounded-lg p-2 text-stone-600"><X className="h-5 w-5" /></button></div>
-          {cancellingOrder ? <div className="space-y-5 text-sm text-stone-700"><p>Are you sure you want to cancel this order? This cannot be undone.</p><div className="flex justify-end gap-3"><button onClick={() => setCancellingOrder(null)} className="min-h-11 px-4 text-xs font-semibold">Keep order</button><button disabled={isSaving} onClick={() => void cancelSelectedOrder()} className="min-h-11 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white disabled:opacity-50">{isSaving ? 'Cancelling…' : 'Cancel order'}</button></div></div> : selectedOrder && <div className="space-y-5 text-xs text-stone-700"><div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF7F2] p-4"><p><b>Status</b><br />{selectedOrder.orderStatus}</p><p><b>Payment</b><br />{selectedOrder.paymentMethod === 'cod' ? 'Cash on delivery' : selectedOrder.paymentMethod} · {selectedOrder.paymentStatus}</p><p><b>Order date</b><br />{new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}</p><p><b>Total</b><br />{formatPrice(selectedOrder.totalINR)}</p></div><div><b>Items</b>{selectedOrder.items.map((item) => <p key={item.cartItemId} className="mt-2">{item.product.title} — {item.selectedColor}, {item.selectedSize}, Qty {item.quantity}</p>)}</div><div><b>Delivery address</b><p className="mt-1">{selectedOrder.shippingAddress.fullName}, {selectedOrder.shippingAddress.addressLine1}, {selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.pincode}</p></div><div><b>Price breakdown</b><p className="mt-1">Subtotal {formatPrice(selectedOrder.subtotalINR)} · Shipping {formatPrice(selectedOrder.shippingCostINR)} · GST {formatPrice(selectedOrder.taxGstINR)}</p></div>{selectedOrder.cancellation && <div className="rounded-xl bg-stone-100 p-4"><b>Cancellation</b><p className="mt-1">Cancelled on {selectedOrder.cancellation.cancelledAt}</p></div>}</div>}
+          {cancellingOrder ? <div className="space-y-5 text-sm text-stone-700"><p>Are you sure you want to cancel this order? This cannot be undone.</p><div className="flex justify-end gap-3"><button onClick={() => setCancellingOrder(null)} className="min-h-11 px-4 text-xs font-semibold">Keep order</button><button disabled={isSaving} onClick={() => void cancelSelectedOrder()} className="min-h-11 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white disabled:opacity-50">{isSaving ? 'Cancelling…' : 'Cancel order'}</button></div></div> : selectedOrder && <div className="space-y-5 text-xs text-stone-700"><div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF7F2] p-4"><p><b>Status</b><br />{selectedOrder.orderStatus}</p><p><b>Payment</b><br />{selectedOrder.paymentMethod === 'cod' ? 'Cash on delivery' : selectedOrder.paymentMethod} · {selectedOrder.paymentStatus}</p><p><b>Order date</b><br />{new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}</p><p><b>Total</b><br />{formatPrice(selectedOrder.totalINR)}</p></div><div><b>Items</b>{selectedOrder.items.map((item) => <p key={item.cartItemId} className="mt-2">{item.product.title} — {variantSummary(item)}, Qty {item.quantity}</p>)}</div><div><b>Delivery address</b><p className="mt-1">{selectedOrder.shippingAddress.fullName}, {selectedOrder.shippingAddress.addressLine1}, {selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.pincode}</p></div><div><b>Price breakdown</b><p className="mt-1">Subtotal {formatPrice(selectedOrder.subtotalINR)} · Shipping {formatPrice(selectedOrder.shippingCostINR)} · GST {formatPrice(selectedOrder.taxGstINR)}</p></div>{selectedOrder.cancellation && <div className="rounded-xl bg-stone-100 p-4"><b>Cancellation</b><p className="mt-1">Cancelled on {selectedOrder.cancellation.cancelledAt}</p></div>}</div>}
         </div>
       </div>}
     </div>

@@ -17,7 +17,7 @@ export const TailoringGuidePage: React.FC = () => {
             Custom Blouse & Lehenga Measuring Guide
           </h1>
           <p className="text-xs sm:text-sm text-stone-600 leading-relaxed font-sans">
-            Follow our master draper’s visual guide to capture exact inches. All custom stitched garments come with 2-inch inner side margins for effortless future alterations.
+            Use these general measuring steps where relevant. Confirm product-specific tailoring options and fit with the store.
           </p>
         </div>
 
@@ -87,9 +87,9 @@ export const TailoringGuidePage: React.FC = () => {
         {/* Virtual Video Assistance Banner */}
         <div className="bg-gradient-to-r from-[#8B1E3F] to-[#5C1026] rounded-3xl p-8 sm:p-10 text-white flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
           <div className="space-y-2 text-center sm:text-left">
-            <h3 className="font-serif font-bold text-xl sm:text-2xl">Want a Master Tailor to Guide You on Video?</h3>
+            <h3 className="font-serif font-bold text-xl sm:text-2xl">Need help with measurements?</h3>
             <p className="text-xs text-[#EFE7DA]/90 max-w-lg">
-              Book a complimentary 15-minute 1-on-1 virtual video call with our Hyderabad tailoring expert.
+              Contact the store to discuss sizing and available tailoring options.
             </p>
           </div>
 
@@ -97,7 +97,7 @@ export const TailoringGuidePage: React.FC = () => {
             onClick={() => navigate('contact')}
             className="bg-[#FAF7F2] text-[#8B1E3F] hover:bg-white text-xs uppercase font-bold tracking-widest px-6 py-3.5 rounded-xl flex items-center gap-2 shrink-0 shadow-md transition-all"
           >
-            <Video className="w-4 h-4" /> Book Virtual Fitting
+            <Video className="w-4 h-4" /> Contact the store
           </button>
         </div>
       </div>

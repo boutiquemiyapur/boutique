@@ -3,7 +3,9 @@ import { useStore } from '../../context/StoreContext';
 import { Scissors, Ruler, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
 
 export const CustomTailoringBanner: React.FC = () => {
-  const { navigate } = useStore();
+  const { navigate, products } = useStore();
+
+  if (!products.some((product) => product.customStitchingAvailable)) return null;
 
   return (
     <section className="py-16 sm:py-20 bg-[#FAF4ED] border-b border-[#E6D5B8]">
@@ -20,26 +22,26 @@ export const CustomTailoringBanner: React.FC = () => {
               </div>
 
               <h2 className="text-2xl sm:text-4xl lg:text-5xl font-serif font-bold leading-tight">
-                Flawless Made-to-Measure Custom Blouse & Lehenga Tailoring
+                Tailoring options for selected products
               </h2>
 
               <p className="text-xs sm:text-sm text-[#EFE7DA]/90 leading-relaxed max-w-2xl font-sans">
-                Never worry about standard size mismatches again. Our senior master tailors draft unique custom patterns for your exact bust, waist, shoulder, armhole, and neckline measurements.
+                View the available tailoring option and fee on each product. Contact the store to discuss fit and measurements.
               </p>
 
               {/* Feature points */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 text-xs">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#DFBF77] shrink-0" />
-                  <span>2-Inch Alteration Margins</span>
+                  <span>Product-specific options</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#DFBF77] shrink-0" />
-                  <span>Premium Butter Silk Lining</span>
+                  <span>Saved measurements</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#DFBF77] shrink-0" />
-                  <span>Maggam & Zardozi Necklines</span>
+                  <span>Contact for details</span>
                 </div>
               </div>
             </div>

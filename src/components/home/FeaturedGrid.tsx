@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Product } from '../../types';
-import { Heart, ShoppingBag, Eye, Star, ShieldCheck, Sparkles, Scissors, ArrowRight } from 'lucide-react';
+import { ProductImage } from '../common/ProductImage';
+import { Heart, ShoppingBag, Eye, Star, ShieldCheck, ArrowRight } from 'lucide-react';
 
-type TabType = 'bestsellers' | 'new-arrivals' | 'bridal' | 'handloom';
+type TabType = 'all' | 'bestsellers' | 'new-arrivals' | 'bridal' | 'handloom';
 
 export const FeaturedGrid: React.FC = () => {
   const {
     products,
+    cms,
     formatPrice,
     addToCart,
     toggleWishlist,
@@ -16,7 +17,7 @@ export const FeaturedGrid: React.FC = () => {
     navigate
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>('bestsellers');
+  const [activeTab, setActiveTab] = useState<TabType>('all');
 
   const filteredProducts = products.filter((p) => {
     if (activeTab === 'bestsellers') return p.isBestseller;
@@ -33,16 +34,18 @@ export const FeaturedGrid: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div>
             <span className="text-xs uppercase tracking-[0.25em] font-semibold text-[#8B1E3F]">
-              Handcrafted Fashion
+              {cms.content.homeEyebrow}
             </span>
             <h2 className="text-2xl sm:text-4xl font-serif font-bold text-[#1A1715] mt-1">
-              Selected Styles
+              {activeTab === 'new-arrivals' ? cms.content.newArrivalsHeading : cms.content.collectionHeading}
             </h2>
+            <p className="mt-3 text-sm text-stone-600">{activeTab === 'new-arrivals' ? cms.content.newArrivalsDescription : cms.content.collectionDescription}</p>
             <div className="w-12 h-0.5 bg-[#C5A059] mt-2"></div>
           </div>
 
           {/* Filter Tabs */}
           <div className="flex flex-wrap gap-2 border border-[#E6D5B8] p-1 rounded-xl bg-[#FAF7F2]">
+            <button onClick={() => setActiveTab('all')} className={`px-4 py-2 text-xs font-semibold rounded-lg ${activeTab === 'all' ? 'bg-[#8B1E3F] text-white' : 'text-stone-700'}`}>All products</button>
             <button
               id="tab-bestsellers"
               onClick={() => setActiveTab('bestsellers')}
@@ -85,7 +88,7 @@ export const FeaturedGrid: React.FC = () => {
                   : 'text-stone-700 hover:text-black'
               }`}
             >
-              Pure Handloom
+              Handloom certified
             </button>
           </div>
         </div>
@@ -103,7 +106,7 @@ export const FeaturedGrid: React.FC = () => {
               >
                 {/* Image Container */}
                 <div className="relative aspect-3/4 overflow-hidden bg-stone-100 cursor-pointer">
-                  <img
+                  <ProductImage
                     src={product.images[0]}
                     alt={product.title}
                     onClick={() => navigate('product-detail', product.id)}
@@ -114,10 +117,10 @@ export const FeaturedGrid: React.FC = () => {
                   <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
                     {product.isHandloomCertified && (
                       <span className="bg-[#16423C] text-[#DFBF77] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3" /> Silk Mark
+                        <ShieldCheck className="w-3 h-3" /> Handloom certified
                       </span>
                     )}
-                    {product.discountPercentage && (
+                    {product.discountPercentage > 0 && (
                       <span className="bg-[#8B1E3F] text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md shadow-xs">
                         {product.discountPercentage}% OFF
                       </span>
@@ -172,11 +175,11 @@ export const FeaturedGrid: React.FC = () => {
                     </h3>
 
                     {/* Rating */}
-                    <div className="flex items-center gap-1 mt-1.5 text-amber-500">
+                    {product.reviewCount > 0 && <div className="flex items-center gap-1 mt-1.5 text-amber-500">
                       <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                       <span className="text-xs font-bold text-stone-700">{product.rating}</span>
                       <span className="text-[10px] text-stone-400">({product.reviewCount})</span>
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Pricing and Add to Bag */}
@@ -185,7 +188,7 @@ export const FeaturedGrid: React.FC = () => {
                       <div className="text-sm sm:text-base font-serif font-bold text-[#8B1E3F]">
                         {formatPrice(product.priceINR)}
                       </div>
-                      {product.originalPriceINR && (
+                      {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
                         <div className="text-[11px] line-through text-stone-400 font-serif">
                           {formatPrice(product.originalPriceINR)}
                         </div>
@@ -194,13 +197,8 @@ export const FeaturedGrid: React.FC = () => {
 
                     <button
                       id={`add-to-bag-card-${product.id}`}
-                      onClick={() =>
-                        addToCart(
-                          product,
-                          product.colors[0]?.colorName || 'Default',
-                          product.availableSizes[0] || 'Unstitched'
-                        )
-                      }
+                      disabled={product.stockCount <= 0}
+                      onClick={() => product.colors.length || product.availableSizes.length ? setQuickViewProduct(product) : addToCart(product, '', '')}
                       className="p-2.5 bg-[#1A1715] hover:bg-[#8B1E3F] text-white rounded-lg transition-colors shadow-xs"
                       title="Add to Shopping Bag"
                       aria-label="Add to Bag"
@@ -221,7 +219,7 @@ export const FeaturedGrid: React.FC = () => {
             onClick={() => navigate('shop')}
             className="inline-flex items-center gap-2 bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase font-semibold tracking-widest px-8 py-3.5 rounded-lg shadow-lg hover:shadow-xl transition-all"
           >
-            <span>View All Handloom Silks & Styles</span>
+            <span>View all products</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

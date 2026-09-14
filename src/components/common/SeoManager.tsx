@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { BRAND } from '../../config/brand';
 import { absoluteUrl, CATEGORY_PATHS, metadataForView, SEO } from '../../config/seo';
 import { useStore } from '../../context/StoreContext';
 
@@ -24,7 +23,7 @@ const setStructuredData = (value: unknown[]) => {
 };
 
 export const SeoManager = () => {
-  const { activeView, selectedProductId, products, filters } = useStore();
+  const { activeView, selectedProductId, products, filters, cms } = useStore();
   const product = activeView === 'product-detail' ? products.find((item) => item.id === selectedProductId && item.isActive !== false) : undefined;
   const page = metadataForView(activeView, product, filters.category, Boolean(filters.searchQuery.trim()));
 
@@ -44,9 +43,9 @@ export const SeoManager = () => {
     const graph: unknown[] = [];
     if (activeView === 'home') graph.push({
       '@type': 'ClothingStore', '@id': `${SEO.origin}/#store`, name: SEO.siteName, url: absoluteUrl('/'), image: SEO.logo, logo: SEO.logo,
-      telephone: `+91${BRAND.phone}`, email: BRAND.email,
-      address: { '@type': 'PostalAddress', streetAddress: BRAND.seoStreetAddress, addressLocality: 'Hyderabad', addressRegion: 'Telangana', postalCode: '500049', addressCountry: 'IN' },
-      hasMap: BRAND.mapsUrl,
+      ...(cms.contact.phone ? { telephone: cms.contact.phone } : {}), ...(cms.contact.email ? { email: cms.contact.email } : {}),
+      ...(cms.contact.addressLines.length ? { address: { '@type': 'PostalAddress', streetAddress: cms.contact.addressLines.join(', ') } } : {}),
+      hasMap: cms.contact.mapsUrl,
     });
     if (page.product) {
       graph.push({
@@ -64,7 +63,7 @@ export const SeoManager = () => {
       ] });
     }
     setStructuredData(graph);
-  }, [activeView, page.description, page.image, page.indexable, page.path, page.product, page.title, page.type]);
+  }, [cms.contact, activeView, page.description, page.image, page.indexable, page.path, page.product, page.title, page.type]);
 
   return activeView === 'home' ? <h1 className="sr-only">AB Collection by Aadya women&apos;s boutique in Miyapur, Hyderabad</h1> : null;
 };

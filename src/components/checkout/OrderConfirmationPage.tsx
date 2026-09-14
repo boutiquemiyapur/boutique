@@ -1,3 +1,5 @@
+import { ProductImage } from '../common/ProductImage';
+import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
 import {
@@ -104,15 +106,15 @@ export const OrderConfirmationPage: React.FC = () => {
             <div className="divide-y divide-[#E6D5B8]/60">
               {currentOrder.items.map((item) => (
                 <div key={item.cartItemId} className="py-3 flex items-center gap-4 text-xs">
-                  <img
-                    src={item.product.images[0]}
+                  <ProductImage
+                    src={productImages(item.product, item.selectedColor)[0]}
                     alt=""
                     className="w-16 h-20 object-cover rounded-lg shrink-0 border border-[#E6D5B8]"
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-stone-900">{item.product.title}</h4>
                     <p className="text-stone-500 mt-0.5">
-                      Color: {item.selectedColor} • Size: {item.selectedSize} • Qty: {item.quantity}
+                      {variantSummary(item)} • Qty: {item.quantity}
                     </p>
                     {item.isCustomTailored && (
                       <span className="text-[11px] text-[#8B1E3F] font-semibold flex items-center gap-1 mt-1">

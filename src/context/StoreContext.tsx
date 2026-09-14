@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   AppView,
   CartItem,
@@ -16,8 +16,8 @@ import {
   ShippingMethod,
   SizeOption
 } from '../types';
-import { INITIAL_PRODUCTS } from '../data/mockProducts';
-import { CURRENCIES, INITIAL_COUPONS, INITIAL_CUSTOMER, INITIAL_ORDERS } from '../data/initialData';
+import { cartCatalogIssue, refreshCartProducts } from '../utils/productData';
+import { CURRENCIES } from '../data/initialData';
 import confetti from 'canvas-confetti';
 import { AuthSession, authErrorMessage, logoutFirebaseUser, registerWithEmail, requestPasswordReset, signInWithEmail, startAuthSession } from '../firebase/auth';
 import { cartLineKey, commerceRepository, normalizeCartItems, normalizeWishlistProductIds } from '../services/commerceRepository';
@@ -36,6 +36,8 @@ interface StoreContextType {
   isCustomerDataReady: boolean;
   authSession: AuthSession;
   products: Product[];
+  catalogStatus: 'loading' | 'ready' | 'error';
+  cartIssue: string | null;
   cart: CartItem[];
   wishlist: string[];
   orders: Order[];
@@ -201,40 +203,28 @@ const customerForSession = (session: NonNullable<AuthSession>): CustomerProfile 
   ordersCount: 0
 });
 
+const INITIAL_CUSTOMER: CustomerProfile = { id: '', fullName: '', email: '', phone: '', tier: 'Silver Patron', savedAddresses: [], totalSpendINR: 0, ordersCount: 0 };
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Persistent State initializers with localStorage fallbacks
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('mb_products');
-      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-    } catch {
-      return INITIAL_PRODUCTS;
-    }
-  });
+  const [products, setProducts] = useState<Product[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
   // Do not hydrate cart or wishlist before Firebase resolves the owner.
   // This prevents a prior account's browser state from flashing for another user.
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [storedCart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
 
   const [orders, setOrders] = useState<Order[]>([]);
 
-  const [coupons, setCoupons] = useState<Coupon[]>(() => {
-    try {
-      const saved = localStorage.getItem('mb_coupons');
-      return saved ? JSON.parse(saved) : INITIAL_COUPONS;
-    } catch {
-      return INITIAL_COUPONS;
-    }
-  });
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
 
   const [customer, setCustomer] = useState<CustomerProfile>(INITIAL_CUSTOMER);
 
   const [cms, setCms] = useState<PublicCms>(DEFAULT_CMS);
   const selectedCurrency = 'INR' as const;
   const [activeView, setActiveView] = useState<AppView>('home');
-  const [selectedProductId, setSelectedProductId] = useState<string | null>('mb-kanjeevaram-01');
-  const [selectedTrackingOrderId, setSelectedTrackingOrderId] = useState<string | null>('ord-881');
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedTrackingOrderId, setSelectedTrackingOrderId] = useState<string | null>(null);
   const [lastPlacedOrder, setLastPlacedOrder] = useState<Order | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
 
@@ -262,18 +252,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => { void refreshCms(); }, []);
-
-  // Firebase is accessed only through the repository. The local browser storage
-  // remains an offline/unauthenticated fallback while authentication is enabled.
-  useEffect(() => {
-    commerceRepository.saveLocalCatalog(products);
-  }, [products]);
-
-  useEffect(() => {
-    commerceRepository.saveLocalCoupons(coupons);
-  }, [coupons]);
-
-
 
   const resetPrivateState = (session: AuthSession = null) => {
     pendingCartLineKeysRef.current.clear();
@@ -304,15 +282,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => startAuthSession(applyAuthSession), []);
 
-  useEffect(() => {
-    void Promise.all([
-      commerceRepository.loadCatalog(INITIAL_PRODUCTS),
-      commerceRepository.loadCoupons(INITIAL_COUPONS)
-    ]).then(([loadedProducts, loadedCoupons]) => {
-      setProducts(loadedProducts);
-      setCoupons(loadedCoupons);
-    });
-  }, []);
+  useEffect(() => commerceRepository.subscribeToCatalog(
+    (nextProducts) => { setProducts(nextProducts); setCatalogStatus('ready'); },
+    (error) => { console.warn('Catalog listener failed.', error); setProducts([]); setCatalogStatus('error'); }
+  ), []);
+  useEffect(() => { void commerceRepository.loadCoupons().then(setCoupons); }, []);
+
+  const cart = useMemo(() => refreshCartProducts(storedCart, products), [storedCart, products]);
+  const cartIssue = catalogStatus !== 'ready' ? 'The catalog is unavailable. Please wait or refresh before checking out.' : cartCatalogIssue(cart, products);
 
   useEffect(() => {
     const loadVersion = ++privateLoadVersionRef.current;
@@ -532,6 +509,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     giftNote?: string
   ): Promise<boolean> => {
     if (!canChangePrivateData(() => addToCart(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
+    const currentProduct = products.find((item) => item.id === product.id);
+    if (catalogStatus !== 'ready' || !currentProduct) {
+      showToast('Product unavailable', 'Please refresh the catalog and try again.', 'error'); return false;
+    }
+    product = currentProduct;
     const newItem: CartItem = {
       cartItemId: `cart-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       product,
@@ -551,11 +533,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return false;
     }
 
+    const issue = cartCatalogIssue([newItem, ...currentCart], products);
+    if (issue) { showToast('Check your bag', issue, 'error'); return false; }
     pendingCartLineKeysRef.current.add(lineKey);
     try {
       const saved = await commitCart([newItem, ...currentCart]);
       if (saved) {
-        showToast('Added to Shopping Bag', `${product.title} (${selectedSize}) is now in your bag.`);
+        showToast('Added to Shopping Bag', `${product.title}${selectedSize ? ` (${selectedSize})` : ""} is now in your bag.`);
         setIsCartDrawerOpen(true);
       }
       return saved;
@@ -569,7 +553,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (quantity <= 0) return removeFromCart(cartItemId);
     const currentCart = normalizeCartItems(cart);
     if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
-    return commitCart(currentCart.map((item) => item.cartItemId === cartItemId ? { ...item, quantity: Math.max(1, Math.floor(quantity)) } : item));
+    const updated = currentCart.map((item) => item.cartItemId === cartItemId ? { ...item, quantity: Math.max(1, Math.floor(quantity)) } : item);
+    const issue = cartCatalogIssue(updated, products);
+    const previous = currentCart.find((item) => item.cartItemId === cartItemId)!;
+    if (quantity > previous.quantity && issue) { showToast('Check quantity', issue, 'error'); return false; }
+    return commitCart(updated);
   };
 
   const removeFromCart = async (cartItemId: string): Promise<boolean> => {
@@ -689,12 +677,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     shippingMethod: ShippingMethod,
     paymentMethod: PaymentMethod
   ): Promise<Order> => {
+    if (!cart.length) throw new Error('Your shopping bag is empty.');
+    const latestProducts = await commerceRepository.loadCatalog();
+    const latestCart = refreshCartProducts(cart, latestProducts);
+    const issue = cartCatalogIssue(latestCart, latestProducts);
+    setProducts(latestProducts);
+    if (issue) throw new Error(issue);
+    if (latestCart.some((item, index) => item.product.priceINR !== cart[index].product.priceINR || item.tailoringFeeINR !== cart[index].tailoringFeeINR)) {
+      throw new Error('Product prices have changed. Review the updated total and place your order again.');
+    }
     const orderNum = `MB-${Math.floor(10000 + Math.random() * 90000)}`;
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
       orderNumber: orderNum,
       createdAt: new Date().toISOString(),
-      items: [...cart],
+      items: latestCart,
       shippingAddress,
       shippingMethod,
       shippingCostINR: shippingMethod === 'express' ? 350 : cartShippingINR,
@@ -926,6 +923,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isCustomerDataReady: privateDataReady,
         authSession,
         products,
+        catalogStatus,
+        cartIssue,
         cart,
         wishlist,
         orders,
