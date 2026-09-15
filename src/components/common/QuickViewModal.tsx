@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ProductOptions } from './ProductOptions';
 import { ProductImage } from './ProductImage';
-import { productImages, stockMessage } from '../../utils/productData';
+import { isVariantAvailable, productImages, stockMessage } from '../../utils/productData';
 import { SizeOption } from '../../types';
 import { X, Heart, ShoppingBag, Star, ShieldCheck, Scissors } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -41,6 +41,7 @@ export const QuickViewModal: React.FC = () => {
   const activeColor = selectedColor;
 
   const gallery = productImages(product, activeColor);
+  const selectedOptionAvailable = isVariantAvailable(product, activeColor, selectedSize, quantity);
 
   return (
     <div
@@ -146,7 +147,7 @@ export const QuickViewModal: React.FC = () => {
             </p>
 
             <div className="mt-4"><ProductOptions product={product} color={activeColor} size={selectedSize} onColor={(value) => { setSelectedColor(value); setSelectedImgIndex(0); }} onSize={setSelectedSize} /></div>
-            <p className="mt-3 text-xs">{stockMessage(product, cms.lowStockThreshold)}</p>
+            <p className="mt-3 text-xs">{!selectedOptionAvailable && product.stockCount > 0 ? 'Selected option is out of stock' : stockMessage(product, cms.lowStockThreshold)}</p>
 
             {/* Custom Tailoring Option */}
             {product.customStitchingAvailable && (
@@ -177,13 +178,13 @@ export const QuickViewModal: React.FC = () => {
           <div className="mt-6 pt-4 border-t border-[#E6D5B8] flex items-center gap-3">
             <button
               id="quickview-add-to-bag-btn"
-              disabled={product.stockCount <= 0}
+              disabled={!selectedOptionAvailable}
               onClick={() => {
                 void addToCart(product, activeColor, selectedSize, quantity, isCustomTailoring).then((added) => {
                   if (added) setQuickViewProduct(null);
                 });
               }}
-              className="flex-1 bg-[#8B1E3F] hover:bg-[#721C24] text-white font-semibold text-xs uppercase tracking-wider py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+              className="flex-1 bg-[#8B1E3F] hover:bg-[#721C24] text-white font-semibold text-xs uppercase tracking-wider py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ShoppingBag className="w-4 h-4" /> Add to Shopping Bag
             </button>

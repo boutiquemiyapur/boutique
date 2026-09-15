@@ -145,23 +145,17 @@ export const OrderConfirmationPage: React.FC = () => {
 
             <div className="space-y-2 bg-[#FAF7F2] p-4 rounded-xl border border-[#E6D5B8]">
               <div className="flex justify-between text-stone-600">
-                <span>Subtotal</span>
+                <span>Merchandise</span>
                 <span>{formatPrice(currentOrder.subtotalINR)}</span>
               </div>
+              {currentOrder.tailoringTotalINR > 0 && <div className="flex justify-between text-stone-600"><span>Tailoring</span><span>{formatPrice(currentOrder.tailoringTotalINR)}</span></div>}
               {currentOrder.couponDiscountINR > 0 && (
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>Discount</span>
                   <span>-{formatPrice(currentOrder.couponDiscountINR)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-stone-600">
-                <span>GST Tax (5%)</span>
-                <span>{formatPrice(currentOrder.taxGstINR)}</span>
-              </div>
-              <div className="flex justify-between text-stone-600">
-                <span>Shipping</span>
-                <span>{currentOrder.shippingCostINR === 0 ? 'FREE' : formatPrice(currentOrder.shippingCostINR)}</span>
-              </div>
+              {currentOrder.charges?.map((charge) => <div key={charge.id} className="flex justify-between text-stone-600"><span>{charge.name}</span><span>{formatPrice(charge.amountINR)}</span></div>) || <><div className="flex justify-between text-stone-600"><span>Tax</span><span>{formatPrice(currentOrder.taxGstINR)}</span></div><div className="flex justify-between text-stone-600"><span>Shipping</span><span>{formatPrice(currentOrder.shippingCostINR)}</span></div></>}
               <div className="flex justify-between text-base font-serif font-bold text-[#8B1E3F] pt-2 border-t border-[#E6D5B8]">
                 <span>Total payable on delivery</span>
                 <span>{formatPrice(currentOrder.totalINR)}</span>

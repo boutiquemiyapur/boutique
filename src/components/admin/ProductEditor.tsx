@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { Product } from '../../types';
-import { normalizeProduct, productValidationError, uniqueValues } from '../../utils/productData';
+import { Product, StoreCategory } from '../../types';
+import { hasVariantInventory, normalizeProduct, productValidationError, syncVariantInventory, totalProductStock, uniqueValues } from '../../utils/productData';
 import { MediaUploader } from './MediaUploader';
 
 const input = 'mt-1 w-full min-w-0 border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-stone-700';
 
-export const ProductEditor = ({ product, onClose, onSave }: { product: Product | null; onClose: () => void; onSave: (product: Product) => Promise<void> }) => {
+export const ProductEditor = ({ product, categories, onCreateCategory, onClose, onSave }: { product: Product | null; categories: StoreCategory[]; onCreateCategory: (name: string) => Promise<StoreCategory>; onClose: () => void; onSave: (product: Product) => Promise<void> }) => {
   const [draft, setDraft] = useState(() => normalizeProduct(product || { id: `ab-${Date.now()}`, isActive: true }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const set = <K extends keyof Product>(key: K, value: Product[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setError('');
-    const validationError = productValidationError(draft);
+    const prepared = hasVariantInventory(draft) ? normalizeProduct({ ...draft, variantInventory: syncVariantInventory(draft) }) : normalizeProduct(draft);
+    const validationError = productValidationError(prepared);
     if (validationError) { setError(validationError); return; }
     if (draft.colors.some((color) => !color.colorName.trim() || (color.colorHex && !/^#[0-9a-f]{6}$/i.test(color.colorHex)))) {
       setError('Each color needs a name; optional hex codes must use #RRGGBB.'); return;
@@ -22,7 +25,7 @@ export const ProductEditor = ({ product, onClose, onSave }: { product: Product |
       setError('Enter both a label and value for each specification, or remove the row.'); return;
     }
     setSaving(true);
-    try { await onSave(normalizeProduct(draft)); }
+    try { await onSave(prepared); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Product could not be saved. Please try again.'); }
     finally { setSaving(false); }
   };
@@ -31,12 +34,13 @@ export const ProductEditor = ({ product, onClose, onSave }: { product: Product |
     <div className="flex items-center justify-between border-b border-stone-200 pb-4"><h2 id="product-editor-title" className="font-serif text-2xl">{product ? 'Edit product' : 'Add product'}</h2><button type="button" disabled={saving} onClick={onClose} aria-label="Close"><X /></button></div>
     <form onSubmit={submit} className="mt-5 grid gap-4">
       {textField('title', 'Product name', true)}
-      <div className="grid gap-3 sm:grid-cols-2">{textField('sku', 'SKU', true)}{textField('category', 'Category', true)}
+      <div className="grid gap-3 sm:grid-cols-2">{textField('sku', 'SKU', true)}<label className="text-sm">Category<select required className={input} value={draft.category} onChange={(event) => set('category', event.target.value)}><option value="">Select a category</option>{draft.category && !categories.some((item) => item.name === draft.category) && <option value={draft.category}>{draft.category} (legacy)</option>}{categories.filter((item) => item.isActive || item.name === draft.category).map((item) => <option key={item.id} value={item.name}>{item.name}{item.isActive ? '' : ' (inactive)'}</option>)}</select></label>
         <label>Price (INR)<input required className={input} min="0" step="0.01" type="number" value={draft.priceINR} onChange={(event) => set('priceINR', Number(event.target.value))} /></label>
-        <label>Stock<input required className={input} min="0" step="1" type="number" value={draft.stockCount} onChange={(event) => set('stockCount', Number(event.target.value))} /></label>
+        <label>Product stock<input required disabled={hasVariantInventory(draft)} className={`${input} disabled:bg-stone-100`} min="0" step="1" type="number" value={hasVariantInventory(draft) ? totalProductStock(draft) : draft.stockCount} onChange={(event) => set('stockCount', Number(event.target.value))} /><span className="mt-1 block text-xs text-stone-500">{hasVariantInventory(draft) ? 'Calculated from the variant rows below.' : 'Used for legacy products and products without variant inventory.'}</span></label>
         <label>Original price / MRP (optional)<input className={input} type="number" min="0" step="0.01" value={draft.originalPriceINR ?? ''} onChange={(event) => set('originalPriceINR', event.target.value === '' ? undefined : Number(event.target.value))} /></label>
         <label>Discount % (optional)<input className={input} type="number" min="0" max="100" step="0.01" value={draft.discountPercentage ?? ''} onChange={(event) => set('discountPercentage', event.target.value === '' ? undefined : Number(event.target.value))} /></label>
       </div>
+      <div className="border border-stone-200 bg-stone-50 p-3"><p className="text-sm font-medium">Create a category without leaving this product</p><div className="mt-2 flex flex-col gap-2 sm:flex-row"><input className={input} placeholder="New category name" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} /><button type="button" disabled={creatingCategory || !newCategoryName.trim()} className="min-h-11 shrink-0 bg-stone-800 px-4 text-xs font-semibold text-white disabled:opacity-50" onClick={async () => { setCreatingCategory(true); setError(''); try { const created = await onCreateCategory(newCategoryName); set('category', created.name); setNewCategoryName(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Category could not be created.'); } finally { setCreatingCategory(false); } }}>{creatingCategory ? 'Creating…' : 'Create category'}</button></div></div>
       {textField('subtitle', 'Subtitle (optional)')}
       <label>Description (optional)<textarea className={input} rows={4} value={draft.description} onChange={(event) => set('description', event.target.value)} /></label>
       <div className="grid gap-3 sm:grid-cols-2">{textField('fabric', 'Material / Fabric Composition (optional)')}{textField('occasion', 'Occasion (optional)')}</div>
@@ -53,6 +57,13 @@ export const ProductEditor = ({ product, onClose, onSave }: { product: Product |
         </div>)}
         <button type="button" onClick={() => set('colors', [...draft.colors, { colorName: '', colorHex: '', images: [] }])} className="min-h-11 text-xs underline">+ Add color</button>
       </fieldset>
+      {(draft.colors.length > 0 || draft.availableSizes.length > 0) && <fieldset className="min-w-0 border border-stone-300 p-3"><legend className="text-sm font-medium">Inventory by variant</legend>
+        {!hasVariantInventory(draft) ? <div><p className="text-xs text-amber-800">Variant stock is not configured. The product-level stock above is currently shared by every size and color.</p><button type="button" onClick={() => set('variantInventory', syncVariantInventory(draft))} className="mt-3 min-h-11 bg-stone-800 px-4 text-xs font-semibold text-white">Configure variant stock</button></div> : <div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-stone-600">New combinations start at zero. Rows removed from the size or color lists are removed when you save.</p><button type="button" onClick={() => set('variantInventory', undefined)} className="min-h-11 text-xs underline">Use shared product stock</button></div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[430px] text-left text-xs"><thead><tr className="border-b border-stone-300"><th className="py-2">Color</th><th className="py-2">Size</th><th className="py-2">Stock</th></tr></thead><tbody>{syncVariantInventory(draft).map((row) => <tr key={row.key} className="border-b border-stone-200"><td className="py-2 pr-3">{row.colorName || 'All colors'}</td><td className="py-2 pr-3">{row.size || 'All sizes'}</td><td className="py-2"><input aria-label={`Stock for ${row.colorName || 'all colors'} ${row.size || 'all sizes'}`} className="w-28 border border-stone-300 bg-white px-3 py-2" type="number" min="0" step="1" value={row.stock} onChange={(event) => { const next = syncVariantInventory(draft).map((item) => item.key === row.key ? { ...item, stock: Math.max(0, Math.floor(Number(event.target.value) || 0)) } : item); set('variantInventory', next); }} /></td></tr>)}</tbody></table></div>
+          <p className="mt-3 text-sm font-medium">Total stock: {totalProductStock({ ...draft, variantInventory: syncVariantInventory(draft) })}</p>
+        </div>}
+      </fieldset>}
       <fieldset className="min-w-0 border border-stone-200 p-3"><legend className="text-sm">Additional specifications (optional)</legend>
         <p className="mb-3 text-xs text-stone-500">Use for relevant details such as number of pieces or finish. Material and care have their own fields above.</p>
         {(draft.specifications || []).map((row, index) => <div key={index} className="mb-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">

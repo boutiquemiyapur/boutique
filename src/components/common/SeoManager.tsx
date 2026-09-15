@@ -23,9 +23,10 @@ const setStructuredData = (value: unknown[]) => {
 };
 
 export const SeoManager = () => {
-  const { activeView, selectedProductId, products, filters, cms } = useStore();
+  const { activeView, selectedProductId, products, categories, filters, cms } = useStore();
   const product = activeView === 'product-detail' ? products.find((item) => item.id === selectedProductId && item.isActive !== false) : undefined;
-  const page = metadataForView(activeView, product, filters.category, Boolean(filters.searchQuery.trim()));
+  const configuredCategory = categories.find((category) => category.isActive && category.name === filters.category);
+  const page = metadataForView(activeView, product, filters.category, Boolean(filters.searchQuery.trim()), configuredCategory?.slug);
 
   useEffect(() => {
     const canonical = absoluteUrl(page.path);
@@ -58,12 +59,12 @@ export const SeoManager = () => {
       graph.push({ '@type': 'BreadcrumbList', itemListElement: [
         { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
         { '@type': 'ListItem', position: 2, name: 'Shop', item: absoluteUrl('/shop') },
-        { '@type': 'ListItem', position: 3, name: page.product.category, item: absoluteUrl(CATEGORY_PATHS[page.product.category] ? `/collections/${CATEGORY_PATHS[page.product.category]}` : '/shop') },
+        { '@type': 'ListItem', position: 3, name: page.product.category, item: absoluteUrl((categories.find((category) => category.isActive && category.name === page.product!.category)?.slug || CATEGORY_PATHS[page.product.category]) ? `/collections/${categories.find((category) => category.isActive && category.name === page.product!.category)?.slug || CATEGORY_PATHS[page.product.category]}` : '/shop') },
         { '@type': 'ListItem', position: 4, name: page.product.title, item: canonical },
       ] });
     }
     setStructuredData(graph);
-  }, [cms.contact, activeView, page.description, page.image, page.indexable, page.path, page.product, page.title, page.type]);
+  }, [cms.contact, categories, activeView, page.description, page.image, page.indexable, page.path, page.product, page.title, page.type]);
 
   return activeView === 'home' ? <h1 className="sr-only">AB Collection by Aadya women&apos;s boutique in Miyapur, Hyderabad</h1> : null;
 };

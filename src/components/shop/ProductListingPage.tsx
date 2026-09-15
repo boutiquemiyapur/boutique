@@ -4,18 +4,19 @@ import { useStore } from '../../context/StoreContext';
 import { Category, FabricType, OccasionType, SizeOption } from '../../types';
 import { ProductCard } from '../common/ProductCard';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { activeCategories } from '../../utils/categoryData';
 
 const pageSize = 12;
 
 export const ProductListingPage: React.FC = () => {
-  const { filters, products, catalogStatus, navigate, resetFilters, setFilters } = useStore();
+  const { filters, products, categories: storeCategories, catalogStatus, navigate, resetFilters, setFilters } = useStore();
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   useBodyScrollLock(isFiltersOpen);
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const sizes = useMemo(() => [...new Set(products.flatMap((product) => product.availableSizes))], [products]);
   const fabrics = useMemo(() => [...new Set(products.map((product) => product.fabric).filter(Boolean))], [products]);
   const occasions = useMemo(() => [...new Set(products.map((product) => product.occasion).filter(Boolean))], [products]);
-  const categories = useMemo<Category[]>(() => ['All', ...Array.from(new Set(products.map((product) => product.category))).filter(Boolean).sort()], [products]);
+  const categories = useMemo<Category[]>(() => ['All', ...activeCategories(storeCategories).map((category) => category.name)], [storeCategories]);
   const availableColors = useMemo(() => Array.from(new Set(products.flatMap((product) => product.colors.map((color) => color.colorName)))), [products]);
   const matchingProducts = useMemo(() => products.filter((product) => {
     if (filters.category !== 'All' && product.category !== filters.category) return false;
@@ -37,7 +38,7 @@ export const ProductListingPage: React.FC = () => {
     return Number(Boolean(b.isBestseller)) - Number(Boolean(a.isBestseller));
   }), [filters, products]);
   const toggle = <T,>(key: 'fabrics' | 'occasions' | 'sizes' | 'colors', value: T) => { setVisibleCount(pageSize); setFilters((current) => ({ ...current, [key]: (current[key] as T[]).includes(value) ? (current[key] as T[]).filter((item) => item !== value) : [...(current[key] as T[]), value] })); };
-  const updateFilters = (next: Partial<typeof filters>) => { setVisibleCount(pageSize); setFilters((current) => ({ ...current, ...next })); };
+  const updateFilters = (next: Partial<typeof filters>) => { setVisibleCount(pageSize); setFilters((current) => ({ ...current, ...next })); if (next.category) { const slug = storeCategories.find((category) => category.isActive && category.name === next.category)?.slug; window.history.replaceState({}, '', slug ? `/collections/${slug}` : '/shop'); } };
 
   return <div className="min-h-screen bg-[#fffdf9] py-8 sm:py-12"><div className="mx-auto max-w-[1440px] px-4 sm:px-7">
     <header className="border-b border-[#ddd7cf] pb-7"><button onClick={() => navigate('home')} className="text-[10px] uppercase tracking-[.15em] text-stone-500 hover:underline">Home / {filters.category === 'All' ? 'Shop' : filters.category}</button><div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-[10px] uppercase tracking-[.2em] text-stone-500">AB Collection</p><h1 className="mt-2 font-serif text-4xl sm:text-5xl">{filters.category === 'All' ? 'The collection' : filters.category}</h1><p className="mt-2 text-sm text-stone-600">{matchingProducts.length} products in the current catalog.</p></div><div className="flex flex-wrap gap-2"><label className="relative min-w-[220px]"><span className="sr-only">Search AB Collection</span><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" /><input value={filters.searchQuery} onChange={(event) => updateFilters({ searchQuery: event.target.value })} placeholder="Search styles, fabric or SKU" className="w-full border border-[#ddd7cf] bg-white py-2.5 pl-9 pr-3 text-xs" /></label><button onClick={() => setIsFiltersOpen(true)} className="inline-flex items-center gap-2 border border-[#2c2926] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[.12em] lg:hidden"><SlidersHorizontal className="h-4 w-4" />Filter</button><select value={filters.sortBy} onChange={(event) => updateFilters({ sortBy: event.target.value as typeof filters.sortBy })} className="border border-[#ddd7cf] bg-white px-3 py-2.5 text-xs"><option value="featured">Recommended</option><option value="newest">Newest</option><option value="price-low-high">Price: low to high</option><option value="price-high-low">Price: high to low</option><option value="name-a-z">Name: A–Z</option><option value="rating">Highest rated</option></select></div></div></header>

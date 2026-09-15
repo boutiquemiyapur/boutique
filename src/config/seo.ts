@@ -49,7 +49,7 @@ export const cleanDescription = (value: string, fallback: string) => {
 
 export type PageSeo = { title: string; description: string; path: string; indexable: boolean; image: string; type: 'website' | 'product'; product?: Product; category?: string };
 
-export const metadataForView = (view: AppView, product: Product | undefined, category: string, hasSearch: boolean): PageSeo => {
+export const metadataForView = (view: AppView, product: Product | undefined, category: string, hasSearch: boolean, configuredCategorySlug = ''): PageSeo => {
   if (view === 'product-detail') {
     if (!product || product.isActive === false) return { title: `Product Not Found | ${SEO.siteName}`, description: 'The requested product is not available.', path: '/404', indexable: false, image: SEO.logo, type: 'website' };
     return {
@@ -58,11 +58,12 @@ export const metadataForView = (view: AppView, product: Product | undefined, cat
       path: productPath(product), indexable: true, image: product.images[0] || SEO.logo, type: 'product', product,
     };
   }
-  if (view === 'shop' && category !== 'All' && CATEGORY_PATHS[category]) {
+  const collectionSlug = configuredCategorySlug || CATEGORY_PATHS[category];
+  if (view === 'shop' && category !== 'All' && collectionSlug) {
     return {
       title: `${category} for Women | ${SEO.siteName}`,
       description: `Explore ${category.toLowerCase()} from ${SEO.siteName}, a women's boutique in Miyapur, Hyderabad.`,
-      path: `/collections/${CATEGORY_PATHS[category]}`, indexable: !hasSearch, image: SEO.logo, type: 'website', category,
+      path: `/collections/${collectionSlug}`, indexable: !hasSearch, image: SEO.logo, type: 'website', category,
     };
   }
   const page = staticMetadata[view];

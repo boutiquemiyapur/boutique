@@ -4,20 +4,21 @@ import { Heart, Menu, Search, ShoppingBag, User, X } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { BRAND, BrandMark } from '../../config/brand';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { activeCategories } from '../../utils/categoryData';
 
 const iconButton = 'relative grid h-10 w-10 place-items-center text-[#17263d] transition hover:bg-[#edf2f8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17335c]';
 
 export const Header: React.FC = () => {
-  const { navigate, setFilters, products, wishlist, cart, requireAuth, setIsCartDrawerOpen, setIsWishlistDrawerOpen } = useStore();
+  const { navigate, setFilters, products, categories, wishlist, cart, requireAuth, setIsCartDrawerOpen, setIsWishlistDrawerOpen } = useStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedElement = useRef<HTMLElement | null>(null);
 
-  const collections = useMemo(() => [...new Set(products.map((product) => product.category))].filter(Boolean).sort(), [products]);
+  const collections = useMemo(() => activeCategories(categories).filter((category) => products.some((product) => product.category === category.name)).map((category) => category.name), [categories, products]);
   const closeMenu = () => setIsMenuOpen(false);
-  const goToCollection = (category: string) => { setFilters((current) => ({ ...current, category, searchQuery: '' })); navigate('shop'); closeMenu(); };
+  const goToCollection = (category: string) => { setFilters((current) => ({ ...current, category, searchQuery: '' })); navigate('shop'); const slug = categories.find((item) => item.isActive && item.name === category)?.slug; if (slug) window.history.replaceState({}, '', `/collections/${slug}`); closeMenu(); };
   const goToNewArrivals = () => { setFilters((current) => ({ ...current, category: 'All', sortBy: 'newest', searchQuery: '' })); navigate('shop'); closeMenu(); };
   const closeMenuThen = (action: () => void) => () => { action(); closeMenu(); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); setFilters((current) => ({ ...current, category: 'All', searchQuery: search })); navigate('shop'); setIsSearchOpen(false); };

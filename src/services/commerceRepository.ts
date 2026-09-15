@@ -1,7 +1,8 @@
 import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
 import { productFromDocument, productForStorage } from '../utils/productData';
 import { firestore } from '../firebase/config';
-import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem } from '../types';
+import { firebaseAuth } from '../firebase/config';
+import { CartItem, Coupon, CustomerProfile, Order, OrderStatus, Product, ReviewItem, ShippingAddress } from '../types';
 
 export interface CustomerDataSnapshot {
   cart?: CartItem[];
@@ -49,17 +50,6 @@ const normalizeForFirestore = (value: unknown): unknown => {
   }
   return value;
 };
-
-/** `/orders/{orderId}` is the canonical record for all new orders. */
-const canonicalOrderDocument = (uid: string, order: Order) => ({
-  customerId: uid,
-  orderNumber: order.orderNumber,
-  paymentStatus: order.paymentStatus,
-  orderStatus: order.orderStatus,
-  data: normalizeForFirestore(order) as Order,
-  createdAt: serverTimestamp(),
-  updatedAt: serverTimestamp()
-});
 
 const orderFromDocument = (value: Record<string, unknown>): Order | null => {
   const order = value.data as Order | undefined;
@@ -178,12 +168,36 @@ export const commerceRepository = {
         updatedAt: serverTimestamp()
       });
   },
-  async saveOrder(uid: string | null, order: Order) {
+  async createOrder(uid: string | null, items: CartItem[], shippingAddress: ShippingAddress, couponCode: string | null, requestId: string, expectedTotalINR: number) {
     if (!uid) throw new Error('Please sign in before placing an order.');
-    if (!firestore) throw new Error('Order service is not configured for this deployment.');
-    // Do not clear the basket or confirm an order until this write succeeds.
-    // Retrying the same generated id remains idempotent.
-    await setDoc(doc(firestore, 'orders', order.id), canonicalOrderDocument(uid, order));
+    const user = firebaseAuth?.currentUser;
+    if (!user || user.uid !== uid) throw new Error('Please sign in again before placing an order.');
+    const token = await user.getIdToken();
+    const response = await fetch('/api/orders/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        requestId,
+        couponCode,
+        expectedTotalINR,
+        shippingAddress,
+        items: items.map((item) => ({
+          productId: item.product.id,
+          selectedColor: item.selectedColor,
+          selectedSize: item.selectedSize,
+          quantity: item.quantity,
+          expectedPriceINR: item.product.priceINR,
+          expectedTailoringFeeINR: item.tailoringFeeINR,
+          isCustomTailored: item.isCustomTailored,
+          customMeasurements: item.customMeasurements,
+          giftPackaging: item.giftPackaging,
+          giftNote: item.giftNote,
+        })),
+      }),
+    });
+    const payload = await response.json().catch(() => null) as { order?: Order; error?: string } | null;
+    if (!response.ok || !payload?.order) throw new Error(payload?.error || 'Could not place this order. Please try again.');
+    return payload.order;
   },
   async cancelCustomerOrder(uid: string, order: Order) {
     if (!firestore) throw new Error('Order service is not configured for this deployment.');

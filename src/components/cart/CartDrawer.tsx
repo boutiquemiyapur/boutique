@@ -12,8 +12,7 @@ import {
   Tag,
   ArrowRight,
   ShieldCheck,
-  Scissors,
-  Check
+  Scissors
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
@@ -30,13 +29,11 @@ export const CartDrawer: React.FC = () => {
     cartSubtotalINR,
     cartTailoringTotalINR,
     cartDiscountINR,
-    cartTaxINR,
-    cartShippingINR,
+    cartCharges,
     cartTotalINR,
     appliedCoupon,
     applyCoupon,
     removeCoupon,
-    freeShippingThresholdINR,
     navigate,
     requireAuth
   } = useStore();
@@ -46,9 +43,6 @@ export const CartDrawer: React.FC = () => {
   const [couponInput, setCouponInput] = useState('');
 
   if (!isCartDrawerOpen) return null;
-
-  const freeShippingProgress = Math.min(100, (cartSubtotalINR / freeShippingThresholdINR) * 100);
-  const amountNeededForFreeShipping = Math.max(0, freeShippingThresholdINR - cartSubtotalINR);
 
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,28 +83,6 @@ export const CartDrawer: React.FC = () => {
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
-
-        {/* Free Shipping Progress Bar */}
-        <div className="bg-[#FAF4ED] px-5 py-3 border-b border-[#E6D5B8]">
-          <div className="flex items-center justify-between text-xs font-semibold text-stone-700 mb-1.5">
-            {amountNeededForFreeShipping === 0 ? (
-              <span className="text-emerald-700 flex items-center gap-1 font-bold">
-                <Check className="w-3.5 h-3.5" /> Standard shipping: no charge
-              </span>
-            ) : (
-              <span>
-                Add <strong className="text-[#8B1E3F]">{formatPrice(amountNeededForFreeShipping)}</strong> more for Free Shipping
-              </span>
-            )}
-            <span className="text-[11px] text-stone-500 font-mono">{Math.round(freeShippingProgress)}%</span>
-          </div>
-          <div className="w-full h-2 bg-stone-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-[#C5A059] to-[#8B1E3F] transition-all duration-500 rounded-full"
-              style={{ width: `${freeShippingProgress}%` }}
-            />
-          </div>
         </div>
 
         {/* Line Items List */}
@@ -279,14 +251,7 @@ export const CartDrawer: React.FC = () => {
                   <span className="font-semibold">-{formatPrice(cartDiscountINR)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span>Estimated GST (5%)</span>
-                <span>{formatPrice(cartTaxINR)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Shipping</span>
-                <span>{cartShippingINR === 0 ? <strong className="text-emerald-700 font-bold">FREE</strong> : formatPrice(cartShippingINR)}</span>
-              </div>
+              {cartCharges.map((charge) => <div key={charge.id} className="flex justify-between"><span>{charge.name}</span><span>{formatPrice(charge.amountINR)}</span></div>)}
               <div className="flex justify-between text-sm font-serif font-bold text-[#8B1E3F] pt-2 border-t border-stone-200">
                 <span>Grand Total</span>
                 <span>{formatPrice(cartTotalINR)}</span>

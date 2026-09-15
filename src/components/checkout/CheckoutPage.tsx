@@ -2,7 +2,7 @@ import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { PaymentMethod, ShippingAddress, ShippingMethod } from '../../types';
+import { PaymentMethod, ShippingAddress } from '../../types';
 import {
   ShieldCheck,
   Lock,
@@ -11,7 +11,6 @@ import {
   ArrowRight,
   ChevronLeft,
   CheckCircle2,
-  Sparkles,
   Scissors
 } from 'lucide-react';
 
@@ -27,8 +26,7 @@ export const CheckoutPage: React.FC = () => {
     cartSubtotalINR,
     cartTailoringTotalINR,
     cartDiscountINR,
-    cartTaxINR,
-    cartShippingINR,
+    cartCharges,
     cartTotalINR,
     appliedCoupon,
     createOrder,
@@ -70,7 +68,6 @@ export const CheckoutPage: React.FC = () => {
     if (isCustomerDataReady && customer.savedAddresses.length === 1) selectSavedAddress(customer.savedAddresses[0], 0);
   }, [isCustomerDataReady, customer.savedAddresses]);
 
-  const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
   const [paymentMethod] = useState<PaymentMethod>('cod');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
@@ -110,7 +107,7 @@ export const CheckoutPage: React.FC = () => {
     }
     setIsProcessingPayment(true);
     try {
-      const newOrder = await createOrder(address, shippingMethod, paymentMethod);
+      const newOrder = await createOrder(address, 'standard', paymentMethod);
       showToast('Order Placed Successfully!', `Order #${newOrder.orderNumber} has been recorded.`);
       navigate('order-confirmation', undefined, newOrder.id);
     } catch (error) {
@@ -121,8 +118,7 @@ export const CheckoutPage: React.FC = () => {
     }
   };
 
-  const finalShippingCost = shippingMethod === 'express' ? 350 : cartShippingINR;
-  const grandTotal = cartSubtotalINR + cartTailoringTotalINR - cartDiscountINR + cartTaxINR + finalShippingCost;
+  const grandTotal = cartTotalINR;
 
   return (
     <div className="bg-[#FAF7F2] min-h-screen py-8 sm:py-12">
@@ -143,7 +139,7 @@ export const CheckoutPage: React.FC = () => {
 
           <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
             <Lock className="w-4 h-4 text-emerald-600" />
-            <span className="font-semibold">256-Bit SSL Encrypted</span>
+            <span className="font-semibold">Secure checkout</span>
           </div>
         </div>
 
@@ -172,7 +168,7 @@ export const CheckoutPage: React.FC = () => {
             <span className="w-5 h-5 rounded-full bg-[#8B1E3F] text-white flex items-center justify-center text-[10px]">
               2
             </span>
-            <span>Shipping Speed</span>
+            <span>Charges</span>
           </button>
 
           <button
@@ -334,74 +330,21 @@ export const CheckoutPage: React.FC = () => {
                     }}
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-semibold px-8 py-3.5 rounded-lg flex items-center gap-2 shadow-md transition-all"
                   >
-                    <span>Continue to Shipping Method</span>
+                    <span>Review charges</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div></>}
-                {selectedSavedAddressId && <div className="pt-2 flex justify-end"><button id="checkout-step1-continue-btn" onClick={() => setStep(2)} className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-semibold px-8 py-3.5 rounded-lg flex items-center gap-2 shadow-md transition-all"><span>Continue to Shipping Method</span><ArrowRight className="w-4 h-4" /></button></div>}
+                {selectedSavedAddressId && <div className="pt-2 flex justify-end"><button id="checkout-step1-continue-btn" onClick={() => setStep(2)} className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-semibold px-8 py-3.5 rounded-lg flex items-center gap-2 shadow-md transition-all"><span>Review charges</span><ArrowRight className="w-4 h-4" /></button></div>}
               </div>
             )}
 
-            {/* Step 2: Shipping Method */}
+            {/* Step 2: configured checkout charges */}
             {step === 2 && (
               <div className="bg-white border border-[#E6D5B8] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
                 <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2">
-                  <Truck className="w-5 h-5 text-[#8B1E3F]" /> Choose Courier Shipping Speed
+                  <Truck className="w-5 h-5 text-[#8B1E3F]" /> Order charges
                 </h3>
-
-                <div className="space-y-3">
-                  <label
-                    className={`flex items-start justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      shippingMethod === 'standard'
-                        ? 'border-[#8B1E3F] bg-[#8B1E3F]/5'
-                        : 'border-[#E6D5B8] hover:border-stone-400'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        name="shipping_method"
-                        checked={shippingMethod === 'standard'}
-                        onChange={() => setShippingMethod('standard')}
-                        className="mt-1 accent-[#8B1E3F]"
-                      />
-                      <div>
-                        <h4 className="text-xs font-bold text-stone-900">Standard shipping</h4>
-                        <p className="text-[11px] text-stone-500 mt-0.5">Delivery timing is confirmed by the store.</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-stone-900">
-                      {cartShippingINR === 0 ? 'FREE' : formatPrice(cartShippingINR)}
-                    </span>
-                  </label>
-
-                  <label
-                    className={`flex items-start justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                      shippingMethod === 'express'
-                        ? 'border-[#8B1E3F] bg-[#8B1E3F]/5'
-                        : 'border-[#E6D5B8] hover:border-stone-400'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        name="shipping_method"
-                        checked={shippingMethod === 'express'}
-                        onChange={() => setShippingMethod('express')}
-                        className="mt-1 accent-[#8B1E3F]"
-                      />
-                      <div>
-                        <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-[#DFBF77]" /> Express shipping
-                        </h4>
-                        <p className="text-[11px] text-stone-500 mt-0.5">Contact the store to confirm express service availability.</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-[#8B1E3F]">
-                      +{formatPrice(350)}
-                    </span>
-                  </label>
-                </div>
+                <div className="space-y-2 rounded-xl border border-[#E6D5B8] bg-[#FAF7F2] p-4 text-xs"><div className="flex justify-between"><span>Merchandise</span><span>{formatPrice(cartSubtotalINR)}</span></div>{cartTailoringTotalINR > 0 && <div className="flex justify-between"><span>Tailoring</span><span>{formatPrice(cartTailoringTotalINR)}</span></div>}{cartDiscountINR > 0 && <div className="flex justify-between text-emerald-700"><span>Discount</span><span>−{formatPrice(cartDiscountINR)}</span></div>}{cartCharges.map((charge) => <div key={charge.id} className="flex justify-between"><span>{charge.name}</span><span>{formatPrice(charge.amountINR)}</span></div>)}<div className="flex justify-between border-t border-stone-200 pt-2 font-semibold"><span>Total</span><span>{formatPrice(cartTotalINR)}</span></div></div>
 
                 <div className="pt-4 flex justify-between">
                   <button
@@ -426,7 +369,7 @@ export const CheckoutPage: React.FC = () => {
             {step === 3 && (
               <form onSubmit={handlePlaceOrder} className="bg-white border border-[#E6D5B8] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
                 <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2"><Banknote className="w-5 h-5 text-[#8B1E3F]" /> Cash on Delivery</h3>
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Cash on Delivery Confirmation</p><p className="text-[11px]">Our team will call <strong>{address.phone}</strong> to confirm dispatch. Please keep the payable amount ready at delivery.</p></div>
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Cash on Delivery</p><p className="text-[11px]">Review the delivery address and total before placing the order.</p></div>
 
                 <div className="pt-4 flex items-center justify-between border-t border-[#E6D5B8]">
                   <button
@@ -434,7 +377,7 @@ export const CheckoutPage: React.FC = () => {
                     onClick={() => setStep(2)}
                     className="text-xs font-semibold text-stone-600 hover:text-black"
                   >
-                    ← Back to Shipping
+                    ← Back to Charges
                   </button>
 
                   <button
@@ -508,14 +451,7 @@ export const CheckoutPage: React.FC = () => {
                     <span className="font-semibold">-{formatPrice(cartDiscountINR)}</span>
                   </div>
                 )}
-                <div className="flex justify-between">
-                  <span>GST Tax (5%)</span>
-                  <span>{formatPrice(cartTaxINR)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span>{finalShippingCost === 0 ? <strong className="text-emerald-700">FREE</strong> : formatPrice(finalShippingCost)}</span>
-                </div>
+                {cartCharges.map((charge) => <div key={charge.id} className="flex justify-between"><span>{charge.name}</span><span>{formatPrice(charge.amountINR)}</span></div>)}
                 <div className="flex justify-between text-base font-serif font-bold text-[#8B1E3F] pt-3 border-t border-[#E6D5B8]">
                   <span>Total Amount Payable</span>
                   <span>{formatPrice(grandTotal)}</span>

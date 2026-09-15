@@ -18,12 +18,14 @@ await build({
     import { CartPage } from './src/components/cart/CartPage';
     import { OrderConfirmationPage } from './src/components/checkout/OrderConfirmationPage';
     export * from './src/utils/productData';
+    export * from './src/utils/checkoutTotals';
+    export * from './src/utils/categoryData';
     export { commerceRepository, cartLineKey, normalizeCartItems } from './src/services/commerceRepository';
     export { cmsRepository } from './src/services/cmsRepository';
     export const renderProduct = () => renderToStaticMarkup(<ProductDetailPage />);
     export const renderShop = () => renderToStaticMarkup(<ProductListingPage />);
     export const renderOptions = (product) => renderToStaticMarkup(<ProductOptions product={product} color="" size="" onColor={() => {}} onSize={() => {}} />);
-    export const renderEditor = (product = null) => renderToStaticMarkup(<ProductEditor product={product} onSave={async () => {}} onClose={() => {}} />);
+    export const renderEditor = (product = null) => renderToStaticMarkup(<ProductEditor product={product} categories={[]} onCreateCategory={async () => ({})} onSave={async () => {}} onClose={() => {}} />);
     export const renderCart = () => renderToStaticMarkup(<CartPage />);
     export const renderConfirmation = () => renderToStaticMarkup(<OrderConfirmationPage />);
   `, resolveDir: process.cwd(), sourcefile: 'catalog-fixture.tsx', loader: 'tsx' },
@@ -61,7 +63,8 @@ const document = (p, status = 'active') => ({ id: p.id, data: () => ({ data: p, 
 const setupStore = (p, extra = {}) => { globalThis.catalogStore = {
   products: p ? [p] : [], selectedProductId: p?.id, catalogStatus: 'ready', customer: {},
   formatPrice: (value) => `INR ${value}`, isInWishlist: () => false,
-  cms: { lowStockThreshold: 3, contact: {}, content: {} },
+  cms: { lowStockThreshold: 3, checkoutCharges: [], contact: {}, content: {} }, categories: [], cartCharges: [],
+  cartSubtotalINR: 0, cartTailoringTotalINR: 0, cartDiscountINR: 0, cartTotalINR: 0,
   filters: { category: 'All', fabrics: [], occasions: [], sizes: [], colors: [], minPriceINR: 0, maxPriceINR: 150000, searchQuery: '', sortBy: 'featured' },
   ...extra,
 }; };
@@ -156,10 +159,10 @@ test('variant identity preserves duplicate rules and handles no-option products'
   assert.equal(api.normalizeCartItems([a, { ...a, quantity: 2 }])[0].quantity, 3);
   assert.doesNotMatch(api.cartLineKey(line(p)), /Unstitched|Default/);
 });
-test('stock is shared across variants and stale options/removed products are blocked', () => {
+test('legacy stock is shared across variants and stale options/removed products are blocked', () => {
   const p = product({ stockCount: 1, availableSizes: ['S', 'M'] });
   assert.equal(api.cartCatalogIssue([line(p, { selectedSize: 'S' })], [p]), null);
-  assert.match(api.cartCatalogIssue([line(p, { selectedSize: 'S' }), line(p, { selectedSize: 'M' })], [p]), /across all sizes/);
+  assert.match(api.cartCatalogIssue([line(p, { selectedSize: 'S' }), line(p, { selectedSize: 'M' })], [p]), /only 1 available/);
   assert.match(api.cartCatalogIssue([line(p, { selectedSize: 'L' })], [p]), /Options/);
   assert.match(api.cartCatalogIssue([line(p)], []), /no longer available/);
 });
@@ -170,15 +173,58 @@ test('cart refresh uses current product data but leaves historical order snapsho
   assert.equal(updated[0].product.priceINR, 200); assert.equal(updated[0].product.title, 'New');
   assert.equal(original[0].product.priceINR, 100);
 });
-test('selected size/color survive cart and canonical order serialization', async () => {
+test('selected size/color survive cart serialization', async () => {
   globalThis.catalogWrites = [];
   const items = [line(product(), { selectedSize: '42', selectedColor: 'Blue' })];
   await api.commerceRepository.saveCart('customer-test', items);
-  await api.commerceRepository.saveOrder('customer-test', { id: 'order-test', orderNumber: 'TEST', paymentStatus: 'Pending', orderStatus: 'Order Placed', items });
   assert.equal(globalThis.catalogWrites[0][1].items[0].selectedSize, '42');
-  const saved = globalThis.catalogWrites[1][1].data.items[0];
+  const saved = globalThis.catalogWrites[0][1].items[0];
   assert.equal(saved.selectedColor, 'Blue'); assert.equal(saved.selectedSize, '42');
   assert.equal(api.variantSummary(saved), 'Color: Blue · Size: 42');
+});
+
+test('variant inventory derives total stock and enforces the exact color and size combination', () => {
+  const p = product({ colors: [{ colorName: 'Red' }, { colorName: 'Blue' }], availableSizes: ['S', 'M'], variantInventory: [
+    { key: 'ignored', colorName: 'Red', size: 'S', stock: 2 },
+    { key: 'ignored', colorName: 'Red', size: 'M', stock: 0 },
+    { key: 'ignored', colorName: 'Blue', size: 'S', stock: 1 },
+    { key: 'ignored', colorName: 'Blue', size: 'M', stock: 3 },
+  ] });
+  assert.equal(p.stockCount, 6);
+  assert.equal(api.selectedVariantStock(p, 'Red', 'M'), 0);
+  assert.equal(api.isVariantAvailable(p, 'Blue', 'M', 3), true);
+  assert.match(api.cartCatalogIssue([line(p, { selectedColor: 'Red', selectedSize: 'M' })], [p]), /out of stock/);
+  assert.equal(api.cartCatalogIssue([line(p, { selectedColor: 'Blue', selectedSize: 'M', quantity: 3 })], [p]), null);
+  const updated = api.withDeductedStock(p, [{ colorName: 'Blue', size: 'M', quantity: 2 }]);
+  assert.equal(api.selectedVariantStock(updated, 'Blue', 'M'), 1);
+  assert.equal(updated.stockCount, 4);
+});
+
+test('variant matrix synchronization preserves matching rows and initializes new combinations at zero', () => {
+  const p = product({ colors: [{ colorName: 'Red' }], availableSizes: ['S'], variantInventory: [{ key: '', colorName: 'Red', size: 'S', stock: 4 }] });
+  const rows = api.syncVariantInventory({ ...p, availableSizes: ['S', 'M'] });
+  assert.deepEqual(rows.map((row) => [row.colorName, row.size, row.stock]), [['Red', 'S', 4], ['Red', 'M', 0]]);
+});
+
+test('checkout charges are centralized, ordered, disabled safely, and captured with calculated amounts', () => {
+  const p = product({ priceINR: 1000, stockCount: 5 });
+  const items = [line(p, { quantity: 2, isCustomTailored: true, tailoringFeeINR: 100 })];
+  const coupon = { code: 'SAVE10', discountType: 'percentage', discountValue: 10, minCartValueINR: 0, description: '', isActive: true, expiryDate: '2099-01-01' };
+  const totals = api.calculateCheckoutTotals(items, coupon, [
+    { id: 'delivery', name: 'Delivery', type: 'fixed', value: 50, enabled: true, sortOrder: 2 },
+    { id: 'gst', name: 'GST', type: 'percentage', value: 5, enabled: true, sortOrder: 1 },
+    { id: 'disabled', name: 'Disabled', type: 'fixed', value: 999, enabled: false, sortOrder: 0 },
+  ]);
+  assert.equal(totals.subtotalINR, 2000); assert.equal(totals.couponDiscountINR, 200);
+  assert.equal(totals.percentageChargeBaseINR, 1800); assert.equal(totals.charges[0].amountINR, 90);
+  assert.equal(totals.totalINR, 2140); assert.deepEqual(totals.charges.map((charge) => charge.name), ['GST', 'Delivery']);
+});
+
+test('category slugs normalize and duplicate category names and routes are rejected', () => {
+  assert.equal(api.categorySlug('  Bridal & Festive Wear  '), 'bridal-festive-wear');
+  const existing = [api.normalizeCategory({ id: 'bridal', name: 'Bridal', slug: 'bridal', isActive: true })];
+  assert.match(api.categoryValidationError(api.normalizeCategory({ id: 'other', name: 'bridal', slug: 'other' }), existing), /name already exists/);
+  assert.match(api.categoryValidationError(api.normalizeCategory({ id: 'other', name: 'Other', slug: 'bridal' }), existing), /slug is already/);
 });
 test('per-color images take priority and absent media uses a neutral placeholder', () => {
   const p = product({ images: ['main.jpg'], colors: [{ colorName: 'Blue', images: ['blue.jpg'] }] });

@@ -1,5 +1,7 @@
 # Admin-driven catalog implementation report
 
+> Historical first-phase report. Variant inventory, trusted atomic checkout, configurable charges and category CRUD were added afterward; see `ADMIN_INVENTORY_CHARGES_CATEGORIES_REPORT.md` for the current behavior. Statements below that say those features are absent describe the earlier implementation boundary.
+
 Local implementation, 14 September 2026. No commit, push, deployment, security-rule change, or production data write was performed.
 
 The catalog now follows Admin → existing `/products/{id}` Firestore documents → shared normalization → live storefront → current cart → immutable order snapshot. Local regression coverage passes. Browser interaction, mobile screenshots, and authenticated live Firestore testing remain pending because browser automation reported **No browser is available**.

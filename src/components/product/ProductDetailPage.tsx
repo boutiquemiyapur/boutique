@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, ReviewItem, SizeOption } from '../../types';
-import { productImages, productSpecifications, stockMessage } from '../../utils/productData';
+import { isVariantAvailable, productImages, productSpecifications, stockMessage } from '../../utils/productData';
 import { ProductOptions } from '../common/ProductOptions';
 import { ProductImage } from '../common/ProductImage';
 import { ProductCard } from '../common/ProductCard';
@@ -23,6 +23,7 @@ import {
 export const ProductDetailPage: React.FC = () => {
   const {
     products,
+    categories,
     catalogStatus,
     setFilters,
     selectedProductId,
@@ -122,7 +123,7 @@ export const ProductDetailPage: React.FC = () => {
 
   const gallery = productImages(product, selectedColor);
   const isSaved = isInWishlist(product.id);
-  const isSoldOut = product.stockCount <= 0;
+  const isSoldOut = !isVariantAvailable(product, selectedColor, selectedSize, quantity);
   const relatedProducts = products.filter((item) => item.id !== product.id && (item.category === product.category || (product.fabric && item.fabric === product.fabric))).slice(0, 4);
 
   const handlePincodeCheck = (e: React.FormEvent) => {
@@ -185,7 +186,7 @@ export const ProductDetailPage: React.FC = () => {
         <nav className="flex items-center gap-2 text-xs text-stone-500 mb-6">
           <button onClick={() => navigate('home')} className="hover:text-[#8B1E3F]">Home</button>
           <span>/</span>
-          <button onClick={() => { setFilters((current) => ({ ...current, category: product.category, searchQuery: '' })); navigate('shop'); }} className="hover:text-[#8B1E3F]">{product.category}</button>
+          <button onClick={() => { setFilters((current) => ({ ...current, category: product.category, searchQuery: '' })); navigate('shop'); const slug = categories.find((category) => category.isActive && category.name === product.category)?.slug; if (slug) window.history.replaceState({}, '', `/collections/${slug}`); }} className="hover:text-[#8B1E3F]">{product.category}</button>
           <span>/</span>
           <span className="text-stone-800 font-semibold truncate max-w-xs">{product.title}</span>
         </nav>
@@ -483,7 +484,7 @@ export const ProductDetailPage: React.FC = () => {
             {/* Urgency Meter */}
             <div className={`flex items-center gap-2 text-xs font-semibold border p-2.5 rounded-lg ${isSoldOut ? 'border-stone-300 bg-stone-100 text-stone-600' : product.stockCount <= cms.lowStockThreshold ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
               <Clock className="w-4 h-4 shrink-0" />
-              <span>{stockMessage(product, cms.lowStockThreshold)}</span>
+              <span>{isSoldOut && product.stockCount > 0 ? 'Selected option is out of stock' : stockMessage(product, cms.lowStockThreshold)}</span>
             </div>
 
             {/* CTA Action Buttons */}

@@ -33,6 +33,7 @@ The package name is still `react-example`; it has not been renamed to the produc
 ```text
 api/
   cloudinary/sign.ts          Protected Cloudinary signature endpoint
+  orders/create.ts            Authenticated atomic order and stock endpoint
   sitemap.ts                  Dynamic XML sitemap endpoint
 public/
   robots.txt                  Crawler rules
@@ -85,7 +86,7 @@ Primary routes:
 | `/admin` | Store administration | Authenticated user with `admin: true`, noindex |
 | `/shipping`, `/returns`, `/cancellation`, `/privacy`, `/terms`, `/cookies` | Static policy views | Currently noindex |
 
-Supported category slugs are explicitly mapped in both routing and SEO configuration. When adding a new indexed category route, update `categoryFromSlug` in `StoreContext.tsx`, `CATEGORY_PATHS` in `src/config/seo.ts`, and the static sitemap routes in `api/sitemap.ts`.
+Active category documents supply new collection slugs to routing, navigation, metadata and the dynamic sitemap. The legacy `CATEGORY_PATHS` map remains only to preserve the six previously indexed collection URLs.
 
 ## 5. State and data flow
 
@@ -112,17 +113,17 @@ The application stores domain objects inside a `data` field in several documents
 | Path | Purpose | Typical shape/access |
 | --- | --- | --- |
 | `/products/{productId}` | Product catalog | `data`, `category`, `sku`, `status`, timestamps; public read, admin write |
-| `/categories/{categoryId}` | Category definitions | Public read, admin write |
+| `/categories/{categoryId}` | Name, stable slug, active state and sort order | Public read, admin write |
 | `/banners/{bannerId}` | Responsive homepage banners | `data.image`, optional `data.mobileImage`; public read, admin write |
 | `/siteContent/home` | Homepage/footer copy | Public read, admin write |
 | `/about/main` | About-page content | Public read, admin write |
 | `/contact/main` | Public business/contact details | Public read, admin write |
-| `/settings/admin` | Admin/store settings | Public read in current rules, admin write |
+| `/settings/admin` | Low-stock threshold and checkout charge definitions | Public read, admin write |
 | `/coupons/{code}` | Coupon definitions | Public read, admin write |
 | `/users/{uid}` | Customer profile and saved private data | Owner/admin read; owner profile updates are constrained |
 | `/carts/{uid}` | Customer cart | Owner/admin only |
 | `/wishlists/{uid}` | Customer wishlist product IDs | Owner/admin only |
-| `/orders/{orderId}` | Canonical order record | Owner by `customerId` or admin; narrowly constrained customer create/cancel |
+| `/orders/{orderId}` | Canonical order and price/charge snapshot | Owner by `customerId` or admin; trusted server create, constrained customer cancel |
 | `/users/{uid}/orders/{orderId}` | Legacy orders | Read-compatible; new checkout does not write here |
 | `/reviews/{reviewId}` | Product reviews | Public read; signed-in submission; admin/owner rules apply |
 | `/contactMessages/{messageId}` | Customer enquiries | Validated public create; admin-only read/update/delete |
@@ -155,9 +156,9 @@ The script requires Firebase Admin credentials or `GOOGLE_APPLICATION_CREDENTIAL
 
 ## 8. Commerce behavior
 
-Cart lines are distinguished by product, color, size and tailoring choice. Quantities are normalized before persistence. Current cart product data is resolved against the live catalog; options and combined product-level quantities are validated. Checkout re-reads the catalog before saving, while historical orders retain their purchased snapshots. Wishlist entries are normalized into unique product IDs.
+Cart lines are distinguished by product, color, size and tailoring choice. Products with `variantInventory` use exact color/size stock; older products without it continue to use shared product stock. Total product stock is derived from variant rows when configured. Current cart data resolves against the live catalog and historical orders retain purchased snapshots.
 
-Checkout requires an authenticated customer and a non-empty cart. It records a canonical Firestore order with customer ownership, totals, shipping choice, coupon data, timeline and a `Pending` payment state. Standard and express shipping are represented; the current payment type is intentionally limited to:
+Checkout requires an authenticated customer and a non-empty cart. The browser calls `POST /api/orders/create` with a Firebase ID token. The endpoint re-reads authoritative products, coupon and settings, validates exact stock, calculates enabled fixed/percentage charges, and creates the canonical order while decrementing stock in one Firestore transaction. Percentage charges use merchandise subtotal after coupon discount and exclude tailoring and other charges. The current payment type is intentionally limited to:
 
 ```ts
 type PaymentMethod = 'cod';
@@ -167,7 +168,7 @@ There is no live Razorpay or other online-payment transaction in the current che
 
 Customers may cancel only eligible pre-dispatch orders. Firestore rules restrict the exact fields that an owner may change. Fulfilment status, tracking, prices, stock and administrative order changes remain admin-controlled.
 
-Product stock is displayed and editable in admin. Order creation currently records an order but does not implement an atomic server-side inventory reservation/transaction, so concurrent overselling protection should be treated as a future backend concern.
+The request ID is part of the order document ID so retrying the same request returns the existing order without decrementing stock twice. Client Firestore rules do not permit direct order creation or product stock updates.
 
 ## 9. CMS and admin portal
 
@@ -175,15 +176,16 @@ The `/admin` route is rendered only when the Firebase session contains `admin: t
 
 - dashboard metrics and recent orders;
 - products and publication/archive controls;
+- category CRUD, active state, ordering and legacy-category registration;
 - order status management;
 - customer list;
-- inventory and low-stock threshold management;
+- product/variant inventory and low-stock threshold management;
 - desktop/mobile banners;
 - storefront copy;
 - contact information;
 - About-page content and image;
 - customer enquiries and enquiry statuses;
-- settings.
+- settings, including enabled fixed and percentage checkout charges.
 
 Admin mutations generally write from the browser to Firestore and rely on Firebase Auth plus Firestore rules. Product, banner and About images use the shared `MediaUploader`, `cmsRepository.uploadImage`, and `mediaUploadService` path.
 
@@ -220,9 +222,9 @@ See `CLOUDINARY_SETUP.md` for the full status and verification procedure.
 
 `SeoManager.tsx` and `src/config/seo.ts` update title, description, canonical URL, robots directives, Open Graph/Twitter metadata and JSON-LD for the active client route. Valid active products and supported collections are indexable; private, invalid, search-result and policy placeholder views are noindex.
 
-`api/sitemap.ts` returns `/sitemap.xml`. It fetches active public products from the Firestore REST API and falls back to static public routes when catalog loading fails. `public/robots.txt` points crawlers to the sitemap.
+`api/sitemap.ts` returns `/sitemap.xml`. It fetches active public products and active category slugs from the Firestore REST API and preserves the static legacy routes as a fallback. `public/robots.txt` points crawlers to the sitemap.
 
-`vercel.json` maps `/sitemap.xml` before the SPA catch-all. Vercel recognizes files under `/api` as serverless functions, so `/api/cloudinary/sign` and `/api/sitemap` are not handled by the SPA fallback.
+`vercel.json` maps `/sitemap.xml` before the SPA catch-all. Vercel recognizes files under `/api` as serverless functions, so `/api/cloudinary/sign`, `/api/orders/create` and `/api/sitemap` are not handled by the SPA fallback.
 
 Route metadata is client-rendered because this is a Vite SPA. Crawlers that do not execute JavaScript and some social preview bots may see only the base `index.html` metadata. Full route-level HTML metadata would require prerendering or SSR.
 
@@ -279,12 +281,14 @@ npm run lint
 npm run build
 npm run preview
 node --experimental-require-module --import tsx --test scripts/cloudinary-sign.test.ts
+node scripts/admin-driven-catalog.test.mjs
+node scripts/order-transaction.test.mjs
 git diff --check
 ```
 
 The Vite development command serves the frontend at port 3000. Vite alone does not execute Vercel `/api` functions. Use a Vercel-compatible local environment when exercising serverless routes end to end.
 
-The `lint` script currently runs `tsc --noEmit`; ESLint is not configured. The production build emits a known large JavaScript chunk warning. The repository includes the Cloudinary regression suite and 18 catalog/data/rendering regression tests. Run the latter with `node --test scripts/admin-driven-catalog.test.mjs`; its Firebase/context adapters are local test doubles. Browser interaction and live Admin/Firebase propagation still need the manual checks in ADMIN_DRIVEN_CATALOG_REPORT.md.
+The `lint` script currently runs `tsc --noEmit`; ESLint is not configured. The production build emits a known large JavaScript chunk warning. The local suites cover catalog rendering/data rules and the trusted order transaction using test doubles. Browser interaction and live Admin/Firebase propagation still need the manual checks in `ADMIN_INVENTORY_CHARGES_CATEGORIES_REPORT.md`.
 
 ## 14. Important maintenance notes
 
@@ -294,5 +298,5 @@ The `lint` script currently runs `tsc --noEmit`; ESLint is not configured. The p
 - Do not store customer profiles, addresses, carts, wishlists or orders in local storage.
 - Keep Cloudinary signing and Firebase Admin credentials server-side.
 - Use canonical `/orders/{orderId}` records for new order work; keep legacy reads until migration is confirmed complete.
-- Online payments, atomic inventory reservation, server-side checkout price verification and SSR/prerendering are not implemented.
+- Online payments and SSR/prerendering are not implemented.
 - The current checkout contains the Cloudinary signer fix, its regression test and documentation. Configure Vercel, deploy the relevant commit and smoke-test it before considering that production issue resolved.

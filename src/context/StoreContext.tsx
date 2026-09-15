@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   AppView,
+  AppliedCheckoutCharge,
   CartItem,
   Category,
   Coupon,
@@ -14,9 +15,11 @@ import {
   ReviewItem,
   ShippingAddress,
   ShippingMethod,
-  SizeOption
+  SizeOption,
+  StoreCategory
 } from '../types';
 import { cartCatalogIssue, refreshCartProducts } from '../utils/productData';
+import { calculateCheckoutTotals, legacyChargeAmounts } from '../utils/checkoutTotals';
 import { CURRENCIES } from '../data/initialData';
 import confetti from 'canvas-confetti';
 import { AuthSession, authErrorMessage, logoutFirebaseUser, registerWithEmail, requestPasswordReset, signInWithEmail, startAuthSession } from '../firebase/auth';
@@ -36,6 +39,7 @@ interface StoreContextType {
   isCustomerDataReady: boolean;
   authSession: AuthSession;
   products: Product[];
+  categories: StoreCategory[];
   catalogStatus: 'loading' | 'ready' | 'error';
   cartIssue: string | null;
   cart: CartItem[];
@@ -99,7 +103,6 @@ interface StoreContextType {
   // Pricing & Currency
   formatPrice: (inrAmount: number) => string;
   convertPrice: (inrAmount: number) => number;
-  freeShippingThresholdINR: number;
 
   // Discounts
   applyCoupon: (code: string) => boolean;
@@ -111,6 +114,7 @@ interface StoreContextType {
   cartDiscountINR: number;
   cartTaxINR: number;
   cartShippingINR: number;
+  cartCharges: AppliedCheckoutCharge[];
   cartTotalINR: number;
 
   // Checkout & Orders
@@ -170,7 +174,9 @@ const initialFilterState: FilterState = {
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const categoryFromSlug = (slug: string): Category | null => {
+const categoryFromSlug = (slug: string, categories: StoreCategory[]): Category | null => {
+  const configured = categories.find((category) => category.isActive && category.slug === slug);
+  if (configured) return configured.name;
   const match: Record<string, Category> = {
     'kanjeevaram-silks': 'Kanjeevaram Silks', 'banarasi-brocades': 'Banarasi Sarees',
     'designer-sarees': 'Designer Sarees', 'bridal-lehengas': 'Bridal Lehengas',
@@ -207,6 +213,7 @@ const INITIAL_CUSTOMER: CustomerProfile = { id: '', fullName: '', email: '', pho
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<StoreCategory[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
   // Do not hydrate cart or wishlist before Firebase resolves the owner.
@@ -245,13 +252,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const pendingWishlistProductIdsRef = useRef(new Set<string>());
   const pendingShoppingActionRef = useRef<(() => Promise<boolean>) | null>(null);
 
-  const freeShippingThresholdINR = 5000;
-
   const refreshCms = async () => {
     setCms(await cmsRepository.loadPublicCms());
   };
 
   useEffect(() => { void refreshCms(); }, []);
+  useEffect(() => cmsRepository.subscribeToStoreSettings(
+    (settings) => setCms((current) => ({ ...current, ...settings })),
+    (error) => console.warn('Store settings listener failed.', error)
+  ), []);
+  useEffect(() => cmsRepository.subscribeToCategories(
+    (nextCategories) => {
+      setCategories(nextCategories);
+      const [first, second] = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/');
+      if (first === 'collections' && second) {
+        const category = categoryFromSlug(second, nextCategories);
+        if (category) { setFilters((current) => ({ ...current, category, searchQuery: '' })); setActiveView('shop'); }
+      }
+    },
+    (error) => console.warn('Category listener failed.', error)
+  ), []);
 
   const resetPrivateState = (session: AuthSession = null) => {
     pendingCartLineKeysRef.current.clear();
@@ -621,29 +641,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  // Cart Totals Calculations
-  const cartSubtotalINR = cart.reduce((sum, item) => sum + item.product.priceINR * item.quantity, 0);
-  const cartTailoringTotalINR = cart.reduce(
-    (sum, item) => sum + (item.isCustomTailored ? item.tailoringFeeINR * item.quantity : 0),
-    0
-  );
-
-  let cartDiscountINR = 0;
-  if (appliedCoupon && cartSubtotalINR >= appliedCoupon.minCartValueINR) {
-    if (appliedCoupon.discountType === 'percentage') {
-      const calcDiscount = (cartSubtotalINR * appliedCoupon.discountValue) / 100;
-      cartDiscountINR = appliedCoupon.maxDiscountINR
-        ? Math.min(calcDiscount, appliedCoupon.maxDiscountINR)
-        : calcDiscount;
-    } else {
-      cartDiscountINR = appliedCoupon.discountValue;
-    }
-  }
-
-  const taxableAmount = Math.max(0, cartSubtotalINR + cartTailoringTotalINR - cartDiscountINR);
-  const cartTaxINR = Math.round(taxableAmount * 0.05); // 5% GST on apparel
-  const cartShippingINR = cartSubtotalINR >= freeShippingThresholdINR || cart.length === 0 ? 0 : 450;
-  const cartTotalINR = Math.max(0, taxableAmount + cartTaxINR + cartShippingINR);
+  // All displayed totals use the same configuration-driven calculation as checkout.
+  const checkoutTotals = calculateCheckoutTotals(cart, appliedCoupon, cms.checkoutCharges);
+  const cartSubtotalINR = checkoutTotals.subtotalINR;
+  const cartTailoringTotalINR = checkoutTotals.tailoringTotalINR;
+  const cartDiscountINR = checkoutTotals.couponDiscountINR;
+  const cartCharges = checkoutTotals.charges;
+  const legacyCharges = legacyChargeAmounts(cartCharges);
+  const cartTaxINR = legacyCharges.taxGstINR;
+  const cartShippingINR = legacyCharges.shippingCostINR;
+  const cartTotalINR = checkoutTotals.totalINR;
 
   // Coupon handling
   const applyCoupon = (code: string): boolean => {
@@ -674,51 +681,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Checkout & Order creation
   const createOrder = async (
     shippingAddress: ShippingAddress,
-    shippingMethod: ShippingMethod,
-    paymentMethod: PaymentMethod
+    _shippingMethod: ShippingMethod,
+    _paymentMethod: PaymentMethod
   ): Promise<Order> => {
     if (!cart.length) throw new Error('Your shopping bag is empty.');
-    const latestProducts = await commerceRepository.loadCatalog();
-    const latestCart = refreshCartProducts(cart, latestProducts);
-    const issue = cartCatalogIssue(latestCart, latestProducts);
-    setProducts(latestProducts);
-    if (issue) throw new Error(issue);
-    if (latestCart.some((item, index) => item.product.priceINR !== cart[index].product.priceINR || item.tailoringFeeINR !== cart[index].tailoringFeeINR)) {
-      throw new Error('Product prices have changed. Review the updated total and place your order again.');
-    }
-    const orderNum = `MB-${Math.floor(10000 + Math.random() * 90000)}`;
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber: orderNum,
-      createdAt: new Date().toISOString(),
-      items: latestCart,
-      shippingAddress,
-      shippingMethod,
-      shippingCostINR: shippingMethod === 'express' ? 350 : cartShippingINR,
-      subtotalINR: cartSubtotalINR,
-      tailoringTotalINR: cartTailoringTotalINR,
-      couponDiscountINR: cartDiscountINR,
-      // Keep the canonical schema stable and never send undefined to Firestore.
-      couponCodeApplied: appliedCoupon?.code ?? null,
-      taxGstINR: cartTaxINR,
-      totalINR: cartSubtotalINR + cartTailoringTotalINR - cartDiscountINR + cartTaxINR + (shippingMethod === 'express' ? 350 : cartShippingINR),
-      currency: 'INR',
-      paymentMethod,
-      paymentStatus: 'Pending',
-      orderStatus: 'Order Placed',
-      timeline: [
-        {
-          status: 'Order Placed',
-          timestamp: 'Just now',
-          description: 'Your Cash on Delivery order request has been received. Fulfilment updates will appear here when they are recorded.',
-          completed: true
-        }
-      ]
-    };
-
-    // Firestore is the source of truth: success UI and cart clearing happen
-    // only after the canonical order document is committed.
-    await commerceRepository.saveOrder(firebaseUserId, newOrder);
+    if (cartIssue) throw new Error(cartIssue);
+    // The trusted endpoint re-reads products, coupons and charges, then creates
+    // the order and decrements stock in one Firestore transaction.
+    const newOrder = await commerceRepository.createOrder(firebaseUserId, cart, shippingAddress, appliedCoupon?.code || null, crypto.randomUUID(), cartTotalINR);
     setOrders((prev) => [newOrder, ...prev.filter((order) => order.id !== newOrder.id)]);
     setLastPlacedOrder(newOrder);
     setSelectedTrackingOrderId(newOrder.id);
@@ -906,7 +876,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (first === 'order-confirmation' && second) { setSelectedTrackingOrderId(decodeURIComponent(second)); setActiveView('order-confirmation'); return; }
     if (first === 'orders' && second) { setSelectedTrackingOrderId(decodeURIComponent(second)); setActiveView('order-tracking'); return; }
     if (first === 'collections' && second) {
-      const category = categoryFromSlug(second);
+      const category = categoryFromSlug(second, categories);
       if (category) { setFilters((current) => ({ ...current, category, searchQuery: '' })); setActiveView('shop'); return; }
     }
     setActiveView(paths[first] || 'not-found');
@@ -914,6 +884,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetFilters = () => {
     setFilters(initialFilterState);
+    if (activeView === 'shop' && window.location.pathname.startsWith('/collections/')) window.history.replaceState({}, '', '/shop');
   };
 
   return (
@@ -923,6 +894,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isCustomerDataReady: privateDataReady,
         authSession,
         products,
+        categories,
         catalogStatus,
         cartIssue,
         cart,
@@ -960,7 +932,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isInWishlist,
         formatPrice,
         convertPrice,
-        freeShippingThresholdINR,
         applyCoupon,
         removeCoupon,
         cartSubtotalINR,
@@ -968,6 +939,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cartDiscountINR,
         cartTaxINR,
         cartShippingINR,
+        cartCharges,
         cartTotalINR,
         createOrder,
         cancelOrder,

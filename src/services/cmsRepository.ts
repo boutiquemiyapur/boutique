@@ -1,9 +1,11 @@
-import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { productFromDocument, productForStorage } from '../utils/productData';
+import { normalizeCategory } from '../utils/categoryData';
+import { normalizeCheckoutCharges } from '../utils/checkoutTotals';
 import { BRAND } from '../config/brand';
 import { firestore } from '../firebase/config';
 import { uploadMedia } from './mediaUploadService';
-import { AboutContent, Banner, ContactInformation, CustomerProfile, Order, Product, SiteContent } from '../types';
+import { AboutContent, Banner, CheckoutCharge, ContactInformation, CustomerProfile, Order, Product, SiteContent, StoreCategory } from '../types';
 
 export interface AdminSnapshot {
   products: Product[];
@@ -17,6 +19,12 @@ export interface PublicCms {
   about: AboutContent;
   contact: ContactInformation;
   lowStockThreshold: number;
+  checkoutCharges: CheckoutCharge[];
+}
+
+export interface StoreSettings {
+  lowStockThreshold: number;
+  checkoutCharges: CheckoutCharge[];
 }
 
 const defaultContent: SiteContent = {
@@ -37,7 +45,7 @@ const defaultContact: ContactInformation = {
 };
 
 export const DEFAULT_CMS: PublicCms = {
-  banners: [], content: defaultContent, about: defaultAbout, contact: defaultContact, lowStockThreshold: 3
+  banners: [], content: defaultContent, about: defaultAbout, contact: defaultContact, lowStockThreshold: 3, checkoutCharges: []
 };
 
 const readDocument = async <T extends object>(name: string, id: string, fallback: T): Promise<T> => {
@@ -58,12 +66,31 @@ export const cmsRepository = {
       readDocument('siteContent', 'home', defaultContent),
       readDocument('about', 'main', defaultAbout),
       readDocument('contact', 'main', defaultContact),
-      readDocument('settings', 'admin', { lowStockThreshold: DEFAULT_CMS.lowStockThreshold })
+      readDocument('settings', 'admin', { lowStockThreshold: DEFAULT_CMS.lowStockThreshold, checkoutCharges: [] as CheckoutCharge[] })
     ]);
     const banners = bannerSnapshot
       ? bannerSnapshot.docs.map((item) => item.data().data as Banner).filter((item): item is Banner => Boolean(item && item.isActive)).sort((a, b) => a.displayOrder - b.displayOrder)
       : [];
-    return { banners, content, about, contact, lowStockThreshold: Math.max(1, Number(settings.lowStockThreshold) || DEFAULT_CMS.lowStockThreshold) };
+    return { banners, content, about, contact, lowStockThreshold: Math.max(1, Number(settings.lowStockThreshold) || DEFAULT_CMS.lowStockThreshold), checkoutCharges: normalizeCheckoutCharges(settings.checkoutCharges) };
+  },
+
+  subscribeToStoreSettings(onSettings: (settings: StoreSettings) => void, onError: (error: Error) => void) {
+    if (!firestore) { onSettings({ lowStockThreshold: DEFAULT_CMS.lowStockThreshold, checkoutCharges: [] }); return () => undefined; }
+    return onSnapshot(doc(firestore, 'settings', 'admin'), (snapshot) => {
+      const data = snapshot.data()?.data as Partial<StoreSettings> | undefined;
+      onSettings({
+        lowStockThreshold: Math.max(1, Number(data?.lowStockThreshold) || DEFAULT_CMS.lowStockThreshold),
+        checkoutCharges: normalizeCheckoutCharges(data?.checkoutCharges),
+      });
+    }, onError);
+  },
+
+  subscribeToCategories(onCategories: (categories: StoreCategory[]) => void, onError: (error: Error) => void) {
+    if (!firestore) { onCategories([]); return () => undefined; }
+    return onSnapshot(collection(firestore, 'categories'), (snapshot) => {
+      onCategories(snapshot.docs.map((item) => { const value = item.data(); return normalizeCategory((value.data || value) as Partial<StoreCategory>, item.id); })
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)));
+    }, onError);
   },
 
   async loadAdminSnapshot(): Promise<AdminSnapshot> {
@@ -153,7 +180,27 @@ export const cmsRepository = {
   async saveContent(content: SiteContent) { await cmsRepository.saveDocument('siteContent', 'home', content); },
   async saveAbout(about: AboutContent) { await cmsRepository.saveDocument('about', 'main', about); },
   async saveContact(contact: ContactInformation) { await cmsRepository.saveDocument('contact', 'main', contact); },
-  async saveSettings(lowStockThreshold: number) { await cmsRepository.saveDocument('settings', 'admin', { lowStockThreshold }); },
+  async saveSettings(settings: StoreSettings) { await cmsRepository.saveDocument('settings', 'admin', { lowStockThreshold: Math.max(1, Math.floor(settings.lowStockThreshold)), checkoutCharges: normalizeCheckoutCharges(settings.checkoutCharges) }); },
+  async saveCategory(category: StoreCategory) {
+    if (!firestore) throw new Error('Firebase is not configured for this deployment.');
+    const normalized = normalizeCategory(category, category.id || category.slug);
+    if (!normalized.id || !normalized.name || !normalized.slug) throw new Error('Category name and URL slug are required.');
+    const categoryRef = doc(firestore, 'categories', normalized.id);
+    const existingCategories = await getDocs(collection(firestore, 'categories'));
+    const conflict = existingCategories.docs.find((item) => item.id !== normalized.id && ((item.data().slug as string | undefined) || (item.data().data as Partial<StoreCategory> | undefined)?.slug)?.toLowerCase() === normalized.slug.toLowerCase());
+    const nameConflict = existingCategories.docs.find((item) => item.id !== normalized.id && ((item.data().name as string | undefined) || (item.data().data as Partial<StoreCategory> | undefined)?.name)?.toLowerCase() === normalized.name.toLowerCase());
+    if (conflict) throw new Error('This category URL slug is already in use.');
+    if (nameConflict) throw new Error('A category with this name already exists.');
+    await setDoc(categoryRef, { data: normalized, name: normalized.name, slug: normalized.slug, isActive: normalized.isActive, sortOrder: normalized.sortOrder, updatedAt: serverTimestamp(), ...(!(await getDoc(categoryRef)).exists() ? { createdAt: serverTimestamp() } : {}) }, { merge: true });
+    return normalized;
+  },
+  async deleteCategory(category: StoreCategory) {
+    if (!firestore) throw new Error('Firebase is not configured for this deployment.');
+    const products = await getDocs(collection(firestore, 'products'));
+    const inUse = products.docs.some((item) => item.data().status !== 'archived' && ((item.data().category as string | undefined) === category.name || (item.data().data as Partial<Product> | undefined)?.category === category.name));
+    if (inUse) throw new Error(`Move or archive products in ${category.name} before deleting this category.`);
+    await deleteDoc(doc(firestore, 'categories', category.id));
+  },
   async saveDocument(collectionName: string, id: string, data: object) {
     if (!firestore) throw new Error('Firebase is not configured for this deployment.');
     const contentRef = doc(firestore, collectionName, id);

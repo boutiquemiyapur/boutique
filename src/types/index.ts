@@ -39,6 +39,14 @@ export interface ProductVariant {
   images: string[];
 }
 
+export interface VariantInventoryItem {
+  /** Stable, normalized key generated from the selected color and size. */
+  key: string;
+  colorName: string;
+  size: SizeOption;
+  stock: number;
+}
+
 export interface ReviewItem {
   id: string;
   userName: string;
@@ -67,6 +75,8 @@ export interface Product {
   images: string[];
   colors: ProductVariant[];
   availableSizes: SizeOption[];
+  /** When present, this is the authoritative stock for each selectable combination. */
+  variantInventory?: VariantInventoryItem[];
   stockCount: number;
   isReadyToShip: boolean;
   isBestseller?: boolean;
@@ -186,6 +196,21 @@ export interface OrderCancellation { reason?: string; cancelledAt: string; cance
 
 export type ShippingMethod = 'standard' | 'express';
 
+export type CheckoutChargeType = 'fixed' | 'percentage';
+
+export interface CheckoutCharge {
+  id: string;
+  name: string;
+  type: CheckoutChargeType;
+  value: number;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface AppliedCheckoutCharge extends CheckoutCharge {
+  amountINR: number;
+}
+
 // Online payment methods are intentionally not enabled in the current checkout.
 export type PaymentMethod = 'cod';
 
@@ -223,6 +248,8 @@ export interface Order {
   couponDiscountINR: number;
   couponCodeApplied?: string | null;
   taxGstINR: number;
+  /** Exact charge configuration and calculated amount captured at checkout. */
+  charges?: AppliedCheckoutCharge[];
   totalINR: number;
   currency: CurrencyCode;
   paymentMethod: PaymentMethod;

@@ -1,4 +1,4 @@
-import { CartItem, Product, ProductVariant } from '../types';
+import { CartItem, Product, ProductVariant, VariantInventoryItem } from '../types';
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 export const uniqueValues = (value: unknown): string[] => {
@@ -11,6 +11,67 @@ export const uniqueValues = (value: unknown): string[] => {
 };
 const nonnegative = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 
+const normalizeVariantPart = (value: unknown) => text(value).toLocaleLowerCase('en-IN');
+export const variantKey = (colorName = '', size = '') => `${normalizeVariantPart(colorName)}::${normalizeVariantPart(size)}`;
+
+export const variantCombinations = (product: Pick<Product, 'colors' | 'availableSizes'>): Array<Pick<VariantInventoryItem, 'key' | 'colorName' | 'size'>> => {
+  const colors = product.colors.length ? product.colors.map((color) => color.colorName) : [''];
+  const sizes = product.availableSizes.length ? product.availableSizes : [''];
+  if (!product.colors.length && !product.availableSizes.length) return [];
+  return colors.flatMap((colorName) => sizes.map((size) => ({ key: variantKey(colorName, size), colorName, size })));
+};
+
+export const normalizeVariantInventory = (value: unknown): VariantInventoryItem[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const rows = new Map<string, VariantInventoryItem>();
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Partial<VariantInventoryItem>;
+    const colorName = text(item.colorName);
+    const size = text(item.size);
+    const key = variantKey(colorName, size);
+    rows.set(key, { key, colorName, size, stock: Math.floor(nonnegative(item.stock)) });
+  }
+  return [...rows.values()];
+};
+
+export const hasVariantInventory = (product: Pick<Product, 'variantInventory'>): boolean => Array.isArray(product.variantInventory);
+
+export const syncVariantInventory = (product: Pick<Product, 'colors' | 'availableSizes' | 'variantInventory'>): VariantInventoryItem[] => {
+  const existing = new Map((product.variantInventory || []).map((item) => [variantKey(item.colorName, item.size), item]));
+  return variantCombinations(product).map((combination) => ({
+    ...combination,
+    stock: Math.floor(nonnegative(existing.get(combination.key)?.stock)),
+  }));
+};
+
+export const totalProductStock = (product: Pick<Product, 'stockCount' | 'variantInventory'>): number => hasVariantInventory(product)
+  ? (product.variantInventory || []).reduce((sum, item) => sum + Math.floor(nonnegative(item.stock)), 0)
+  : Math.floor(nonnegative(product.stockCount));
+
+export const selectedVariantStock = (
+  product: Pick<Product, 'stockCount' | 'variantInventory'>,
+  colorName = '',
+  size = ''
+): number => {
+  if (!hasVariantInventory(product)) return Math.floor(nonnegative(product.stockCount));
+  return product.variantInventory?.find((item) => item.key === variantKey(colorName, size))?.stock || 0;
+};
+
+export const isVariantAvailable = (product: Pick<Product, 'stockCount' | 'variantInventory'>, colorName = '', size = '', quantity = 1) =>
+  selectedVariantStock(product, colorName, size) >= quantity;
+
+export const withDeductedStock = (product: Product, requested: Array<{ colorName: string; size: string; quantity: number }>): Product => {
+  if (!hasVariantInventory(product)) {
+    const quantity = requested.reduce((sum, item) => sum + item.quantity, 0);
+    return { ...product, stockCount: Math.max(0, product.stockCount - quantity) };
+  }
+  const deductions = new Map<string, number>();
+  requested.forEach((item) => deductions.set(variantKey(item.colorName, item.size), (deductions.get(variantKey(item.colorName, item.size)) || 0) + item.quantity));
+  const variantInventory = (product.variantInventory || []).map((item) => ({ ...item, stock: Math.max(0, item.stock - (deductions.get(item.key) || 0)) }));
+  return { ...product, variantInventory, stockCount: variantInventory.reduce((sum, item) => sum + item.stock, 0) };
+};
+
 /** Empty optional fields stay empty. No category, material or variant is inferred. */
 export const normalizeProduct = (raw: Partial<Product>, id = raw.id || ''): Product => {
   const colors: ProductVariant[] = [];
@@ -20,7 +81,10 @@ export const normalizeProduct = (raw: Partial<Product>, id = raw.id || ''): Prod
     if (!colorName || colors.some((item) => item.colorName.toLowerCase() === colorName.toLowerCase())) continue;
     colors.push({ ...color, colorName, colorHex: text(color.colorHex), images: uniqueValues(color.images) });
   }
-  return {
+  const rawInventory = normalizeVariantInventory(raw.variantInventory);
+  const allowedInventoryKeys = new Set(variantCombinations({ colors, availableSizes: uniqueValues(raw.availableSizes) }).map((item) => item.key));
+  const variantInventory = rawInventory?.filter((item) => allowedInventoryKeys.has(item.key));
+  const normalized = {
     ...raw, id,
     title: text(raw.title), sku: text(raw.sku), category: text(raw.category),
     subtitle: text(raw.subtitle), fabric: text(raw.fabric), occasion: text(raw.occasion),
@@ -36,7 +100,9 @@ export const normalizeProduct = (raw: Partial<Product>, id = raw.id || ''): Prod
     specifications: (Array.isArray(raw.specifications) ? raw.specifications : [])
       .map((row) => ({ label: text(row?.label), value: text(row?.value) }))
       .filter((row) => row.label && row.value),
-  };
+    variantInventory,
+  } as Product;
+  return { ...normalized, stockCount: totalProductStock(normalized) };
 };
 
 export const productFromDocument = (id: string, document: Record<string, unknown>): Product | null => {
@@ -101,6 +167,11 @@ export const variantSummary = (item: Pick<CartItem, 'selectedColor' | 'selectedS
 ].filter(Boolean).join(' · ');
 
 export const cartCatalogIssue = (items: CartItem[], products: Product[]): string | null => {
+  const quantities = new Map<string, number>();
+  for (const item of items) {
+    const key = `${item.product.id}::${variantKey(item.selectedColor, item.selectedSize)}`;
+    quantities.set(key, (quantities.get(key) || 0) + item.quantity);
+  }
   for (const item of items) {
     const product = products.find((candidate) => candidate.id === item.product.id && candidate.isActive !== false);
     if (!product) return `${item.product.title} is no longer available. Remove it from your bag.`;
@@ -110,8 +181,15 @@ export const cartCatalogIssue = (items: CartItem[], products: Product[]): string
       return `Options for ${product.title} have changed. Remove it and select the available options again.`;
     }
     if (item.isCustomTailored && !product.customStitchingAvailable) return `Tailoring for ${product.title} is no longer available. Please select this product again.`;
-    const quantity = items.filter((line) => line.product.id === product.id).reduce((sum, line) => sum + line.quantity, 0);
-    if (quantity > product.stockCount) return `${product.title}: ${product.stockCount > 0 ? `only ${product.stockCount} available across all sizes and colors` : 'out of stock'}. Please update your bag.`;
+    const requestedKey = `${product.id}::${variantKey(item.selectedColor, item.selectedSize)}`;
+    const quantity = hasVariantInventory(product)
+      ? quantities.get(requestedKey) || 0
+      : items.filter((line) => line.product.id === product.id).reduce((sum, line) => sum + line.quantity, 0);
+    const available = selectedVariantStock(product, item.selectedColor, item.selectedSize);
+    if (quantity > available) {
+      const option = variantSummary(item);
+      return `${product.title}${option ? ` (${option})` : ''}: ${available > 0 ? `only ${available} available` : 'out of stock'}. Please update your bag.`;
+    }
   }
   return null;
 };
