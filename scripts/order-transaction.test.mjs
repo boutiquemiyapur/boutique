@@ -19,7 +19,7 @@ await build({
       ? 'export const getApps=()=>[{}]; export const initializeApp=()=>({}); export const cert=(value)=>value;'
       : path.endsWith('/auth')
         ? 'export const getAuth=()=>({verifyIdToken:async()=>({uid:"customer-123456789"})});'
-        : 'export const getFirestore=()=>globalThis.testDatabase; export const FieldValue={serverTimestamp:()=>"server-time"};' }));
+        : 'export const getFirestore=()=>globalThis.testDatabase; export const FieldValue={serverTimestamp:()=>"server-time",increment:(value)=>({__increment:value})};' }));
   } }],
 });
 const { default: handler } = await import(pathToFileURL(outfile).href);
@@ -52,7 +52,7 @@ const database = (initial) => {
         getAll: async (...refs) => refs.map((ref) => snapshot(ref, documents.get(ref.path))),
         update: (ref, value) => {
           assertFirestoreSafe(value);
-          pending.push(() => documents.set(ref.path, { ...documents.get(ref.path), ...value }));
+          pending.push(() => { const current = documents.get(ref.path); const next = { ...current, ...value }; for (const [key, item] of Object.entries(value)) if (item?.__increment) next[key] = (current?.[key] || 0) + item.__increment; documents.set(ref.path, next); });
         },
         set: (ref, value) => {
           assertFirestoreSafe(value);
@@ -76,7 +76,7 @@ const validBody = { requestId: 'request-12345678', expectedTotalINR: 1100, items
 
 test('trusted checkout creates the order and decrements the exact variant atomically', async () => {
   globalThis.testDatabase = database({
-    'products/dress': { data: product, category: 'Dresses', sku: 'D-1', status: 'active' },
+    'products/dress': { data: product, category: 'Dresses', sku: 'D-1', status: 'active', inventoryVersion: 7 },
     'settings/admin': { data: { checkoutCharges: [{ id: 'gst', name: 'GST', type: 'percentage', value: 5, enabled: true, sortOrder: 0 }, { id: 'delivery', name: 'Delivery', type: 'fixed', value: 50, enabled: true, sortOrder: 1 }] } },
   });
   const first = response();
@@ -103,12 +103,14 @@ test('trusted checkout creates the order and decrements the exact variant atomic
   assert.deepEqual(storedOrder.data.charges, first.result.body.order.charges);
   assert.equal(globalThis.testDatabase.documents.get('products/dress').data.variantInventory[0].stock, 1);
   assert.equal(globalThis.testDatabase.documents.get('products/dress').data.stockCount, 1);
+  assert.equal(globalThis.testDatabase.documents.get('products/dress').inventoryVersion, 8);
 
   const retry = response();
   await handler({ method: 'POST', headers: { authorization: 'Bearer token' }, body: validBody }, retry.api);
   assert.equal(retry.result.code, 200);
   assert.equal(retry.result.body.order.id, first.result.body.order.id);
   assert.equal(globalThis.testDatabase.documents.get('products/dress').data.stockCount, 1);
+  assert.equal(globalThis.testDatabase.documents.get('products/dress').inventoryVersion, 8);
 });
 
 test('trusted checkout removes multiple undefined optional fields from the product and address snapshots', async () => {

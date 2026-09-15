@@ -49,6 +49,12 @@ await build({
         export const setDoc = async (...args) => { globalThis.catalogWrites.push(args); };
         export const updateDoc = setDoc;
         export const deleteDoc = async () => {};
+        export const runTransaction = async (_db, callback) => callback({
+          get: async (ref) => { const value = globalThis.catalogTransactionDocs?.[ref.path]; return { id: ref.path.split('/').pop(), exists: () => value !== undefined, data: () => value }; },
+          set: (...args) => { globalThis.catalogWrites.push(args); },
+          update: (...args) => { globalThis.catalogWrites.push(args); },
+          delete: (...args) => { globalThis.catalogWrites.push(args); },
+        });
         export const onSnapshot = (_ref, next, error) => {
           globalThis.emitCatalog = (docs) => next({ docs }); globalThis.failCatalog = error;
           return () => { globalThis.catalogUnsubscribed = true; };

@@ -11,6 +11,11 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
+    // Deterministic reservations make case-insensitive SKU uniqueness atomic.
+    // They contain no storefront or inventory data and remain admin-only.
+    match /productSkus/{skuKey} {
+      allow read, create, update, delete: if isAdmin();
+    }
     match /categories/{categoryId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();

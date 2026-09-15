@@ -1,5 +1,6 @@
 import { ProductImage } from '../common/ProductImage';
-import { hasVariantInventory, variantSummary, productImages } from '../../utils/productData';
+import { variantSummary, productImages } from '../../utils/productData';
+import { inventoryStats, InventoryStockFilter } from '../../utils/inventoryData';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, ClipboardList, FileText, Image, LayoutDashboard, LogOut, Menu, MessageCircle, Package, Phone, Plus, Search, Settings, Tags, Users, X } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
@@ -10,10 +11,11 @@ import { commerceRepository } from '../../services/commerceRepository';
 import { CustomerEnquiriesPanel } from './CustomerEnquiriesPanel';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { ProductEditor } from './ProductEditor';
+import { InventoryManager } from './InventoryManager';
 import { MediaUploader } from './MediaUploader';
 
 type AdminTab = 'dashboard' | 'products' | 'categories' | 'orders' | 'customers' | 'inventory' | 'banners' | 'content' | 'contact' | 'about' | 'enquiries' | 'settings';
-const emptySnapshot: AdminSnapshot = { products: [], orders: [], customers: [] };
+const emptySnapshot: AdminSnapshot = { products: [], inventoryVersions: {}, orders: [], customers: [] };
 const input = 'mt-1 w-full border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-stone-700';
 
 export const AdminPortalPage: React.FC = () => {
@@ -25,10 +27,13 @@ export const AdminPortalPage: React.FC = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   useBodyScrollLock(menuOpen);
   const [productEditor, setProductEditor] = useState<Product | null | undefined>(undefined);
+  const [productEditorVersion, setProductEditorVersion] = useState(0);
   const [bannerEditor, setBannerEditor] = useState<Banner | null | undefined>(undefined);
   useBodyScrollLock(productEditor !== undefined || bannerEditor !== undefined);
+  useEffect(() => { if (productEditor) setProductEditorVersion((snapshot || emptySnapshot).inventoryVersions[productEditor.id] || 0); else if (productEditor === null) setProductEditorVersion(0); }, [productEditor?.id]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [inventoryEntry, setInventoryEntry] = useState<{ stock: InventoryStockFilter; productId: string | null; sequence: number }>({ stock: 'all', productId: null, sequence: 0 });
 
   const reload = async () => {
     setIsLoading(true);
@@ -57,19 +62,20 @@ export const AdminPortalPage: React.FC = () => {
   const data = snapshot || emptySnapshot;
   const threshold = cms.lowStockThreshold;
   const products = useMemo(() => data.products.filter((product) => `${product.title} ${product.sku} ${product.category}`.toLowerCase().includes(query.toLowerCase())), [data.products, query]);
-  const lowStock = data.products.filter((product) => product.stockCount > 0 && product.stockCount <= threshold);
-  const outOfStock = data.products.filter((product) => product.stockCount <= 0);
+  const lowStock = data.products.filter((product) => inventoryStats(product, threshold).status === 'attention');
+  const outOfStock = data.products.filter((product) => inventoryStats(product, threshold).status === 'out');
   const completed = data.orders.filter((order) => order.orderStatus === 'Delivered');
   const pending = data.orders.filter((order) => order.orderStatus === 'Order Placed');
   const nav: Array<[AdminTab, string, React.ElementType]> = [['dashboard', 'Dashboard', LayoutDashboard], ['products', 'Products', Package], ['categories', 'Categories', Tags], ['orders', 'Orders', ClipboardList], ['customers', 'Customers', Users], ['inventory', 'Inventory', Boxes], ['banners', 'Banners', Image], ['content', 'Website Content', FileText], ['contact', 'Contact Information', Phone], ['about', 'About Us', FileText], ['enquiries', 'Customer Enquiries', MessageCircle], ['settings', 'Settings', Settings]];
   const title: Record<AdminTab, string> = { dashboard: 'Dashboard', products: 'Products', categories: 'Categories', orders: 'Orders', customers: 'Customers', inventory: 'Inventory', banners: 'Banners', content: 'Website content', contact: 'Contact information', about: 'About us', enquiries: 'Customer enquiries', settings: 'Settings' };
-  const selectTab = (tab: AdminTab) => { setActiveTab(tab); setQuery(''); setMenuOpen(false); };
+  const selectTab = (tab: AdminTab) => { if (tab === 'inventory') setInventoryEntry((current) => ({ stock: 'all', productId: null, sequence: current.sequence + 1 })); setActiveTab(tab); setQuery(''); setMenuOpen(false); };
+  const openInventory = (stock: InventoryStockFilter, productId: string | null = null) => { setInventoryEntry((current) => ({ stock, productId, sequence: current.sequence + 1 })); setActiveTab('inventory'); };
   const removeProduct = async (product: Product) => {
     if (!window.confirm(`Remove “${product.title}” from the public catalog? This can be restored only by an administrator.`)) return;
     try { await cmsRepository.archiveProduct(product.id); await reload(); showToast('Product removed', 'The product is no longer published in the storefront.', 'info'); } catch { showToast('Delete failed', 'The product could not be removed. Check your admin access.', 'error'); }
   };
   const toggleProduct = async (product: Product) => {
-    try { await cmsRepository.saveProduct({ ...product, isActive: !product.isActive }); await reload(); showToast('Publication updated', `${product.title} is now ${product.isActive ? 'hidden' : 'active'}.`); } catch { showToast('Save failed', 'The publication state was not changed.', 'error'); }
+    try { await cmsRepository.saveProduct({ ...product, isActive: !product.isActive }, data.inventoryVersions[product.id] || 0); await reload(); showToast('Publication updated', `${product.title} is now ${product.isActive ? 'hidden' : 'active'}.`); } catch { showToast('Save failed', 'The publication state was not changed.', 'error'); }
   };
   const createCategory = async (name: string) => {
     const slug = categorySlug(name);
@@ -84,9 +90,45 @@ export const AdminPortalPage: React.FC = () => {
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => <aside className={`${mobile ? 'h-full w-[min(88vw,340px)] overflow-y-auto overscroll-contain bg-[#f1efeb] p-5 shadow-2xl' : 'hidden w-64 shrink-0 border-r border-[#ddd7cf] bg-[#f1efeb] p-5 lg:flex lg:flex-col'}`}><button onClick={() => navigate('home')} className="border-b border-[#d7d0c8] pb-6 text-left"><span className="block font-serif text-xl">AB Collection Admin</span><span className="mt-1 block text-[10px] uppercase tracking-[.18em] text-stone-500">Secure store manager</span></button><nav className="mt-6 space-y-1">{nav.map(([id, label, Icon]) => <button key={id} onClick={() => selectTab(id)} className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-xs font-medium ${activeTab === id ? 'bg-[#625e59] text-white' : 'text-stone-600 hover:bg-white'}`}><Icon className="h-4 w-4" />{label}</button>)}</nav><button onClick={() => void logout()} className="mt-8 flex items-center gap-3 px-3 py-2.5 text-left text-xs text-stone-600 hover:bg-white"><LogOut className="h-4 w-4" />Logout</button></aside>;
   return <div className="min-h-screen bg-[#f7f5f2] text-[#2c2926]"><div className="mx-auto flex min-h-screen max-w-[1680px]"><Sidebar />{menuOpen && <div className="fixed inset-0 z-50 bg-black/35 lg:hidden" onClick={() => setMenuOpen(false)}><div onClick={(event) => event.stopPropagation()}><Sidebar mobile /></div></div>}<main className="min-w-0 flex-1 p-4 sm:p-7 lg:p-10"><header className="mb-7 flex items-start justify-between gap-4 border-b border-[#ddd7cf] pb-5"><div><p className="text-[10px] uppercase tracking-[.2em] text-stone-500">AB Collection / secure admin</p><h1 className="mt-1 font-serif text-3xl">{title[activeTab]}</h1><p className="mt-1 text-xs text-stone-500">{isLoading ? 'Loading Firestore data…' : 'Data is read from protected Firebase collections.'}</p></div><div className="flex gap-2"><button onClick={() => setMenuOpen(true)} className="grid h-10 w-10 place-items-center border border-stone-300 lg:hidden" aria-label="Open admin menu"><Menu className="h-5 w-5" /></button>{activeTab === 'products' && <button onClick={() => setProductEditor(null)} className="inline-flex items-center gap-2 bg-[#625e59] px-4 py-2.5 text-xs font-semibold text-white"><Plus className="h-4 w-4" />Add product</button>}{activeTab === 'banners' && <button onClick={() => setBannerEditor(null)} className="inline-flex items-center gap-2 bg-[#625e59] px-4 py-2.5 text-xs font-semibold text-white"><Plus className="h-4 w-4" />Add banner</button>}</div></header>
     {activeTab === 'dashboard' && <><section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Total products" value={data.products.length} /><Metric label="Active products" value={data.products.filter((item) => item.isActive).length} /><Metric label="Low stock" value={lowStock.length} warning /><Metric label="Out of stock" value={outOfStock.length} warning /><Metric label="Total orders" value={data.orders.length} /><Metric label="Pending orders" value={pending.length} /><Metric label="Completed orders" value={completed.length} /><Metric label="Total customers" value={data.customers.length} /></section><section className="mt-7 grid gap-6 xl:grid-cols-2"><DataCard title="Recent orders">{data.orders.slice(0, 5).map((order) => <div key={order.id} className="flex justify-between border-b border-stone-100 py-3 text-xs"><span><b>{order.orderNumber}</b><br />{order.shippingAddress.fullName}</span><span>{formatPrice(order.totalINR)}<br />{order.orderStatus}</span></div>)}{!data.orders.length && <Empty />}</DataCard><DataCard title="Inventory alerts">{[...outOfStock, ...lowStock].slice(0, 5).map((product) => <div key={product.id} className="flex justify-between border-b border-stone-100 py-3 text-xs"><span><b>{product.title}</b><br />{product.sku}</span><span className="text-right">{product.stockCount} in stock<br />{product.stockCount <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'}</span></div>)}{!outOfStock.length && !lowStock.length && <Empty />}</DataCard></section><section className="mt-6 flex flex-wrap gap-3"><Shortcut label="Add product" onClick={() => { setActiveTab('products'); setProductEditor(null); }} /><Shortcut label="Manage products" onClick={() => setActiveTab('products')} /><Shortcut label="Manage orders" onClick={() => setActiveTab('orders')} /><Shortcut label="Manage banners" onClick={() => setActiveTab('banners')} /></section></>}
+    {activeTab === 'dashboard' && (lowStock.length > 0 || outOfStock.length > 0) && <section className="mt-6 flex flex-wrap gap-3" aria-label="Inventory alert shortcuts">
+      {lowStock.length > 0 && <Shortcut label={`Review ${lowStock.length} needing attention`} onClick={() => openInventory('attention')} />}
+      {outOfStock.length > 0 && <Shortcut label={`Review ${outOfStock.length} fully out`} onClick={() => openInventory('out')} />}
+    </section>}
     {activeTab === 'products' && <><SearchBar query={query} setQuery={setQuery} placeholder="Search product, SKU, or category" /><ProductTable products={products} formatPrice={formatPrice} onEdit={setProductEditor} onToggle={toggleProduct} onRemove={removeProduct} /></>}
     {activeTab === 'categories' && <CategoryManager categories={categories} products={data.products} onCreate={createCategory} onSave={async (category) => { await cmsRepository.saveCategory(category); showToast('Category saved', `${category.name} was updated.`); }} onDelete={async (category) => { await cmsRepository.deleteCategory(category); showToast('Category deleted', `${category.name} was removed.`, 'info'); }} />}
-    {activeTab === 'inventory' && <Inventory products={data.products} threshold={threshold} onEdit={(product) => setProductEditor(product)} />}
+    {activeTab === 'inventory' && <InventoryManager
+      key={inventoryEntry.sequence}
+      products={data.products}
+      categories={categories}
+      threshold={threshold}
+      versions={data.inventoryVersions}
+      loading={isLoading}
+      loadError={loadError}
+      initialStockFilter={inventoryEntry.stock}
+      initialProductId={inventoryEntry.productId}
+      onEditProduct={(product) => setProductEditor(product)}
+      onSave={async (change) => {
+        const nextVersion = await cmsRepository.saveInventory(change);
+        setSnapshot((current) => current ? {
+          ...current,
+          products: current.products.map((product) => product.id === change.productId
+            ? { ...product, stockCount: change.stockCount, ...(change.variantInventory ? { variantInventory: change.variantInventory } : {}) }
+            : product),
+          inventoryVersions: { ...current.inventoryVersions, [change.productId]: nextVersion },
+        } : current);
+        showToast('Inventory saved', 'Only inventory fields were updated.');
+        return nextVersion;
+      }}
+      onRefresh={async (productId) => {
+        const latest = await cmsRepository.loadInventoryProduct(productId);
+        if (latest) setSnapshot((current) => current ? {
+          ...current,
+          products: current.products.map((product) => product.id === productId ? latest.product : product),
+          inventoryVersions: { ...current.inventoryVersions, [productId]: latest.version },
+        } : current);
+        return latest;
+      }}
+    />}
     {activeTab === 'orders' && <Orders orders={data.orders} formatPrice={formatPrice} error={loadError} onUpdate={async (order, status) => { try { await commerceRepository.updateOrderStatus(order, status); await reload(); showToast('Order updated', order.orderNumber + ' is now ' + status + '.'); } catch (error) { console.warn('Order fulfilment update failed.', error); showToast('Order update failed', 'The status was not changed. Check your Firebase admin access and try again.', 'error'); } }} />}
     {activeTab === 'customers' && <DataCard title="Customers">{data.customers.map((customer) => <div key={customer.id} className="grid gap-1 border-b border-stone-100 py-3 text-xs sm:grid-cols-2"><b>{customer.fullName || 'Unnamed customer'}</b><span>{customer.email}</span></div>)}{!data.customers.length && <Empty />}</DataCard>}
     {activeTab === 'banners' && <Banners banners={banners} onEdit={setBannerEditor} onRemove={async (banner) => { if (!window.confirm(`Delete banner “${banner.title}”?`)) return; try { await cmsRepository.deleteBanner(banner.id); await reload(); await refreshCms(); showToast('Banner deleted', 'The storefront will use the remaining active banners or its safe fallback.', 'info'); } catch { showToast('Delete failed', 'The banner could not be deleted.', 'error'); } }} />}
@@ -95,7 +137,7 @@ export const AdminPortalPage: React.FC = () => {
     {activeTab === 'about' && <AboutEditor initial={cms.about} onSave={async (about) => { await cmsRepository.saveAbout(about); await refreshCms(); showToast('About page saved', 'The public About Us page now uses this record.'); }} />}
     {activeTab === 'enquiries' && <CustomerEnquiriesPanel />}
     {activeTab === 'settings' && <SettingsEditor threshold={threshold} charges={cms.checkoutCharges} onSave={async (settings) => { await cmsRepository.saveSettings(settings); await refreshCms(); showToast('Settings saved', 'Inventory alerts and checkout charges were updated.'); }} />}
-  </main></div>{productEditor !== undefined && <ProductEditor product={productEditor} categories={categories} onCreateCategory={createCategory} onClose={() => setProductEditor(undefined)} onSave={async (product) => { await cmsRepository.saveProduct(product); await reload(); setProductEditor(undefined); showToast('Product saved', `${product.title} was saved to Firestore.`); }} />}{bannerEditor !== undefined && <BannerEditor banner={bannerEditor} onClose={() => setBannerEditor(undefined)} onSave={async (banner) => { await cmsRepository.saveBanner(banner); await reload(); await refreshCms(); setBannerEditor(undefined); showToast('Banner saved', 'The active homepage banner set has been updated.'); }} />}</div>;
+  </main></div>{productEditor !== undefined && <ProductEditor product={productEditor} categories={categories} onCreateCategory={createCategory} onClose={() => setProductEditor(undefined)} onSave={async (product) => { await cmsRepository.saveProduct(product, productEditor ? productEditorVersion : undefined); await reload(); setProductEditor(undefined); showToast('Product saved', `${product.title} was saved to Firestore.`); }} />}{bannerEditor !== undefined && <BannerEditor banner={bannerEditor} onClose={() => setBannerEditor(undefined)} onSave={async (banner) => { await cmsRepository.saveBanner(banner); await reload(); await refreshCms(); setBannerEditor(undefined); showToast('Banner saved', 'The active homepage banner set has been updated.'); }} />}</div>;
 };
 
 const Metric = ({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) => <div className="border border-[#ddd7cf] bg-white p-4"><p className="text-[10px] uppercase tracking-[.14em] text-stone-500">{label}</p><p className={`mt-2 font-serif text-3xl ${warning && value ? 'text-rose-700' : ''}`}>{value}</p></div>;
@@ -104,7 +146,6 @@ const DataCard = ({ title, children }: { title: string; children: React.ReactNod
 const Shortcut = ({ label, onClick }: { label: string; onClick: () => void }) => <button onClick={onClick} className="border border-[#cfc6bd] bg-white px-4 py-3 text-xs font-semibold hover:bg-stone-100">{label}</button>;
 const SearchBar = ({ query, setQuery, placeholder }: { query: string; setQuery: (value: string) => void; placeholder: string }) => <div className="relative mb-5 max-w-md"><Search className="absolute left-3 top-3 h-4 w-4 text-stone-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder} className="w-full border border-[#d8d1c9] bg-white py-2.5 pl-9 pr-3 text-xs" /></div>;
 const ProductTable = ({ products, formatPrice, onEdit, onToggle, onRemove }: { products: Product[]; formatPrice: (value: number) => string; onEdit: (product: Product) => void; onToggle: (product: Product) => void; onRemove: (product: Product) => void }) => <section className="overflow-x-auto rounded-xl border border-[#ddd7cf] bg-white p-5 shadow-sm"><div className="grid min-w-[940px] grid-cols-[2fr_1fr_1fr_.8fr_.7fr_1.7fr] gap-3 border-b border-stone-200 pb-3 text-[10px] uppercase tracking-[.14em] text-stone-500"><span>Product</span><span>SKU</span><span>Category</span><span>Price</span><span>Status</span><span>Actions</span></div>{products.map((product) => <div key={product.id} className="grid min-w-[940px] grid-cols-[2fr_1fr_1fr_.8fr_.7fr_1.7fr] items-center gap-3 border-b border-stone-100 py-3 text-xs"><span className="flex items-center gap-3"><ProductImage src={product.images[0]} alt="" className="h-12 w-10 rounded object-cover" /><span><b>{product.title}</b><small className="mt-1 block text-stone-500">{product.stockCount} in stock</small></span></span><span>{product.sku}</span><span>{product.category}</span><span>{formatPrice(product.priceINR)}</span><span><StatusBadge active={product.isActive !== false} /></span><span className="flex flex-wrap gap-2"><ActionButton onClick={() => onEdit(product)}>Edit</ActionButton><ActionButton onClick={() => void onToggle(product)}>{product.isActive ? 'Disable' : 'Enable'}</ActionButton><ActionButton danger onClick={() => void onRemove(product)}>Archive</ActionButton></span></div>)}{!products.length && <Empty />}</section>;
-const Inventory = ({ products, threshold, onEdit }: { products: Product[]; threshold: number; onEdit: (product: Product) => void }) => <section className="rounded-xl border border-[#ddd7cf] bg-white p-5 shadow-sm"><p className="mb-4 text-xs text-stone-500">Low-stock threshold: {threshold}. Open a product to manage its complete size and color stock matrix.</p><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{products.map((product) => <article key={product.id} className="rounded-lg border border-stone-200 p-4"><div className="flex justify-between gap-3"><div><p className="font-medium">{product.title}</p><p className="mt-1 text-xs text-stone-500">{product.sku}</p></div><StockBadge stock={product.stockCount} threshold={threshold} /></div><p className="mt-4 font-serif text-2xl">{product.stockCount}</p><p className="text-xs text-stone-500">total units · {hasVariantInventory(product) ? `${product.variantInventory?.length || 0} variant rows` : 'shared product stock'}</p><button type="button" onClick={() => onEdit(product)} className="mt-4 min-h-10 w-full rounded bg-stone-800 px-3 text-xs font-semibold text-white">Manage inventory</button></article>)}</div>{!products.length && <Empty />}</section>;
 const ActionButton = ({ children, onClick, danger = false }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) => <button type="button" onClick={onClick} className={`min-h-9 rounded border px-3 text-xs font-semibold ${danger ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : 'border-stone-300 hover:bg-stone-100'}`}>{children}</button>;
 const StatusBadge = ({ active }: { active: boolean }) => <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${active ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-700'}`}>{active ? 'Active' : 'Disabled'}</span>;
 const StockBadge = ({ stock, threshold }: { stock: number; threshold: number }) => <span className={`h-fit rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${stock <= 0 ? 'bg-rose-100 text-rose-800' : stock <= threshold ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>{stock <= 0 ? 'Out' : stock <= threshold ? 'Low' : 'In stock'}</span>;

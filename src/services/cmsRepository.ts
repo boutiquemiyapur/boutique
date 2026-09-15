@@ -1,7 +1,8 @@
-import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
-import { productFromDocument, productForStorage } from '../utils/productData';
+import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
+import { hasVariantInventory, normalizeVariantInventory, productFromDocument, productForStorage, totalProductStock, variantKey } from '../utils/productData';
 import { normalizeCategory } from '../utils/categoryData';
 import { normalizeCheckoutCharges } from '../utils/checkoutTotals';
+import { InventorySaveInput, StaleInventoryError } from '../utils/inventoryData';
 import { BRAND } from '../config/brand';
 import { firestore } from '../firebase/config';
 import { uploadMedia } from './mediaUploadService';
@@ -9,9 +10,19 @@ import { AboutContent, Banner, CheckoutCharge, ContactInformation, CustomerProfi
 
 export interface AdminSnapshot {
   products: Product[];
+  inventoryVersions: Record<string, number>;
   orders: Order[];
   customers: CustomerProfile[];
 }
+
+const normalizedSku = (value: string) => value.trim().toLocaleLowerCase('en-IN');
+const skuReservationId = (value: string) => encodeURIComponent(normalizedSku(value));
+const documentIdentity = (snapshot: { id: string; data: () => Record<string, unknown> }) => {
+  const document = snapshot.data();
+  const data = document.data as Partial<Product> | undefined;
+  return { id: snapshot.id, sku: typeof document.sku === 'string' ? document.sku : data?.sku || '', title: data?.title || 'another product' };
+};
+const inventoryVersion = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
 
 export interface PublicCms {
   banners: Banner[];
@@ -106,8 +117,10 @@ export const cmsRepository = {
       .filter((item): item is Order => Boolean(item?.id && item.orderNumber))
       .reduce<Order[]>((all, order) => all.some((item) => item.id === order.id) ? all : [...all, order], [])
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const products = productSnapshot.docs.map((item) => productFromDocument(item.id, item.data())).filter((item): item is Product => Boolean(item));
     return {
-      products: productSnapshot.docs.map((item) => productFromDocument(item.id, item.data())).filter((item): item is Product => Boolean(item)),
+      products,
+      inventoryVersions: Object.fromEntries(productSnapshot.docs.map((item) => [item.id, inventoryVersion(item.data().inventoryVersion)])),
       orders,
       customers: customerSnapshot.docs.map((item) => item.data().profile as CustomerProfile).filter(Boolean)
     };
@@ -143,19 +156,66 @@ export const cmsRepository = {
     return snapshot.docs.map((item) => item.data().data as Banner).filter(Boolean).sort((a, b) => a.displayOrder - b.displayOrder);
   },
 
-  async saveProduct(product: Product) {
+  async saveProduct(product: Product, expectedInventoryVersion?: number) {
     if (!firestore) throw new Error('Firebase is not configured for this deployment.');
     product = productForStorage(product);
+    const allProducts = await getDocs(collection(firestore, 'products'));
+    const conflict = allProducts.docs.map(documentIdentity).find((candidate) => candidate.id !== product.id && normalizedSku(candidate.sku) === normalizedSku(product.sku));
+    if (conflict) throw new Error(`SKU ${product.sku} is already used by ${conflict.title}. Enter a unique SKU.`);
     const productRef = doc(firestore, 'products', product.id);
-    const exists = (await getDoc(productRef)).exists();
-    await setDoc(productRef, {
-      data: product,
-      category: product.category,
-      sku: product.sku,
-      status: product.isActive === false ? 'inactive' : 'active',
-      updatedAt: serverTimestamp(),
-      ...(!exists ? { createdAt: serverTimestamp() } : {})
-    }, { merge: true });
+    const reservationRef = doc(firestore, 'productSkus', skuReservationId(product.sku));
+    await runTransaction(firestore, async (transaction) => {
+      const existing = await transaction.get(productRef);
+      const existingData = existing.data();
+      const previousSku = typeof existingData?.sku === 'string' ? existingData.sku : (existingData?.data as Partial<Product> | undefined)?.sku || '';
+      const previousReservationRef = previousSku && normalizedSku(previousSku) !== normalizedSku(product.sku) ? doc(firestore, 'productSkus', skuReservationId(previousSku)) : null;
+      const reservation = await transaction.get(reservationRef);
+      const previousReservation = previousReservationRef ? await transaction.get(previousReservationRef) : null;
+      if (reservation.exists() && reservation.data()?.productId !== product.id) throw new Error(`SKU ${product.sku} is already assigned to another product.`);
+      const currentVersion = inventoryVersion(existingData?.inventoryVersion);
+      if (expectedInventoryVersion !== undefined && currentVersion !== expectedInventoryVersion) throw new StaleInventoryError();
+      const nextVersion = currentVersion + 1;
+      transaction.set(productRef, { data: product, category: product.category, sku: product.sku, status: product.isActive === false ? 'inactive' : 'active', inventoryVersion: nextVersion, updatedAt: serverTimestamp(), ...(!existing.exists() ? { createdAt: serverTimestamp() } : {}) }, { merge: true });
+      transaction.set(reservationRef, { productId: product.id, sku: product.sku, updatedAt: serverTimestamp() });
+      if (previousReservationRef && previousReservation?.data()?.productId === product.id) transaction.delete(previousReservationRef);
+    });
+  },
+
+  async loadInventoryProduct(productId: string): Promise<{ product: Product; version: number } | null> {
+    if (!firestore) throw new Error('Firebase is not configured for this deployment.');
+    const snapshot = await getDoc(doc(firestore, 'products', productId));
+    if (!snapshot.exists()) return null;
+    const product = productFromDocument(snapshot.id, snapshot.data());
+    return product ? { product, version: inventoryVersion(snapshot.data().inventoryVersion) } : null;
+  },
+
+  async saveInventory(input: InventorySaveInput): Promise<number> {
+    if (!firestore) throw new Error('Firebase is not configured for this deployment.');
+    if (!Number.isInteger(input.stockCount) || input.stockCount < 0) throw new Error('Stock must be a non-negative whole number.');
+    const productRef = doc(firestore, 'products', input.productId);
+    return runTransaction(firestore, async (transaction) => {
+      const snapshot = await transaction.get(productRef);
+      if (!snapshot.exists()) throw new Error('This product no longer exists.');
+      const currentVersion = inventoryVersion(snapshot.data().inventoryVersion);
+      if (currentVersion !== input.expectedVersion) throw new StaleInventoryError();
+      const current = productFromDocument(snapshot.id, snapshot.data());
+      if (!current) throw new Error('This product is no longer available for inventory editing.');
+
+      if (!hasVariantInventory(current)) {
+        if (input.variantInventory !== undefined) throw new StaleInventoryError();
+        transaction.update(productRef, { 'data.stockCount': input.stockCount, inventoryVersion: currentVersion + 1, updatedAt: serverTimestamp() });
+        return currentVersion + 1;
+      }
+
+      if (!Array.isArray(input.variantInventory) || input.variantInventory.some((row) => !Number.isInteger(row.stock) || row.stock < 0)) throw new Error('Every variant stock value must be a non-negative whole number.');
+      const rows = normalizeVariantInventory(input.variantInventory) || [];
+      const currentKeys = (current.variantInventory || []).map((row) => variantKey(row.colorName, row.size)).sort();
+      const submittedKeys = rows.map((row) => variantKey(row.colorName, row.size)).sort();
+      if (currentKeys.length !== submittedKeys.length || currentKeys.some((key, index) => key !== submittedKeys[index])) throw new StaleInventoryError();
+      const stockCount = totalProductStock({ stockCount: input.stockCount, variantInventory: rows });
+      transaction.update(productRef, { 'data.stockCount': stockCount, 'data.variantInventory': rows, inventoryVersion: currentVersion + 1, updatedAt: serverTimestamp() });
+      return currentVersion + 1;
+    });
   },
 
   async archiveProduct(productId: string) {

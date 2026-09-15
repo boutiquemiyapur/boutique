@@ -124,7 +124,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       for (const product of products) {
         const requested = items.filter((item) => item.product.id === product.id).map((item) => ({ colorName: item.selectedColor, size: item.selectedSize, quantity: item.quantity }));
         const updated = sanitizeFirestoreData(withDeductedStock(product, requested));
-        const inventoryWrite = sanitizeFirestoreData({ data: updated, updatedAt: FieldValue.serverTimestamp() });
+        const inventoryWrite = sanitizeFirestoreData({ data: updated, inventoryVersion: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() });
         transaction.update(database.collection('products').doc(product.id), inventoryWrite);
       }
       const orderWrite = sanitizeFirestoreData({ customerId: uid, orderNumber: storedOrder.orderNumber, paymentStatus: storedOrder.paymentStatus, orderStatus: storedOrder.orderStatus, data: storedOrder, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
