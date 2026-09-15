@@ -6,7 +6,8 @@ import { pathToFileURL } from 'node:url';
 
 const outfile = resolve('node_modules/.cache/order-transaction-tests.mjs');
 await build({
-  entryPoints: ['api/orders/create.ts'],
+  absWorkingDir: process.cwd(),
+  entryPoints: [resolve('api/orders/create.ts')],
   outfile,
   bundle: true,
   platform: 'node',
@@ -27,6 +28,17 @@ const response = () => {
   const result = { code: 0, body: null };
   return { result, api: { status(code) { result.code = code; return { json(value) { result.body = value; } }; } } };
 };
+const undefinedPaths = (value, path = 'data', found = []) => {
+  if (value === undefined) {
+    found.push(path);
+    return found;
+  }
+  if (value === null || typeof value !== 'object') return found;
+  if (Array.isArray(value)) value.forEach((item, index) => undefinedPaths(item, `${path}[${index}]`, found));
+  else Object.entries(value).forEach(([key, item]) => undefinedPaths(item, `${path}.${key}`, found));
+  return found;
+};
+const assertFirestoreSafe = (value) => assert.deepEqual(undefinedPaths(value), []);
 const snapshot = (ref, value) => ({ id: ref.id, exists: value !== undefined, data: () => value });
 const database = (initial) => {
   const documents = new Map(Object.entries(initial));
@@ -38,8 +50,14 @@ const database = (initial) => {
       const transaction = {
         get: async (ref) => snapshot(ref, documents.get(ref.path)),
         getAll: async (...refs) => refs.map((ref) => snapshot(ref, documents.get(ref.path))),
-        update: (ref, value) => pending.push(() => documents.set(ref.path, { ...documents.get(ref.path), ...value })),
-        set: (ref, value) => pending.push(() => documents.set(ref.path, value)),
+        update: (ref, value) => {
+          assertFirestoreSafe(value);
+          pending.push(() => documents.set(ref.path, { ...documents.get(ref.path), ...value }));
+        },
+        set: (ref, value) => {
+          assertFirestoreSafe(value);
+          pending.push(() => documents.set(ref.path, value));
+        },
       };
       const result = await callback(transaction);
       pending.forEach((write) => write());
@@ -65,7 +83,24 @@ test('trusted checkout creates the order and decrements the exact variant atomic
   await handler({ method: 'POST', headers: { authorization: 'Bearer token' }, body: validBody }, first.api);
   assert.equal(first.result.code, 200);
   assert.equal(first.result.body.order.totalINR, 1100);
+  assert.equal(first.result.body.order.items.length, 1);
+  assert.equal(first.result.body.order.items[0].selectedColor, 'Red');
+  assert.equal(first.result.body.order.items[0].selectedSize, 'S');
+  assert.equal(first.result.body.order.items[0].giftPackaging, false);
+  assert.equal(first.result.body.order.items[0].product.customStitchingAvailable, false);
+  assert.equal('weightGrams' in first.result.body.order.items[0].product, false);
+  assert.equal(first.result.body.order.items[0].product.subtitle, '');
+  assert.equal(first.result.body.order.couponCodeApplied, null);
   assert.deepEqual(first.result.body.order.charges.map((charge) => [charge.name, charge.amountINR]), [['GST', 50], ['Delivery', 50]]);
+  assertFirestoreSafe(first.result.body.order);
+  const storedOrder = [...globalThis.testDatabase.documents.entries()].find(([key]) => key.startsWith('orders/'))?.[1];
+  assert.ok(storedOrder);
+  assertFirestoreSafe(storedOrder);
+  assert.equal(storedOrder.customerId, 'customer-123456789');
+  assert.equal(storedOrder.data.paymentMethod, 'cod');
+  assert.equal(storedOrder.data.paymentStatus, 'Pending');
+  assert.equal(storedOrder.data.timeline[0].timestamp, storedOrder.data.createdAt);
+  assert.deepEqual(storedOrder.data.charges, first.result.body.order.charges);
   assert.equal(globalThis.testDatabase.documents.get('products/dress').data.variantInventory[0].stock, 1);
   assert.equal(globalThis.testDatabase.documents.get('products/dress').data.stockCount, 1);
 
@@ -74,6 +109,48 @@ test('trusted checkout creates the order and decrements the exact variant atomic
   assert.equal(retry.result.code, 200);
   assert.equal(retry.result.body.order.id, first.result.body.order.id);
   assert.equal(globalThis.testDatabase.documents.get('products/dress').data.stockCount, 1);
+});
+
+test('trusted checkout removes multiple undefined optional fields from the product and address snapshots', async () => {
+  globalThis.testDatabase = database({
+    'products/dress': { data: { ...product, weightGrams: undefined, originalPriceINR: undefined, discountPercentage: undefined, includesBlousePiece: undefined, isBestseller: undefined, reviews: undefined, zariType: undefined, blouseLength: undefined, sareeLength: undefined, careInstructions: undefined, occasion: undefined, specifications: undefined, colors: [{ ...product.colors[0], swatchLabel: undefined }] }, category: 'Dresses', sku: 'D-1', status: 'active' },
+    'settings/admin': { data: { checkoutCharges: [] } },
+  });
+  const result = response();
+  const body = { ...validBody, expectedTotalINR: 1000, shippingAddress: { ...validBody.shippingAddress, addressLine2: undefined, isDefault: false } };
+  await handler({ method: 'POST', headers: { authorization: 'Bearer token' }, body }, result.api);
+  assert.equal(result.result.code, 200);
+  const storedProduct = result.result.body.order.items[0].product;
+  for (const field of ['weightGrams', 'originalPriceINR', 'discountPercentage', 'includesBlousePiece', 'isBestseller', 'reviews']) {
+    assert.equal(field in storedProduct, false);
+  }
+  assert.equal(storedProduct.zariType, '');
+  assert.equal(storedProduct.blouseLength, '');
+  assert.equal(storedProduct.sareeLength, '');
+  assert.equal(storedProduct.careInstructions, '');
+  assert.equal(storedProduct.occasion, '');
+  assert.deepEqual(storedProduct.specifications, []);
+  assert.equal(storedProduct.colors.length, 1);
+  assert.equal(storedProduct.colors[0].colorName, 'Red');
+  assert.equal('swatchLabel' in storedProduct.colors[0], false);
+  assert.equal('addressLine2' in result.result.body.order.shippingAddress, false);
+  assert.equal(result.result.body.order.shippingAddress.isDefault, false);
+  assertFirestoreSafe(result.result.body.order);
+});
+
+test('trusted checkout preserves zero and false values while sanitizing the order payload', async () => {
+  globalThis.testDatabase = database({
+    'products/dress': { data: { ...product, weightGrams: 0, isReadyToShip: false, includesBlousePiece: false }, category: 'Dresses', sku: 'D-1', status: 'active' },
+    'settings/admin': { data: { checkoutCharges: [] } },
+  });
+  const result = response();
+  await handler({ method: 'POST', headers: { authorization: 'Bearer token' }, body: { ...validBody, expectedTotalINR: 1000 } }, result.api);
+  assert.equal(result.result.code, 200);
+  assert.equal(result.result.body.order.items[0].product.weightGrams, 0);
+  assert.equal(result.result.body.order.items[0].product.isReadyToShip, false);
+  assert.equal(result.result.body.order.items[0].product.includesBlousePiece, false);
+  assert.equal(result.result.body.order.items[0].giftPackaging, false);
+  assertFirestoreSafe(result.result.body.order);
 });
 
 test('trusted checkout rejects overselling without changing stock or creating an order', async () => {

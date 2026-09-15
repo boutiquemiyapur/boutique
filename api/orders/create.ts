@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { CartItem, Coupon, Order, Product, ShippingAddress } from '../../src/types/index.js';
 import { calculateCheckoutTotals, legacyChargeAmounts, normalizeCheckoutCharges } from '../../src/utils/checkoutTotals.js';
-import { cartCatalogIssue, productFromDocument, productForStorage, withDeductedStock } from '../../src/utils/productData.js';
+import { sanitizeFirestoreData } from '../../src/utils/firestoreData.js';
+import { cartCatalogIssue, productFromDocument, withDeductedStock } from '../../src/utils/productData.js';
 
 type RequestItem = Pick<CartItem, 'selectedColor' | 'selectedSize' | 'quantity' | 'isCustomTailored' | 'customMeasurements' | 'giftPackaging' | 'giftNote'> & { productId: string; expectedPriceINR: number; expectedTailoringFeeINR: number };
 type RequestBody = { requestId?: string; items?: RequestItem[]; shippingAddress?: ShippingAddress; couponCode?: string | null; expectedTotalINR?: number };
@@ -118,14 +119,17 @@ export default async function handler(request: ApiRequest, response: ApiResponse
         orderStatus: 'Order Placed',
         timeline: [{ status: 'Order Placed', timestamp: createdAt, description: 'Your Cash on Delivery order request has been received.', completed: true }],
       };
+      const storedOrder = sanitizeFirestoreData(newOrder);
 
       for (const product of products) {
         const requested = items.filter((item) => item.product.id === product.id).map((item) => ({ colorName: item.selectedColor, size: item.selectedSize, quantity: item.quantity }));
-        const updated = productForStorage(withDeductedStock(product, requested));
-        transaction.update(database.collection('products').doc(product.id), { data: updated, updatedAt: FieldValue.serverTimestamp() });
+        const updated = sanitizeFirestoreData(withDeductedStock(product, requested));
+        const inventoryWrite = sanitizeFirestoreData({ data: updated, updatedAt: FieldValue.serverTimestamp() });
+        transaction.update(database.collection('products').doc(product.id), inventoryWrite);
       }
-      transaction.set(orderRef, { customerId: uid, orderNumber: newOrder.orderNumber, paymentStatus: newOrder.paymentStatus, orderStatus: newOrder.orderStatus, data: newOrder, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-      return newOrder;
+      const orderWrite = sanitizeFirestoreData({ customerId: uid, orderNumber: storedOrder.orderNumber, paymentStatus: storedOrder.paymentStatus, orderStatus: storedOrder.orderStatus, data: storedOrder, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+      transaction.set(orderRef, orderWrite);
+      return storedOrder;
     });
     return response.status(200).json({ order });
   } catch (error) {
