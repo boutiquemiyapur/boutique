@@ -1,3 +1,4 @@
+import { ProductImage } from '../common/ProductImage';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -97,7 +98,7 @@ export const HeroBanner: React.FC = () => {
   >
     <AnimatePresence initial={false} mode="sync">
       <motion.div key={currentSlide.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: 'easeInOut' }} className="absolute inset-0">
-        <picture className="block h-full w-full"><source media="(max-width: 767px)" srcSet={currentSlide.mobileImage || currentSlide.image} /><img src={currentSlide.image} alt={currentSlide.alt} className={`h-full w-full object-cover ${currentSlide.mobilePositionClass} ${currentSlide.desktopPositionClass}`} fetchPriority={currentIndex === 0 ? 'high' : 'auto'} loading={currentIndex === 0 ? 'eager' : 'lazy'} /></picture>
+        <picture className="block h-full w-full"><source media="(max-width: 767px)" srcSet={currentSlide.mobileImage || currentSlide.image} /><ProductImage src={currentSlide.image} alt={currentSlide.alt} className={`h-full w-full object-cover ${currentSlide.mobilePositionClass} ${currentSlide.desktopPositionClass}`} fetchPriority={currentIndex === 0 ? 'high' : 'auto'} loading={currentIndex === 0 ? 'eager' : 'lazy'} /></picture>
         <div className="absolute inset-0 bg-gradient-to-t from-[#102847]/78 via-[#102847]/18 to-transparent sm:bg-gradient-to-r sm:from-[#102847]/58 sm:via-[#102847]/10 sm:to-transparent" aria-hidden="true" />
       </motion.div>
     </AnimatePresence>

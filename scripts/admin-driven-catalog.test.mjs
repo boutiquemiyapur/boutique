@@ -67,6 +67,7 @@ const product = (extra = {}) => api.normalizeProduct({ id: 'cotton', title: 'Cot
 const line = (p, extra = {}) => ({ cartItemId: 'line-1', product: p, selectedColor: '', selectedSize: '', quantity: 1, isCustomTailored: false, tailoringFeeINR: 0, ...extra });
 const document = (p, status = 'active') => ({ id: p.id, data: () => ({ data: p, status }) });
 const setupStore = (p, extra = {}) => { globalThis.catalogStore = {
+  authStatus: 'authenticated', isCustomerDataReady: true, privateDataError: false,
   products: p ? [p] : [], selectedProductId: p?.id, catalogStatus: 'ready', customer: {},
   formatPrice: (value) => `INR ${value}`, isInWishlist: () => false,
   cms: { lowStockThreshold: 3, checkoutCharges: [], contact: {}, content: {} }, categories: [], cartCharges: [],

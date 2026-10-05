@@ -1,3 +1,5 @@
+import { useNavigationScroll } from '../../hooks/useNavigationScroll';
+import { PrivateLoading } from '../common/Skeleton';
 import { confirmedPayment } from '../../services/paymentClient';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
@@ -22,6 +24,7 @@ export const CheckoutPage: React.FC = () => {
     customer,
     authStatus,
     isCustomerDataReady,
+    privateDataError,
     requireAuth,
     formatPrice,
     cartSubtotalINR,
@@ -36,6 +39,7 @@ export const CheckoutPage: React.FC = () => {
   } = useStore();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  useNavigationScroll(step, '[data-checkout-top]');
 
   // Only real authenticated profile data may prefill checkout. Missing values
   // remain blank; country defaults to India without inventing customer data.
@@ -79,7 +83,7 @@ export const CheckoutPage: React.FC = () => {
   if (authStatus !== 'authenticated') return null;
 
   if (!isCustomerDataReady) {
-    return <div className="grid min-h-[60vh] place-items-center text-sm text-stone-500">Loading your checkout details...</div>;
+    return <PrivateLoading error={privateDataError} />;
   }
 
   if (cart.length === 0) {
@@ -124,7 +128,7 @@ export const CheckoutPage: React.FC = () => {
 
   return (
     <div className="bg-[#FAF7F2] min-h-screen py-8 sm:py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div data-checkout-top className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {cartIssue && <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-xs">{cartIssue} You can still check or retry an existing payment from your order history. Availability will be checked before a new payment.</p>}
         {/* Checkout Header */}
         <div className="flex items-center justify-between pb-6 border-b border-[#E6D5B8] mb-8">

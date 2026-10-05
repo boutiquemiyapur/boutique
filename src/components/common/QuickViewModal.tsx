@@ -196,7 +196,7 @@ export const QuickViewModal: React.FC = () => {
                   ? 'border-[#8B1E3F] bg-[#8B1E3F]/10 text-[#8B1E3F]'
                   : 'border-[#E6D5B8] bg-white text-stone-500 hover:text-black hover:border-black'
               }`}
-              aria-label="Wishlist"
+              aria-pressed={isInWishlist(product.id)} aria-label={isInWishlist(product.id) ? "Remove from Wishlist" : "Save to Wishlist"}
             >
               <Heart className={`w-5 h-5 ${isSaved ? 'fill-[#8B1E3F]' : ''}`} />
             </button>

@@ -59,25 +59,26 @@ export const DEFAULT_CMS: PublicCms = {
   banners: [], content: defaultContent, about: defaultAbout, contact: defaultContact, lowStockThreshold: 3, checkoutCharges: []
 };
 
-const readDocument = async <T extends object>(name: string, id: string, fallback: T): Promise<T> => {
-  if (!firestore) return fallback;
+const readDocument = async <T extends object>(name: string, id: string, fallback: T, strict = false): Promise<T> => {
+  if (!firestore) { if (strict) throw new Error('Store content service is not configured.'); return fallback; }
   try {
     const snapshot = await getDoc(doc(firestore, name, id));
     return snapshot.exists() ? { ...fallback, ...(snapshot.data().data as Partial<T>) } : fallback;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return fallback;
   }
 };
 
 export const cmsRepository = {
-  async loadPublicCms(): Promise<PublicCms> {
-    if (!firestore) return DEFAULT_CMS;
+  async loadPublicCms(strict = false): Promise<PublicCms> {
+    if (!firestore) { if (strict) throw new Error('Store content service is not configured.'); return DEFAULT_CMS; }
     const [bannerSnapshot, content, about, contact, settings] = await Promise.all([
-      getDocs(collection(firestore, 'banners')).catch(() => null),
-      readDocument('siteContent', 'home', defaultContent),
-      readDocument('about', 'main', defaultAbout),
-      readDocument('contact', 'main', defaultContact),
-      readDocument('settings', 'admin', { lowStockThreshold: DEFAULT_CMS.lowStockThreshold, checkoutCharges: [] as CheckoutCharge[] })
+      getDocs(collection(firestore, 'banners')).catch((error) => { if (strict) throw error; return null; }),
+      readDocument('siteContent', 'home', defaultContent, strict),
+      readDocument('about', 'main', defaultAbout, strict),
+      readDocument('contact', 'main', defaultContact, strict),
+      readDocument('settings', 'admin', { lowStockThreshold: DEFAULT_CMS.lowStockThreshold, checkoutCharges: [] as CheckoutCharge[] }, strict)
     ]);
     const banners = bannerSnapshot
       ? bannerSnapshot.docs.map((item) => item.data().data as Banner).filter((item): item is Banner => Boolean(item && item.isActive)).sort((a, b) => a.displayOrder - b.displayOrder)

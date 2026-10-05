@@ -1,3 +1,5 @@
+import { useNavigationScroll } from './hooks/useNavigationScroll';
+import { PrivateLoading } from './components/common/Skeleton';
 import React, { useEffect } from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Header } from './components/layout/Header';
@@ -23,14 +25,14 @@ import { WishlistPage } from './components/common/WishlistPage';
 import { CartPage } from './components/cart/CartPage';
 import { NotFoundPage, StaticPage } from './components/pages/StaticPage';
 import { AuthPage } from './components/auth/AuthPage';
-import { LoaderCircle, ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { SeoManager } from './components/common/SeoManager';
 
-const RouteLoading = () => <div className="grid min-h-[65vh] place-items-center"><LoaderCircle className="h-6 w-6 animate-spin text-[#685c53]" /></div>;
+const RouteLoading = PrivateLoading;
 
 const ProtectedAccount = () => {
-  const { authStatus, requireAuth } = useStore();
-  if (authStatus === 'loading') return <RouteLoading />;
+  const { authStatus, isCustomerDataReady, privateDataError, requireAuth } = useStore();
+  if (authStatus === 'loading' || (authStatus === 'authenticated' && !isCustomerDataReady)) return <PrivateLoading error={privateDataError} />;
   if (authStatus !== 'authenticated') return <AccessNotice title="Sign in to view your account" action="Sign in" onAction={() => requireAuth('account')} />;
   return <CustomerAccountPage />;
 };
@@ -59,14 +61,11 @@ const UnauthorizedAdminRedirect = () => {
 const AccessNotice = ({ title, action, onAction }: { title: string; action: string; onAction: () => void }) => <section className="grid min-h-[60vh] place-items-center px-5"><div className="max-w-md border border-[#ddd7cf] bg-white p-8 text-center shadow-sm"><ShieldAlert className="mx-auto h-7 w-7 text-[#685c53]" /><h1 className="mt-4 font-serif text-3xl text-[#252220]">{title}</h1><p className="mt-3 text-sm text-stone-600">Your account and boutique operations are protected by Firebase Authentication.</p><button onClick={onAction} className="mt-6 bg-[#685c53] px-6 py-3 text-xs font-semibold uppercase tracking-[.12em] text-white">{action}</button></div></section>;
 
 function AppContent() {
-  const { activeView, navigateFromUrl } = useStore();
+  const { activeView, selectedProductId, selectedTrackingOrderId, navigateFromUrl } = useStore();
   const isAuthView = activeView === 'login' || activeView === 'register' || activeView === 'forgot-password';
   const isStandaloneView = isAuthView || activeView === 'admin';
 
-  // Scroll to top on page transition
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [activeView]);
+  useNavigationScroll(`${activeView}:${selectedProductId || ""}:${selectedTrackingOrderId || ""}`);
 
   useEffect(() => {
     navigateFromUrl();

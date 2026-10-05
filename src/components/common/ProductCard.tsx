@@ -6,10 +6,15 @@ import { Product } from '../../types';
 import { useStore } from '../../context/StoreContext';
 
 export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = ({ product, priority = false }) => {
-  const { cms, addToCart, formatPrice, isInWishlist, navigate, setQuickViewProduct, toggleWishlist } = useStore();
+  const { authStatus, requireAuth, cms, addToCart, formatPrice, isInWishlist, navigate, setQuickViewProduct, toggleWishlist } = useStore();
   const [showAlternate, setShowAlternate] = useState(false);
   const saved = isInWishlist(product.id);
   const isSoldOut = product.stockCount <= 0;
+  const handleAddToBag = () => {
+    if (!product.colors.length && !product.availableSizes.length) { void addToCart(product, '', ''); return; }
+    if (authStatus !== 'authenticated') { navigate('product-detail', product.id); requireAuth('product-detail'); return; }
+    setQuickViewProduct(product);
+  };
   const image = showAlternate && product.images[1] ? product.images[1] : product.images[0];
 
   return <article className="group relative min-w-0 border border-[#ddd7cf] bg-[#fffdf9] p-2 transition duration-300 hover:-translate-y-1 hover:border-[#b69755] hover:shadow-[0_18px_36px_-24px_rgba(16,40,71,.38)]">
@@ -22,12 +27,12 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
         {product.discountPercentage > 0 && <span className="bg-[#625e59] px-2 py-1 text-white">{product.discountPercentage}% off</span>}
         {isSoldOut && <span className="bg-[#2c2926] px-2 py-1 text-white">Sold out</span>}
       </div>
-      <button onClick={() => toggleWishlist(product.id)} aria-label={saved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`} className={`absolute right-3 top-3 grid h-9 w-9 place-items-center transition ${saved ? 'bg-[#8B1E3F] text-white' : 'bg-[#fffdf9]/95 text-[#2c2926] hover:bg-[#625e59] hover:text-white'}`}>
+      <button onClick={() => toggleWishlist(product.id)} aria-pressed={saved} aria-label={saved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`} className={`absolute right-3 top-3 grid h-9 w-9 place-items-center transition ${saved ? 'bg-[#8B1E3F] text-white' : 'bg-[#fffdf9]/95 text-[#2c2926] hover:bg-[#625e59] hover:text-white'}`}>
         <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
       </button>
       <div className="absolute inset-x-3 bottom-3 flex translate-y-2 gap-2 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100">
         <button onClick={() => setQuickViewProduct(product)} className="flex h-10 flex-1 items-center justify-center gap-1.5 bg-[#fffdf9] text-[10px] font-semibold uppercase tracking-[.12em] text-[#2c2926]"><Eye className="h-3.5 w-3.5" />Quick view</button>
-        <button disabled={isSoldOut} onClick={() => product.colors.length || product.availableSizes.length ? setQuickViewProduct(product) : addToCart(product, '', '')} className="grid h-10 w-10 place-items-center bg-[#2c2926] text-white disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Add ${product.title} to bag`}><ShoppingBag className="h-4 w-4" /></button>
+        <button disabled={isSoldOut} onClick={handleAddToBag} className="grid h-10 w-10 place-items-center bg-[#2c2926] text-white disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Add ${product.title} to bag`}><ShoppingBag className="h-4 w-4" /></button>
       </div>
     </div>
     <div className="px-1 pb-1 pt-4">

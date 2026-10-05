@@ -1,3 +1,4 @@
+import { PrivateLoading } from '../common/Skeleton';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
 import React, { useState } from 'react';
@@ -22,6 +23,8 @@ export const CartDrawer: React.FC = () => {
     isCartDrawerOpen,
     setIsCartDrawerOpen,
     cart,
+    isCustomerDataReady,
+    privateDataError,
     cartIssue,
     updateCartQuantity,
     removeFromCart,
@@ -72,7 +75,7 @@ export const CartDrawer: React.FC = () => {
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-[#8B1E3F]" />
             <h2 className="text-lg font-serif font-bold text-[#1A1715]">
-              Your Shopping Bag ({cart.length})
+              Your Shopping Bag ({cart.reduce((total, item) => total + item.quantity, 0)})
             </h2>
           </div>
           <button
@@ -87,7 +90,7 @@ export const CartDrawer: React.FC = () => {
 
         {/* Line Items List */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
-          {cart.length === 0 ? (
+          {!isCustomerDataReady ? <PrivateLoading error={privateDataError} /> : cart.length === 0 ? (
             <div className="text-center py-16">
               <ShoppingBag className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Bag is Empty</h3>

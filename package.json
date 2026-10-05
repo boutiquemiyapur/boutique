@@ -13,7 +13,8 @@
     "test:payment-client": "node scripts/payment-client.test.mjs",
     "test:payment-emulator": "firebase emulators:exec --only firestore --project demo-ab-payments --config firebase.payments.test.json \"node scripts/payment-emulator-runner.mjs\"",
     "admin:grant": "node scripts/set-admin-claim.mjs",
-    "admin:revoke": "node scripts/set-admin-claim.mjs --revoke"
+    "admin:revoke": "node scripts/set-admin-claim.mjs --revoke",
+    "test:shopping-ux": "node scripts/shopping-ux.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

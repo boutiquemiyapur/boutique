@@ -8,6 +8,8 @@ type TabType = 'all' | 'bestsellers' | 'new-arrivals' | 'bridal' | 'handloom';
 export const FeaturedGrid: React.FC = () => {
   const {
     products,
+    authStatus,
+    requireAuth,
     cms,
     formatPrice,
     addToCart,
@@ -26,6 +28,12 @@ export const FeaturedGrid: React.FC = () => {
     if (activeTab === 'handloom') return p.isHandloomCertified;
     return true;
   });
+
+  const handleAddToBag = (product: typeof products[number]) => {
+    if (!product.colors.length && !product.availableSizes.length) { void addToCart(product, '', ''); return; }
+    if (authStatus !== 'authenticated') { navigate('product-detail', product.id); requireAuth('product-detail'); return; }
+    setQuickViewProduct(product);
+  };
 
   return (
     <section className="py-16 sm:py-20 bg-white border-y border-[#E6D5B8]">
@@ -93,6 +101,7 @@ export const FeaturedGrid: React.FC = () => {
           </div>
         </div>
 
+        {!filteredProducts.length && <p role="status" className="py-12 text-center text-sm text-stone-600">No products are available in this collection yet.</p>}
         {/* Product Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
           {filteredProducts.slice(0, 8).map((product) => {
@@ -139,7 +148,7 @@ export const FeaturedGrid: React.FC = () => {
                         ? 'bg-[#8B1E3F] text-white'
                         : 'bg-white/80 text-stone-700 hover:bg-white hover:text-[#8B1E3F]'
                     }`}
-                    aria-label="Toggle Wishlist"
+                    aria-pressed={isSaved} aria-label={isSaved ? "Remove from Wishlist" : "Save to Wishlist"}
                   >
                     <Heart className={`w-4 h-4 ${isSaved ? 'fill-white' : ''}`} />
                   </button>
@@ -198,7 +207,7 @@ export const FeaturedGrid: React.FC = () => {
                     <button
                       id={`add-to-bag-card-${product.id}`}
                       disabled={product.stockCount <= 0}
-                      onClick={() => product.colors.length || product.availableSizes.length ? setQuickViewProduct(product) : addToCart(product, '', '')}
+                      onClick={() => handleAddToBag(product)}
                       className="p-2.5 bg-[#1A1715] hover:bg-[#8B1E3F] text-white rounded-lg transition-colors shadow-xs"
                       title="Add to Shopping Bag"
                       aria-label="Add to Bag"

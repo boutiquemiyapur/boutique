@@ -1,3 +1,4 @@
+import { PrivateLoading } from './Skeleton';
 import { ProductImage } from '../common/ProductImage';
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
@@ -10,6 +11,8 @@ export const WishlistDrawer: React.FC = () => {
     isWishlistDrawerOpen,
     setIsWishlistDrawerOpen,
     wishlist,
+    isCustomerDataReady,
+    privateDataError,
     products,
     toggleWishlist,
     addToCart,
@@ -59,7 +62,7 @@ export const WishlistDrawer: React.FC = () => {
 
         {/* Item list */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
-          {wishlistProducts.length === 0 ? (
+          {!isCustomerDataReady ? <PrivateLoading error={privateDataError} /> : wishlistProducts.length === 0 ? (
             <div className="text-center py-16">
               <Heart className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Wishlist is Empty</h3>

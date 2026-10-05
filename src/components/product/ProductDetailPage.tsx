@@ -1,3 +1,4 @@
+import { DetailsSkeleton } from '../common/Skeleton';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, ReviewItem, SizeOption } from '../../types';
@@ -109,6 +110,7 @@ export const ProductDetailPage: React.FC = () => {
     : requestedTab === 'craft' && !product?.craftDetails ? (hasDetails ? 'details' : 'reviews') : requestedTab;
   useEffect(() => { setActiveTab('details'); setQuantity(1); setIsCustomTailoring(false); }, [product?.id]);
 
+  if (catalogStatus === 'loading') return <DetailsSkeleton />;
   if (catalogStatus !== 'ready') return <div role="status" className="px-4 py-20 text-center">{catalogStatus === 'loading' ? 'Loading product...' : 'Products are currently unavailable. Please refresh or try again later.'}</div>;
   if (!product) {
     return (
@@ -226,7 +228,7 @@ export const ProductDetailPage: React.FC = () => {
                       ? 'bg-[#8B1E3F] text-white'
                       : 'bg-white/80 text-stone-700 hover:bg-white hover:text-[#8B1E3F]'
                   }`}
-                  aria-label="Save to Wishlist"
+                  aria-pressed={isInWishlist(product.id)} aria-label={isInWishlist(product.id) ? "Remove from Wishlist" : "Save to Wishlist"}
                 >
                   <Heart className={`w-5 h-5 ${isSaved ? 'fill-white' : ''}`} />
                 </button>

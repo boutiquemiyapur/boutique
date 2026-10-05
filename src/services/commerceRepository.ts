@@ -1,4 +1,4 @@
-import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where } from 'firebase/firestore';
+import { collectionGroup, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, updateDoc, collection, query, serverTimestamp, where, runTransaction } from 'firebase/firestore';
 import { productFromDocument, productForStorage } from '../utils/productData';
 import { firestore } from '../firebase/config';
 import { firebaseAuth } from '../firebase/config';
@@ -62,6 +62,36 @@ const mergeOrders = (...groups: Order[][]) => newestFirst(
 );
 
 export const commerceRepository = {
+  subscribeToShopping(uid: string, onCart: (items: CartItem[]) => void, onWishlist: (ids: string[]) => void, onError: (error: Error) => void) {
+    if (!firestore) { onError(new Error('Shopping service is not configured.')); return () => undefined; }
+    const cartOff = onSnapshot(privateDoc('carts', uid), (snapshot) => {
+      if (!snapshot.metadata.hasPendingWrites) onCart(normalizeCartItems(snapshot.data()?.items || []));
+    }, onError);
+    const wishlistOff = onSnapshot(privateDoc('wishlists', uid), (snapshot) => {
+      if (!snapshot.metadata.hasPendingWrites) onWishlist(normalizeWishlistProductIds(snapshot.data()?.productIds || []));
+    }, onError);
+    return () => { cartOff(); wishlistOff(); };
+  },
+  async mutateCart(uid: string, change: (items: CartItem[]) => CartItem[]) {
+    if (!firestore) throw new Error('Shopping bag service is not configured.');
+    return runTransaction(firestore, async (transaction) => {
+      const ref = privateDoc('carts', uid);
+      const snapshot = await transaction.get(ref);
+      const items = normalizeCartItems(change(normalizeCartItems(snapshot.data()?.items || [])));
+      transaction.set(ref, toFirestore({ ownerId: uid, items: normalizeForFirestore(items) }), { merge: true });
+      return items;
+    });
+  },
+  async mutateWishlist(uid: string, change: (ids: string[]) => string[]) {
+    if (!firestore) throw new Error('Wishlist service is not configured.');
+    return runTransaction(firestore, async (transaction) => {
+      const ref = privateDoc('wishlists', uid);
+      const snapshot = await transaction.get(ref);
+      const productIds = normalizeWishlistProductIds(change(normalizeWishlistProductIds(snapshot.data()?.productIds || [])));
+      transaction.set(ref, toFirestore({ ownerId: uid, productIds }), { merge: true });
+      return productIds;
+    });
+  },
   async loadCatalog(): Promise<Product[]> {
     if (!firestore) throw new Error('Catalog service is not configured.');
     const snapshot = await getDocs(collection(firestore, 'products'));
@@ -99,25 +129,21 @@ export const commerceRepository = {
       profileExists: false,
       orders: []
     };
-    if (!firestore) return accountFallback;
+    if (!firestore) throw new Error('Account service is not configured.');
     try {
-      const [cart, wishlist, profile, canonicalOrders, legacyOrders] = await Promise.all([
-        getDoc(privateDoc('carts', uid)),
-        getDoc(privateDoc('wishlists', uid)),
+      const [profile, canonicalOrders, legacyOrders] = await Promise.all([
         getDoc(privateDoc('users', uid)),
         getDocs(query(collection(firestore, 'orders'), where('customerId', '==', uid))),
         getDocs(collection(firestore, 'users', uid, 'orders'))
       ]);
       const legacy = legacyOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item));
       return {
-        cart: normalizeCartItems((cart.data()?.items as CartItem[] | undefined) || []),
-        wishlist: normalizeWishlistProductIds((wishlist.data()?.productIds as string[] | undefined) || []),
         profile: (profile.data()?.profile as CustomerProfile | undefined) || accountFallback.profile,
         profileExists: profile.exists(),
         orders: mergeOrders(canonicalOrders.docs.map((item) => orderFromDocument(item.data())).filter((item): item is Order => Boolean(item)), legacy),
         legacyOrders: legacy
       };
-    } catch (error) { console.warn('Firestore private data unavailable.', error); return accountFallback; }
+    } catch (error) { console.warn('Firestore private data unavailable.', error); throw error; }
   },
   async loadAdminOrders(fallback: Order[]) {
     if (!firestore) return fallback;

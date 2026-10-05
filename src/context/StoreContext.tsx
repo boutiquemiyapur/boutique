@@ -37,6 +37,7 @@ interface StoreContextType {
   authStatus: 'loading' | 'authenticated' | 'unauthenticated';
   /** True once the signed-in customer's profile, cart, and orders have hydrated. */
   isCustomerDataReady: boolean;
+  privateDataError: boolean;
   authSession: AuthSession;
   products: Product[];
   categories: StoreCategory[];
@@ -48,6 +49,7 @@ interface StoreContextType {
   coupons: Coupon[];
   customer: CustomerProfile;
   cms: PublicCms;
+  cmsStatus: 'loading' | 'ready' | 'error';
   activeView: AppView;
   currentView: AppView;
   selectedProductId: string | null;
@@ -219,7 +221,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Do not hydrate cart or wishlist before Firebase resolves the owner.
   // This prevents a prior account's browser state from flashing for another user.
   const [storedCart, setCart] = useState<CartItem[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [storedWishlist, setWishlist] = useState<string[]>([]);
 
   const [orders, setOrders] = useState<Order[]>([]);
 
@@ -228,6 +230,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [customer, setCustomer] = useState<CustomerProfile>(INITIAL_CUSTOMER);
 
   const [cms, setCms] = useState<PublicCms>(DEFAULT_CMS);
+  const [cmsStatus, setCmsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const selectedCurrency = 'INR' as const;
   const [activeView, setActiveView] = useState<AppView>('home');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -243,6 +246,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [firebaseUserId, setFirebaseUserId] = useState<string | null>(null);
   const [privateDataReady, setPrivateDataReady] = useState(false);
+  const [privateDataError, setPrivateDataError] = useState(false);
   const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const [authSession, setAuthSession] = useState<AuthSession>(null);
   const [pendingProtectedView, setPendingProtectedView] = useState<AppView | null>(null);
@@ -252,8 +256,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const pendingWishlistProductIdsRef = useRef(new Set<string>());
   const pendingShoppingActionRef = useRef<(() => Promise<boolean>) | null>(null);
 
+  const shoppingActionsRef = useRef({} as Pick<StoreContextType, 'addToCart' | 'buyNow' | 'toggleWishlist' | 'updateCartQuantity' | 'removeFromCart' | 'clearCart'>);
+
   const refreshCms = async () => {
-    setCms(await cmsRepository.loadPublicCms());
+    setCmsStatus('loading');
+    try { setCms(await cmsRepository.loadPublicCms(true)); setCmsStatus('ready'); }
+    catch { setCmsStatus('error'); }
   };
 
   useEffect(() => { void refreshCms(); }, []);
@@ -276,6 +284,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const resetPrivateState = (session: AuthSession = null) => {
     pendingCartLineKeysRef.current.clear();
     pendingWishlistProductIdsRef.current.clear();
+    setPrivateDataError(false);
     setPrivateDataReady(false);
     setCart([]);
     setWishlist([]);
@@ -308,7 +317,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ), []);
   useEffect(() => { void commerceRepository.loadCoupons().then(setCoupons); }, []);
 
-  const cart = useMemo(() => refreshCartProducts(storedCart, products), [storedCart, products]);
+  const ownsShopping = authStatus === 'authenticated' && authSession?.uid === activePrivateUidRef.current;
+  const cart = useMemo(() => ownsShopping ? refreshCartProducts(storedCart, products) : [], [ownsShopping, storedCart, products]);
+  const wishlist = ownsShopping ? normalizeWishlistProductIds(storedWishlist) : [];
   const cartIssue = catalogStatus !== 'ready' ? 'The catalog is unavailable. Please wait or refresh before checking out.' : cartCatalogIssue(cart, products);
 
   useEffect(() => {
@@ -324,8 +335,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
+    setPrivateDataError(false);
     setPrivateDataReady(false);
     const uid = firebaseUserId;
+    const readiness = { cart: false, wishlist: false, profile: false, failed: false };
+    const currentOwner = () => privateLoadVersionRef.current === loadVersion && activePrivateUidRef.current === uid;
+    const ready = () => { if (currentOwner()) setPrivateDataReady(!readiness.failed && readiness.cart && readiness.wishlist && readiness.profile); };
+    const shoppingOff = commerceRepository.subscribeToShopping(uid, (items) => {
+      if (!currentOwner()) return;
+      setCart(items); readiness.cart = true; ready();
+    }, (ids) => {
+      if (!currentOwner()) return;
+      setWishlist(ids); readiness.wishlist = true; ready();
+    }, () => {
+      if (!currentOwner()) return;
+      readiness.failed = true;
+      setCart([]); setWishlist([]); setPrivateDataReady(false); setPrivateDataError(true);
+      showToast('Unable to load your selections', 'Refresh to reconnect your shopping bag and wishlist.', 'error');
+    });
     const sessionCustomer = authSession ? customerForSession(authSession) : INITIAL_CUSTOMER;
     void commerceRepository.loadCustomerData(uid, {
       cart: [],
@@ -335,11 +362,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }).then((snapshot) => {
       // Ignore stale reads from a previous user after a sign-out or account switch.
       if (privateLoadVersionRef.current !== loadVersion || activePrivateUidRef.current !== uid) return;
-      setCart(snapshot.cart || []);
-      setWishlist(snapshot.wishlist || []);
+
       if (snapshot.profile) setCustomer(snapshot.profile);
       if (!snapshot.profileExists && authSession) {
-        void commerceRepository.createProfile(uid, sessionCustomer);
+        void commerceRepository.createProfile(uid, sessionCustomer).catch(() => {
+          if (currentOwner()) showToast('Unable to save your profile', 'Your account profile could not be saved. Please retry from your account.', 'error');
+        });
         setCustomer(sessionCustomer);
       }
       if (authSession?.isAdmin) {
@@ -349,8 +377,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         setOrders(snapshot.orders || []);
       }
-      setPrivateDataReady(true);
+      readiness.profile = true; ready();
+    }).catch(() => {
+      if (!currentOwner()) return;
+      readiness.failed = true; setPrivateDataReady(false); setPrivateDataError(true);
+      showToast('Unable to load your account', 'Refresh to reconnect before changing your selections.', 'error');
     });
+    return shoppingOff;
     // Authentication ownership changes are the only reason to rehydrate private state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus, firebaseUserId]);
@@ -359,7 +392,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // admin fulfils. Legacy subcollection records remain as read-only history.
   useEffect(() => {
     if (!firebaseUserId || authSession?.isAdmin) return;
-    return commerceRepository.subscribeToCustomerOrders(firebaseUserId, (canonicalOrders) => {
+    const uid = firebaseUserId;
+    return commerceRepository.subscribeToCustomerOrders(uid, (canonicalOrders) => {
+      if (activePrivateUidRef.current !== uid) return;
       setOrders((current) => {
         const legacy = current.filter((order) => !canonicalOrders.some((item) => item.id === order.id));
         return [...canonicalOrders, ...legacy].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -395,8 +430,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const logout = async () => {
-    await logoutFirebaseUser();
+    const previous = authSession;
+    pendingShoppingActionRef.current = null;
     applyAuthSession(null);
+    try { await logoutFirebaseUser(); } catch (error) { applyAuthSession(previous); throw error; }
     setActiveView('home');
   };
 
@@ -473,44 +510,49 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (authStatus !== 'authenticated' || !firebaseUserId) {
       if (continueAfterAuthentication) {
         pendingShoppingActionRef.current = continueAfterAuthentication;
-        setPendingProtectedView(activeView);
+        setPendingProtectedView(['login', 'register', 'forgot-password'].includes(activeView) ? (pendingProtectedView || 'shop') : activeView);
+        setQuickViewProduct(null);
+        setIsCartDrawerOpen(false);
+        setIsWishlistDrawerOpen(false);
         setActiveView('login');
       }
       return false;
     }
-    if (privateDataReady) return true;
+    if (privateDataReady && activePrivateUidRef.current === firebaseUserId) return true;
     showToast('Your selections are loading', 'Please wait a moment before updating your bag or wishlist.', 'info');
     return false;
   };
 
   const stillOwnsPrivateData = (uid: string | null, version: number) => activePrivateUidRef.current === uid && privateLoadVersionRef.current === version;
 
-  const commitCart = async (nextCart: CartItem[]) => {
+  const commitCart = async (change: (items: CartItem[]) => CartItem[]) => {
     const uid = firebaseUserId;
-    if (!uid) return false;
+    if (!uid || activePrivateUidRef.current !== uid) return false;
     const version = privateLoadVersionRef.current;
     try {
-      await commerceRepository.saveCart(uid, nextCart);
+      await commerceRepository.mutateCart(uid, change);
       if (!stillOwnsPrivateData(uid, version)) return false;
-      setCart(normalizeCartItems(nextCart));
+      // Confirmed subscription snapshots are the sole UI source.
       return true;
     } catch (error) {
+      if (!stillOwnsPrivateData(uid, version)) return false;
       console.error('Unable to save shopping bag.', error);
       showToast('Unable to update shopping bag', 'Your shopping bag was not changed. Please try again.', 'error');
       return false;
     }
   };
 
-  const commitWishlist = async (nextWishlist: string[]) => {
+  const commitWishlist = async (change: (ids: string[]) => string[]) => {
     const uid = firebaseUserId;
-    if (!uid) return false;
+    if (!uid || activePrivateUidRef.current !== uid) return false;
     const version = privateLoadVersionRef.current;
     try {
-      await commerceRepository.saveWishlist(uid, nextWishlist);
+      await commerceRepository.mutateWishlist(uid, change);
       if (!stillOwnsPrivateData(uid, version)) return false;
-      setWishlist(normalizeWishlistProductIds(nextWishlist));
+      // Confirmed subscription snapshots are the sole UI source.
       return true;
     } catch (error) {
+      if (!stillOwnsPrivateData(uid, version)) return false;
       console.error('Unable to save wishlist.', error);
       showToast('Unable to update wishlist', 'Your wishlist was not changed. Please try again.', 'error');
       return false;
@@ -528,7 +570,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     giftPackaging: boolean = false,
     giftNote?: string
   ): Promise<boolean> => {
-    if (!canChangePrivateData(() => addToCart(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.addToCart(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
     const currentProduct = products.find((item) => item.id === product.id);
     if (catalogStatus !== 'ready' || !currentProduct) {
       showToast('Product unavailable', 'Please refresh the catalog and try again.', 'error'); return false;
@@ -555,21 +597,28 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const issue = cartCatalogIssue([newItem, ...currentCart], products);
     if (issue) { showToast('Check your bag', issue, 'error'); return false; }
+    const operationUid = firebaseUserId;
     pendingCartLineKeysRef.current.add(lineKey);
     try {
-      const saved = await commitCart([newItem, ...currentCart]);
+      const saved = await commitCart((items) => {
+        if (items.some((item) => cartLineKey(item) === lineKey)) return items;
+        const next = [newItem, ...items];
+        const issue = cartCatalogIssue(next, products);
+        if (issue) throw new Error(issue);
+        return next;
+      });
       if (saved) {
         showToast('Added to Shopping Bag', `${product.title}${selectedSize ? ` (${selectedSize})` : ""} is now in your bag.`);
         setIsCartDrawerOpen(true);
       }
       return saved;
     } finally {
-      pendingCartLineKeysRef.current.delete(lineKey);
+      if (activePrivateUidRef.current === operationUid) pendingCartLineKeysRef.current.delete(lineKey);
     }
   };
 
   const updateCartQuantity = async (cartItemId: string, quantity: number): Promise<boolean> => {
-    if (!canChangePrivateData(() => updateCartQuantity(cartItemId, quantity))) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.updateCartQuantity(cartItemId, quantity))) return false;
     if (quantity <= 0) return removeFromCart(cartItemId);
     const currentCart = normalizeCartItems(cart);
     if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
@@ -577,32 +626,38 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const issue = cartCatalogIssue(updated, products);
     const previous = currentCart.find((item) => item.cartItemId === cartItemId)!;
     if (quantity > previous.quantity && issue) { showToast('Check quantity', issue, 'error'); return false; }
-    return commitCart(updated);
+    return commitCart((items) => {
+      const next = items.map((item) => item.cartItemId === cartItemId ? { ...item, quantity: Math.max(1, Math.floor(quantity)) } : item);
+      const prior = items.find((item) => item.cartItemId === cartItemId);
+      const issue = cartCatalogIssue(next, products);
+      if (prior && quantity > prior.quantity && issue) throw new Error(issue);
+      return next;
+    });
   };
 
   const removeFromCart = async (cartItemId: string): Promise<boolean> => {
-    if (!canChangePrivateData(() => removeFromCart(cartItemId))) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.removeFromCart(cartItemId))) return false;
     const currentCart = normalizeCartItems(cart);
     if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
-    const removed = await commitCart(currentCart.filter((item) => item.cartItemId !== cartItemId));
+    const removed = await commitCart((items) => items.filter((item) => item.cartItemId !== cartItemId));
     if (removed) showToast('Item Removed', 'Product removed from shopping bag.', 'info');
     return removed;
   };
 
   const clearCart = async (): Promise<boolean> => {
-    if (!canChangePrivateData(() => clearCart())) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.clearCart())) return false;
     if (!cart.length) {
       setAppliedCoupon(null);
       return true;
     }
-    const cleared = await commitCart([]);
+    const cleared = await commitCart(() => []);
     if (cleared) setAppliedCoupon(null);
     return cleared;
   };
 
   // Wishlist
   const toggleWishlist = async (productId: string): Promise<boolean> => {
-    if (!canChangePrivateData(() => toggleWishlist(productId))) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.toggleWishlist(productId))) return false;
     if (pendingWishlistProductIdsRef.current.has(productId)) return false;
     const product = products.find((item) => item.id === productId);
     if (!product) {
@@ -611,13 +666,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     const currentWishlist = normalizeWishlistProductIds(wishlist);
     const isSaved = currentWishlist.includes(productId);
+    const operationUid = firebaseUserId;
     pendingWishlistProductIdsRef.current.add(productId);
     try {
-      const saved = await commitWishlist(isSaved ? currentWishlist.filter((id) => id !== productId) : [...currentWishlist, productId]);
+      const saved = await commitWishlist((ids) => ids.includes(productId) ? ids.filter((id) => id !== productId) : [...ids, productId]);
       if (saved) showToast(isSaved ? 'Removed from Wishlist' : 'Saved to Wishlist', isSaved ? `${product.title} removed.` : `${product.title} added to your wishlist.`, isSaved ? 'info' : 'success');
       return saved;
     } finally {
-      pendingWishlistProductIdsRef.current.delete(productId);
+      if (activePrivateUidRef.current === operationUid) pendingWishlistProductIdsRef.current.delete(productId);
     }
   };
 
@@ -633,7 +689,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     giftPackaging: boolean = false,
     giftNote?: string
   ): Promise<boolean> => {
-    if (!canChangePrivateData(() => buyNow(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.buyNow(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
+    const alreadyAdded = cart.some((item) => cartLineKey(item) === cartLineKey({ product, selectedColor, selectedSize, isCustomTailored }));
+    if (alreadyAdded) { setIsCartDrawerOpen(false); navigate('checkout'); return true; }
     const added = await addToCart(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote);
     if (!added) return false;
     setIsCartDrawerOpen(false);
@@ -857,9 +915,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Review Submitted', 'Thank you. Your review has been received for moderation.');
   };
 
+  shoppingActionsRef.current = { addToCart, buyNow, toggleWishlist, updateCartQuantity, removeFromCart, clearCart };
+
   // Navigation router
   const navigate = (view: AppView, productId?: string, trackingOrderId?: string) => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     if (productId) setSelectedProductId(productId);
     if (trackingOrderId) setSelectedTrackingOrderId(trackingOrderId);
     const nextPath = pathForView(view, productId, trackingOrderId);
@@ -894,6 +953,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       value={{
         authStatus,
         isCustomerDataReady: privateDataReady,
+        privateDataError,
         authSession,
         products,
         categories,
@@ -905,6 +965,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         coupons,
         customer,
         cms,
+        cmsStatus,
         activeView,
         currentView: activeView,
         selectedProductId,
