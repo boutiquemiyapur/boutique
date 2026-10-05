@@ -11,11 +11,14 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BrandMark } from '../../config/brand';
+import { confirmedPayment } from '../../services/paymentClient';
+import { PaymentRecovery } from './PaymentRecovery';
 
 export const OrderConfirmationPage: React.FC = () => {
   const { currentOrder, formatPrice, navigate } = useStore();
 
   useEffect(() => {
+    if (!currentOrder || (currentOrder.paymentProvider === 'razorpay' && !confirmedPayment(currentOrder))) return;
     try {
       confetti({
         particleCount: 80,
@@ -26,7 +29,7 @@ export const OrderConfirmationPage: React.FC = () => {
     } catch {
       // safe fallback
     }
-  }, []);
+  }, [currentOrder?.id, currentOrder?.paymentStatus]);
 
   if (!currentOrder) {
     return (
@@ -53,17 +56,18 @@ export const OrderConfirmationPage: React.FC = () => {
           </div>
 
           <span className="text-xs uppercase tracking-[0.25em] font-bold text-[#8B1E3F]">
-            Order request received
+            {currentOrder.paymentMethod === 'cod' ? 'Order request received' : confirmedPayment(currentOrder) ? 'Payment received' : 'Confirming your payment'}
           </span>
 
           <h1 className="text-2xl sm:text-4xl font-serif font-bold text-[#1A1715]">
-            Thank You, {currentOrder.shippingAddress.fullName}!
+            {currentOrder.paymentProvider === 'razorpay' && !confirmedPayment(currentOrder) ? 'Complete your payment' : `Thank You, ${currentOrder.shippingAddress.fullName}!`}
           </h1>
 
           <p className="text-xs sm:text-sm text-stone-600 max-w-lg mx-auto font-sans leading-relaxed">
-            Your Cash on Delivery order <strong>#{currentOrder.orderNumber}</strong> is recorded. Fulfilment and dispatch details will be shown in your order status when they are available.
+            {currentOrder.paymentMethod === 'cod' ? 'Your historical Cash on Delivery order is recorded.' : currentOrder.paymentReviewRequired ? 'Your payment was received. Contact the store for inventory review before fulfilment.' : confirmedPayment(currentOrder) ? `Your payment state is ${currentOrder.paymentStatus}.` : 'Payment is awaiting trusted confirmation. Check or retry below.'} Order <strong>#{currentOrder.orderNumber}</strong>. Fulfilment details appear when available.
           </p>
 
+          <PaymentRecovery order={currentOrder} />
           <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
             <button
               id="confirm-track-order-btn"

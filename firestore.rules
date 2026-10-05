@@ -75,10 +75,16 @@ service cloud.firestore {
     // run together in the trusted server transaction; clients cannot create orders.
     match /orders/{orderId} {
       allow read: if isAdmin() || (signedIn() && resource.data.customerId == request.auth.uid);
-      allow create: if isAdmin();
+      allow create: if false;
       // Customers can only make one narrowly defined cancellation before
       // dispatch. All other fulfilment changes remain admin-only.
-      allow update: if isAdmin() || (signedIn()
+      allow update: if (isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orderStatus', 'data', 'updatedAt'])
+        && request.resource.data.data.diff(resource.data.data).affectedKeys().hasOnly(['orderStatus', 'timeline', 'trackingNumber', 'courierPartner', 'estimatedDeliveryDate'])
+        && request.resource.data.orderStatus == request.resource.data.data.orderStatus
+        && request.resource.data.orderStatus in ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection', 'Dispatched', 'In Transit', 'Out for Delivery', 'Delivered', 'Cancelled']
+        && (resource.data.data.paymentMethod == 'cod' || (resource.data.data.paymentStatus == 'PAID' && resource.data.data.paymentReviewRequired == false))) || (signedIn()
+        && resource.data.data.paymentMethod == 'cod'
         && resource.data.customerId == request.auth.uid
         && resource.data.orderStatus in ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection']
         && request.resource.data.orderStatus == 'Cancelled'
@@ -88,7 +94,7 @@ service cloud.firestore {
         && request.resource.data.cancelledBy == request.auth.uid
         && request.resource.data.data.diff(resource.data.data).affectedKeys().hasOnly(['orderStatus', 'cancellation', 'timeline'])
         && request.resource.data.data.cancellation.cancelledBy == request.auth.uid);
-      allow delete: if isAdmin();
+      allow delete: if false;
     }
 
     // `collectionGroup('orders')` is used by the admin dashboard to read the
@@ -98,6 +104,13 @@ service cloud.firestore {
     match /{path=**}/orders/{orderId} {
       allow read: if isAdmin();
     }
+    // Even browser admins cannot write financial or reservation records.
+    match /checkoutRequests/{id} { allow read, write: if false; }
+    match /paymentAttempts/{id} { allow read, write: if false; }
+    match /paymentEvents/{id} { allow read, write: if false; }
+    match /inventoryReservations/{id} { allow read, write: if false; }
+    match /inventoryMovements/{id} { allow read, write: if false; }
+    match /paymentRateLimits/{id} { allow read, write: if false; }
 
     match /users/{userId} {
       allow read: if owns(userId) || isAdmin();
@@ -115,11 +128,10 @@ service cloud.firestore {
       // payment, fulfilment, tracking, prices, discount, or stock outcomes.
       match /orders/{orderId} {
         allow read: if owns(userId) || isAdmin();
-        // Legacy documents are retained for customer/admin reads and an
-        // idempotent client-side compatibility migration. New checkout writes
-        // are intentionally not permitted in this non-canonical path.
+        // Legacy documents remain readable. Any faithful canonical copy for
+        // fulfilment is performed by the trusted admin API, never a browser write.
         allow create: if false;
-        allow update, delete: if isAdmin();
+        allow update, delete: if false;
       }
     }
 

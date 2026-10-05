@@ -1,3 +1,4 @@
+import { confirmedPayment } from '../../services/paymentClient';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect, useState } from 'react';
@@ -68,7 +69,7 @@ export const CheckoutPage: React.FC = () => {
     if (isCustomerDataReady && customer.savedAddresses.length === 1) selectSavedAddress(customer.savedAddresses[0], 0);
   }, [isCustomerDataReady, customer.savedAddresses]);
 
-  const [paymentMethod] = useState<PaymentMethod>('cod');
+  const [paymentMethod] = useState<PaymentMethod>('razorpay');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   useEffect(() => {
@@ -96,7 +97,8 @@ export const CheckoutPage: React.FC = () => {
     );
   }
 
-  if (cartIssue) return <div className="mx-auto max-w-xl px-4 py-20 text-center"><p role="alert">{cartIssue}</p><button onClick={() => navigate('cart')} className="mt-4 underline">Review shopping bag</button></div>;
+  // The server may recover this customer's existing reservation even when its
+  // units are no longer listed as available in the public catalog.
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +110,7 @@ export const CheckoutPage: React.FC = () => {
     setIsProcessingPayment(true);
     try {
       const newOrder = await createOrder(address, 'standard', paymentMethod);
-      showToast('Order Placed Successfully!', `Order #${newOrder.orderNumber} has been recorded.`);
+      showToast(confirmedPayment(newOrder) ? 'Payment confirmed' : 'Payment awaiting confirmation', confirmedPayment(newOrder) ? `Order #${newOrder.orderNumber} is recorded.` : 'Check or retry payment from your order page.', confirmedPayment(newOrder) ? 'success' : 'info');
       navigate('order-confirmation', undefined, newOrder.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The order could not be recorded. Please try again.';
@@ -123,6 +125,7 @@ export const CheckoutPage: React.FC = () => {
   return (
     <div className="bg-[#FAF7F2] min-h-screen py-8 sm:py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {cartIssue && <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-xs">{cartIssue} You can still check or retry an existing payment from your order history. Availability will be checked before a new payment.</p>}
         {/* Checkout Header */}
         <div className="flex items-center justify-between pb-6 border-b border-[#E6D5B8] mb-8">
           <div>
@@ -358,18 +361,18 @@ export const CheckoutPage: React.FC = () => {
                     onClick={() => setStep(3)}
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-semibold px-8 py-3.5 rounded-lg flex items-center gap-2 shadow-md transition-all"
                   >
-                    <span>Review COD order</span>
+                    <span>Continue to payment</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: COD confirmation */}
+            {/* Step 3: Online payment */}
             {step === 3 && (
               <form onSubmit={handlePlaceOrder} className="bg-white border border-[#E6D5B8] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
-                <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2"><Banknote className="w-5 h-5 text-[#8B1E3F]" /> Cash on Delivery</h3>
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Cash on Delivery</p><p className="text-[11px]">Review the delivery address and total before placing the order.</p></div>
+                <h3 className="font-serif font-bold text-lg text-stone-900 flex items-center gap-2"><Banknote className="w-5 h-5 text-[#8B1E3F]" /> Pay securely with Razorpay</h3>
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1"><p className="font-bold">Pay securely with Razorpay</p><p className="text-[11px]">Review the delivery address and total before placing the order.</p></div>
 
                 <div className="pt-4 flex items-center justify-between border-t border-[#E6D5B8]">
                   <button
@@ -387,11 +390,11 @@ export const CheckoutPage: React.FC = () => {
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-bold px-8 py-4 rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {isProcessingPayment ? (
-                      <span>Recording order...</span>
+                      <span>Preparing payment...</span>
                     ) : (
                       <>
                         <ShieldCheck className="w-4 h-4 text-[#DFBF77]" />
-                        <span>Place COD order - {formatPrice(grandTotal)}</span>
+                        <span>Pay online - {formatPrice(grandTotal)}</span>
                       </>
                     )}
                   </button>

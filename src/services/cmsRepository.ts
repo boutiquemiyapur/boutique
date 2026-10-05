@@ -127,27 +127,8 @@ export const cmsRepository = {
   },
 
   async migrateLegacyOrdersForAdmin(): Promise<void> {
-    if (!firestore) throw new Error('Firebase is not configured for this deployment.');
-    const legacyOrders = await getDocs(collectionGroup(firestore, 'orders'));
-    await Promise.all(legacyOrders.docs.map(async (legacyRef) => {
-      const legacy = legacyRef.data();
-      const order = legacy.data as Order | undefined;
-      const customerId = legacy.customerId as string | undefined;
-      if (!order?.id || !order.orderNumber || !customerId) return;
-      const canonicalRef = doc(firestore, 'orders', order.id);
-      if (legacyRef.ref.path === canonicalRef.path || (await getDoc(canonicalRef)).exists()) return;
-      // An admin may promote only an existing customer record. The identical
-      // id keeps this operation safe to retry and prevents duplicate orders.
-      await setDoc(canonicalRef, {
-        customerId,
-        orderNumber: order.orderNumber,
-        paymentStatus: order.paymentStatus,
-        orderStatus: order.orderStatus,
-        data: order,
-        createdAt: legacy.createdAt || serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }));
+    // Historical orders are merged on reads. Financial records are never
+    // promoted or rewritten by a browser admin; any migration is server-only.
   },
 
   async loadAllBanners(): Promise<Banner[]> {

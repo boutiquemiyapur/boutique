@@ -168,37 +168,6 @@ export const commerceRepository = {
         updatedAt: serverTimestamp()
       });
   },
-  async createOrder(uid: string | null, items: CartItem[], shippingAddress: ShippingAddress, couponCode: string | null, requestId: string, expectedTotalINR: number) {
-    if (!uid) throw new Error('Please sign in before placing an order.');
-    const user = firebaseAuth?.currentUser;
-    if (!user || user.uid !== uid) throw new Error('Please sign in again before placing an order.');
-    const token = await user.getIdToken();
-    const response = await fetch('/api/orders/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        requestId,
-        couponCode,
-        expectedTotalINR,
-        shippingAddress,
-        items: items.map((item) => ({
-          productId: item.product.id,
-          selectedColor: item.selectedColor,
-          selectedSize: item.selectedSize,
-          quantity: item.quantity,
-          expectedPriceINR: item.product.priceINR,
-          expectedTailoringFeeINR: item.tailoringFeeINR,
-          isCustomTailored: item.isCustomTailored,
-          customMeasurements: item.customMeasurements,
-          giftPackaging: item.giftPackaging,
-          giftNote: item.giftNote,
-        })),
-      }),
-    });
-    const payload = await response.json().catch(() => null) as { order?: Order; error?: string } | null;
-    if (!response.ok || !payload?.order) throw new Error(payload?.error || 'Could not place this order. Please try again.');
-    return payload.order;
-  },
   async cancelCustomerOrder(uid: string, order: Order) {
     if (!firestore) throw new Error('Order service is not configured for this deployment.');
     const timestamp = new Date().toLocaleString('en-IN');
@@ -217,22 +186,13 @@ export const commerceRepository = {
     await updateDoc(doc(firestore, 'products', productId), { status: 'archived', updatedAt: serverTimestamp() });
   },
   async updateOrderStatus(order: Order, status: OrderStatus, trackingNumber?: string) {
-    if (!firestore) throw new Error('Order service is not configured for this deployment.');
-    const timeline = [...order.timeline, {
-      status,
-      timestamp: new Date().toLocaleString('en-IN'),
-      description: `Order status updated to ${status}.`,
-      completed: true
-    }];
-    const updatedOrder: Order = { ...order, orderStatus: status, ...(trackingNumber ? { trackingNumber } : {}), timeline };
-    await updateDoc(doc(firestore, 'orders', order.id), {
-      orderStatus: status,
-      'data.orderStatus': status,
-      'data.timeline': timeline,
-      ...(trackingNumber ? { 'data.trackingNumber': trackingNumber } : {}),
-      updatedAt: serverTimestamp()
-    });
-    return updatedOrder;
+    const user = firebaseAuth?.currentUser;
+    if (!user) throw new Error('Please sign in as an administrator.');
+    const token = await user.getIdToken();
+    const response = await fetch('/api/orders/fulfil', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ orderId: order.id, status, ...(trackingNumber ? { trackingNumber } : {}) }) });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.order) throw new Error('Fulfilment could not be updated. Check payment and review status.');
+    return result.order as Order;
   },
   async saveCoupon(coupon: Coupon) {
     if (!firestore) throw new Error('Coupon service is not configured.');

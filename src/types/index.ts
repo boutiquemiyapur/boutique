@@ -211,8 +211,9 @@ export interface AppliedCheckoutCharge extends CheckoutCharge {
   amountINR: number;
 }
 
-// Online payment methods are intentionally not enabled in the current checkout.
-export type PaymentMethod = 'cod';
+// COD is retained for historical records only. New checkout uses Razorpay.
+export type PaymentMethod = 'cod' | 'razorpay';
+export type PaymentState = 'CREATED' | 'PAYMENT_PENDING' | 'AUTHORIZED' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUND_PENDING' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
 
 export type OrderStatus = 
   | 'Order Placed'
@@ -253,7 +254,17 @@ export interface Order {
   totalINR: number;
   currency: CurrencyCode;
   paymentMethod: PaymentMethod;
-  paymentStatus: 'Paid' | 'Pending' | 'Failed';
+  paymentStatus: PaymentState | 'Paid' | 'Pending' | 'Failed';
+  paymentProvider?: 'cod' | 'razorpay';
+  checkoutIntentId?: string;
+  amountPaise?: number;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  paidAt?: string;
+  paymentVerifiedAt?: string;
+  refundedAmountPaise?: number;
+  reservationExpiresAt?: string;
+  paymentReviewRequired?: boolean;
   orderStatus: OrderStatus;
   /** Populated only after a real dispatch has been arranged. */
   trackingNumber?: string;

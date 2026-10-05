@@ -1,3 +1,4 @@
+import { PaymentRecovery } from '../checkout/PaymentRecovery';
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Package, Search } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
@@ -61,7 +62,7 @@ export const OrderTrackingPage: React.FC = () => {
                   <h2 className="font-serif text-2xl text-stone-900">{activeOrder.orderNumber}</h2>
                   <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusTone(activeOrder.orderStatus)}`}>{activeOrder.orderStatus}</span>
                 </div>
-                <p className="mt-2 text-xs text-stone-500">Placed {new Date(activeOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · COD payment: {activeOrder.paymentStatus}</p>
+                <PaymentRecovery order={activeOrder} /><p className="mt-2 text-xs text-stone-500">Placed {new Date(activeOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {activeOrder.paymentMethod === 'cod' ? 'COD payment' : 'Online payment'}: {activeOrder.paymentStatus}</p>
               </div>
               {activeOrder.trackingNumber ? (
                 <div className="text-left sm:text-right">
