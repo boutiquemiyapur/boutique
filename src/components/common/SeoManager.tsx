@@ -30,7 +30,7 @@ export const SeoManager = () => {
 
   useEffect(() => {
     const canonical = absoluteUrl(page.path);
-    document.title = page.title;
+    document.title = SEO.siteName;
     setCanonical(canonical);
     setMeta('description', page.description);
     setMeta('robots', page.indexable ? 'index, follow, max-image-preview:large' : 'noindex, nofollow');
