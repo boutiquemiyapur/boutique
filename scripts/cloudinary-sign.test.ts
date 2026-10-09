@@ -5,16 +5,27 @@ import { readFileSync } from 'node:fs';
 import { test, mock } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { buildSync } from 'esbuild';
 import { deleteApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import handler from '../api/cloudinary/sign';
 
 const fixture = {
+  VERCEL_ENV: 'production',
+  FIREBASE_PRODUCTION_PROJECT_ID: 'production-project',
+  VITE_FIREBASE_ENABLED: 'true',
+  VITE_FIREBASE_PROJECT_ID: 'production-project',
+  FIREBASE_PRODUCTION_WEB_API_KEY: 'production-public-fixture',
+  VITE_FIREBASE_API_KEY: 'production-public-fixture',
+  VITE_FIREBASE_AUTH_DOMAIN: 'production-project.firebaseapp.com',
+  VITE_FIREBASE_STORAGE_BUCKET: 'production-project.firebasestorage.app',
+  VITE_FIREBASE_MESSAGING_SENDER_ID: '123456',
+  VITE_FIREBASE_APP_ID: '1:123456:web:fixture',
   CLOUDINARY_CLOUD_NAME: 'test-cloud',
   CLOUDINARY_API_KEY: 'test-api-key',
   CLOUDINARY_API_SECRET: 'test-secret-never-log',
-  FIREBASE_ADMIN_PROJECT_ID: 'test-project',
-  FIREBASE_ADMIN_CLIENT_EMAIL: 'test@test-project.iam.gserviceaccount.com',
+  FIREBASE_ADMIN_PROJECT_ID: 'production-project',
+  FIREBASE_ADMIN_CLIENT_EMAIL: 'test@production-project.iam.gserviceaccount.com',
   FIREBASE_ADMIN_PRIVATE_KEY: generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString().replace(/\n/g, '\\n'),
 };
 
@@ -39,8 +50,7 @@ test('Vercel require(ESM) failure is reproduced and the documented runtime flag 
 });
 
 test('SDK load failure becomes safe JSON instead of a crashed invocation', () => {
-  const source = readFileSync(new URL('../api/cloudinary/sign.ts', import.meta.url), 'utf8');
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const compiled = buildSync({ entryPoints: ['api/cloudinary/sign.ts'], bundle: true, platform: 'node', packages: 'external', format: 'esm', write: false }).outputFiles[0].text.replace(/export \{[\s\S]*?\};\s*$/, '');
   const code = `
     ${compiled.replace('export default async function handler', 'async function handler')}
     await handler({ method: 'POST', headers: { authorization: 'Bearer test-token' } }, {
@@ -91,6 +101,14 @@ test('authorization, configuration, signature and shared upload contract', async
   mock.method(auth, 'verifyIdToken', async () => {
     if (tokenError) throw tokenError;
     return decoded;
+  });
+
+  await t.test('Production upload authorization works without Test pins or Razorpay credentials', async () => {
+    const keys = ['FIREBASE_TEST_PROJECT_ID', 'FIREBASE_TEST_WEB_API_KEY', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'PAYMENTS_LIVE_ENABLED'];
+    const previous = keys.map(key => process.env[key]);
+    keys.forEach(key => delete process.env[key]);
+    try { assert.equal((await invoke()).status, 200); }
+    finally { keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; }); }
   });
 
   await t.test('admin claim stays strict; token failures differ from service failures', async () => {

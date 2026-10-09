@@ -12,11 +12,11 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-export const isFirebaseEnabled = import.meta.env.VITE_FIREBASE_ENABLED !== 'false' && Boolean(firebaseConfig.projectId);
+export const isFirebaseEnabled = import.meta.env.VITE_FIREBASE_ENV_VALIDATED === 'true' && import.meta.env.VITE_FIREBASE_ENABLED !== 'false' && Boolean(firebaseConfig.projectId);
 export const isAnonymousAuthEnabled = import.meta.env.VITE_FIREBASE_ENABLE_ANONYMOUS_AUTH === 'true';
 
 const firebaseApp: FirebaseApp | null = isFirebaseEnabled
-  ? (getApps().length ? getApp() : initializeApp(firebaseConfig))
+  ? (getApps().length ? (getApp().options.projectId === firebaseConfig.projectId && getApp().options.apiKey === firebaseConfig.apiKey ? getApp() : null) : initializeApp(firebaseConfig))
   : null;
 
 export const firebaseAuth: Auth | null = firebaseApp ? getAuth(firebaseApp) : null;

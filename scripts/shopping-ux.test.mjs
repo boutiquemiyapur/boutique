@@ -95,10 +95,10 @@ test('checkout step forward/back and route navigation schedule one committed imm
 });
 test('image loading clears placeholder, source changes reset it, failures show neutral fallback',()=>{
  const slots=[];globalThis.hooks={index:0,state(initial){const i=this.index++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],v=>{slots[i]=typeof v==='function'?v(slots[i]):v}];}};const render=props=>{hooks.index=0;return api.ProductImage(props)};
- let image=render({src:'one',alt:'Product',className:'aspect-[3/4]'});assert.match(image.props.className,/animate-pulse/);image.props.onLoad({});image=render({src:'one',alt:'Product'});assert.doesNotMatch(image.props.className,/animate-pulse/);image=render({src:'two',alt:'Product'});assert.match(image.props.className,/animate-pulse/);image.props.onError({});image=render({src:'two',alt:'Product'});assert.equal(image.props.children,'Image unavailable');image=render({src:'one',alt:'Product'});assert.doesNotMatch(image.props.className,/animate-pulse/);
+ let image=render({src:'one',alt:'Product',className:'aspect-[3/4]'});assert.match(image.props.className,/boutique-pulse/);image.props.onLoad({});image=render({src:'one',alt:'Product'});assert.doesNotMatch(image.props.className,/boutique-pulse/);image=render({src:'two',alt:'Product'});assert.match(image.props.className,/boutique-pulse/);image.props.onError({});image=render({src:'two',alt:'Product'});assert.equal(image.props.children,'Image unavailable');image=render({src:'one',alt:'Product'});assert.doesNotMatch(image.props.className,/boutique-pulse/);
 });
 test('home loading, ready-empty and error are distinct; skeletons respect reduced motion',()=>{
- globalThis.viewStore={products:[],categories:[],navigate(){},setFilters(){},showToast(){},catalogStatus:'loading'};assert.match(api.home(),/Loading the boutique/);assert.match(api.skeleton(),/motion-safe:animate-pulse/);assert.match(api.skeleton(),/aria-hidden="true"/);
+ globalThis.viewStore={products:[],categories:[],navigate(){},setFilters(){},showToast(){},catalogStatus:'loading'};assert.match(api.home(),/Loading the boutique/);assert.match(api.skeleton(),/boutique-pulse/);assert.match(api.skeleton(),/aria-hidden="true"/);
  viewStore.catalogStatus='error';assert.match(api.home(),/Retry/);assert.doesNotMatch(api.home(),/Loading the boutique/);
  viewStore.catalogStatus='ready';viewStore.cms={banners:[],content:{},contact:{}};assert.match(api.home(),/No products are available/);assert.doesNotMatch(api.home(),/Loading the boutique/);
 });
@@ -135,4 +135,15 @@ test('real store receives webhook confirmation after dismissal and does not clea
 test('real store clears cart only for captured server evidence; pending/error preserve it',async()=>{
  for(const outcome of [{kind:'pending',order:pendingPayment},{kind:'error',order:pendingPayment,message:'failed'},{kind:'confirmed',order:capturedPayment}]){
  const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();paymentFixture(async()=>outcome);const result=await s.createOrder({},'standard','razorpay');assert.equal(result.kind,outcome.kind);s=await h.flush();assert.equal(s.cart.length,outcome.kind==='confirmed'?0:1);h.cleanup();}
+});
+
+test('profile save waits for persistence, reports no false success on failure, and ignores a stale account completion',async()=>{
+ const h=initialize();let s=await h.session('A');const original=api.commerceRepository.saveProfile;let reject,resolve;
+ try{
+  api.commerceRepository.saveProfile=()=>new Promise((ok,no)=>{resolve=ok;reject=no;});
+  const name=s.customer.fullName;const failed=s.updateCustomerProfile({fullName:'New name'});const assertion=assert.rejects(failed,/fixture write denied/);
+  assert.equal(h.render().customer.fullName,name);reject(Error('fixture write denied'));await assertion;
+  assert.equal(h.render().customer.fullName,name);assert.equal(h.render().toasts.some(t=>t.title==='Profile Updated'),false);
+  const stale=s.updateCustomerProfile({fullName:'Account A update'});await h.session('B');const other=h.render().customer.fullName;resolve();await stale;assert.equal(h.render().customer.fullName,other);
+ }finally{api.commerceRepository.saveProfile=original;h.cleanup();}
 });

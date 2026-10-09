@@ -4,15 +4,18 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { PaymentError, requireCondition } from './errors.js';
 import { digest } from './validation.js';
+import { validateServerFirebase } from './environment.js';
 export type Request = IncomingMessage & { body?: unknown };
 export type Response = { status: (code: number) => Response; json: (value: unknown) => unknown; setHeader: (name: string, value: string) => unknown };
 export function database(): Firestore {
+  const expectedProject = validateServerFirebase(process.env);
   let app = getApps()[0];
   if (!app) {
     const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID?.trim(); const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim(); const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
     requireCondition(projectId && clientEmail && privateKey, 'SERVER_CONFIGURATION_MISSING', 503);
-    app = initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
+    app = initializeApp({ projectId: expectedProject, credential: cert({ projectId, clientEmail, privateKey }) });
   }
+  requireCondition(app.options.projectId === expectedProject, 'FIREBASE_CACHED_ENVIRONMENT_MISMATCH', 503);
   return getFirestore(app);
 }
 export async function authenticate(req: Request, admin = false) {

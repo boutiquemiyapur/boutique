@@ -2,6 +2,15 @@
 
 Implemented locally on 2026-10-05. No deployment, commit, push, live credentials or real payments. This is not a production-readiness certification.
 
+## Current deployment policy (supersedes historical staging instructions below)
+
+Use existing Production Firebase and LIVE Razorpay. Production requires only its
+own Firebase identity pins; it does not require a Test Firebase project. Firebase
+storefront builds and Cloudinary authorization are independent of Razorpay secrets.
+Connected Preview/Development remains blocked until separate safe Test configuration
+exists. See PAYMENT_ENVIRONMENTS.md for the authoritative variables and checklist.
+Historical sections 18-22 describe the earlier staging plan, not current requirements.
+
 ## 1. What was implemented
 
 Razorpay-only new checkout, trusted server pricing, stable checkout identity, 15-minute transactional inventory reservations, server signature verification, raw-body signed webhooks, refund synchronization, durable event deduplication, scheduled reconciliation, and customer retry/recovery. Existing Firebase Authentication, Firestore catalog, historical COD reads and Cloudinary uploads remain.
@@ -66,6 +75,10 @@ Ordinary customer cancellation remains available for eligible historical COD ord
 Admin fulfilment API checks the trusted custom claim and rejects unpaid/review-held online orders. A missing canonical historical COD document can be copied faithfully from one existing legacy record inside that trusted transaction when an admin performs fulfilment. The prior automatic browser migration is disabled.
 
 Deploy these rules together with the application only after test-environment validation. Old deployed rules do not protect newly added financial fields.
+
+Environment selection and the current Production/Preview setup are documented in
+[PAYMENT_ENVIRONMENTS.md](./PAYMENT_ENVIRONMENTS.md). Its strict deployment guards
+supersede the original Test/Live configuration instructions in this document.
 
 ## 6. New API endpoints
 

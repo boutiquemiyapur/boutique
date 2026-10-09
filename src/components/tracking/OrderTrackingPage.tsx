@@ -1,3 +1,6 @@
+import { OrderStatusBadge } from '../common/OrderStatusBadge';
+import { orderDisplayStatus, paymentPresentation, fulfilmentEligible } from '../../utils/paymentState';
+import { PrivateLoading } from '../common/Skeleton';
 import { PaymentRecovery } from '../checkout/PaymentRecovery';
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Package, Search } from 'lucide-react';
@@ -8,7 +11,7 @@ const statusTone = (status: Order['orderStatus']) =>
   status === 'Cancelled' ? 'bg-rose-100 text-rose-800' : status === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
 
 export const OrderTrackingPage: React.FC = () => {
-  const { orders, currentOrder, selectedTrackingOrderId, formatPrice, showToast, navigate } = useStore();
+  const { orders, currentOrder, selectedTrackingOrderId, authStatus, isCustomerDataReady, privateDataError, formatPrice, showToast, navigate } = useStore();
   const [searchQuery, setSearchQuery] = useState(currentOrder?.orderNumber ?? '');
   const [searchFailed, setSearchFailed] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(currentOrder ?? null);
@@ -42,6 +45,8 @@ export const OrderTrackingPage: React.FC = () => {
 
   const displayedOrder = searchFailed ? null : selectedTrackingOrderId ? currentOrder : activeOrder;
 
+  if (authStatus === 'loading' || (authStatus === 'authenticated' && !isCustomerDataReady)) return <PrivateLoading variant="orders" error={privateDataError} />;
+
   return (
     <main className="min-h-screen bg-[#FAF7F2] py-12 sm:py-16">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
@@ -72,11 +77,11 @@ export const OrderTrackingPage: React.FC = () => {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-serif text-2xl text-stone-900">{displayedOrder.orderNumber}</h2>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusTone(displayedOrder.orderStatus)}`}>{displayedOrder.orderStatus}</span>
+                  <OrderStatusBadge order={displayedOrder} />
                 </div>
-                <PaymentRecovery order={displayedOrder} /><p className="mt-2 text-xs text-stone-500">Placed {new Date(displayedOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {displayedOrder.paymentMethod === 'cod' ? 'COD payment' : 'Online payment'}: {displayedOrder.paymentStatus}</p>
+                <PaymentRecovery order={displayedOrder} /><p className="mt-2 text-xs text-stone-500">Placed {new Date(displayedOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {displayedOrder.paymentMethod === 'cod' ? 'COD payment' : 'Online payment'}: {paymentPresentation(displayedOrder).label}</p>
               </div>
-              {displayedOrder.trackingNumber ? (
+              {fulfilmentEligible(displayedOrder) && displayedOrder.trackingNumber ? (
                 <div className="text-left sm:text-right">
                   <p className="text-[11px] uppercase tracking-wider text-stone-400">Courier tracking number</p>
                   <p className="mt-1 font-mono text-sm font-semibold text-[#8B1E3F]">{displayedOrder.trackingNumber}</p>
@@ -88,7 +93,7 @@ export const OrderTrackingPage: React.FC = () => {
             <div className="py-8">
               <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-stone-700">Order timeline</h3>
               <ol className="mt-5 space-y-5 border-l border-[#C5A059]/60 pl-5">
-                {displayedOrder.timeline.map((event, index) => (
+                {(fulfilmentEligible(displayedOrder) ? displayedOrder.timeline : []).map((event, index) => (
                   <li key={`${event.status}-${index}`} className="relative">
                     <span className={`absolute -left-[1.8rem] top-1 flex h-4 w-4 items-center justify-center rounded-full ${event.completed ? 'bg-[#8B1E3F] text-white' : 'border border-[#C5A059] bg-[#FAF7F2] text-transparent'}`}><CheckCircle2 className="h-3 w-3" aria-hidden="true" /></span>
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -100,7 +105,7 @@ export const OrderTrackingPage: React.FC = () => {
                   </li>
                 ))}
               </ol>
-              {displayedOrder.timeline.length === 0 && <p className="mt-4 text-sm text-stone-500">No fulfilment update has been recorded yet.</p>}
+              {(!fulfilmentEligible(displayedOrder) || displayedOrder.timeline.length === 0) && <p className="mt-4 text-sm text-stone-500">Fulfilment updates appear after payment and inventory checks are complete.</p>}
             </div>
 
             <div className="grid gap-8 border-t border-[#E6D5B8] pt-7 text-sm md:grid-cols-2">

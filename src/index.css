@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+@keyframes boutique-spin { to { transform: rotate(360deg); } }
+@keyframes boutique-pulse { 50% { opacity: .55; } }
+@keyframes boutique-enter { from { opacity: 0; transform: translateY(4px) scale(.995); } to { opacity: 1; transform: none; } }
+.boutique-spinner { animation: boutique-spin 900ms linear infinite; }
+.boutique-pulse { animation: boutique-pulse 1.8s ease-in-out infinite; }
+.boutique-enter { animation: boutique-enter 200ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .boutique-spinner, .boutique-pulse, .boutique-enter { animation: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0ms !important; }
+}
+
 @theme {
   --font-serif: "Cormorant Garamond", Georgia, serif;
   --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;

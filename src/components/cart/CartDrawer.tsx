@@ -90,7 +90,7 @@ export const CartDrawer: React.FC = () => {
 
         {/* Line Items List */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
-          {!isCustomerDataReady ? <PrivateLoading error={privateDataError} /> : cart.length === 0 ? (
+          {!isCustomerDataReady ? <PrivateLoading variant="cart" error={privateDataError} /> : cart.length === 0 ? (
             <div className="text-center py-16">
               <ShoppingBag className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Bag is Empty</h3>

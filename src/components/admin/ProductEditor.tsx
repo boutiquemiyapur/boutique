@@ -1,3 +1,4 @@
+import { ButtonProgress } from '../common/Loading';
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { Product, StoreCategory } from '../../types';
@@ -89,7 +90,7 @@ export const ProductEditor = ({ product, categories, onCreateCategory, onClose, 
       <div className="flex flex-wrap gap-3">{draft.images.filter(Boolean).map((url, index) => <div key={`${url}-${index}`}><img src={url} alt="Product preview" className="h-20 w-16 object-cover" /><button type="button" aria-label={`Remove image ${index + 1}`} onClick={() => set('images', draft.images.filter((item) => item !== url))} className="min-h-11 text-xs underline">Remove</button></div>)}</div>
       <div className="grid gap-3 sm:grid-cols-2">{([['isActive', 'Published'], ['isReadyToShip', 'Ready to ship'], ['isBestseller', 'Bestseller'], ['isNewArrival', 'New arrival'], ['isHandloomCertified', 'Handloom certified (only if verified)']] as const).map(([key, label]) => <label key={key} className="text-xs"><input type="checkbox" checked={draft[key] === true} onChange={(event) => set(key, event.target.checked)} /> {label}</label>)}</div>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <button disabled={saving} className="bg-[#625e59] py-3 text-xs font-semibold uppercase tracking-widest text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button>
+      <button disabled={saving} className="bg-[#625e59] py-3 text-xs font-semibold uppercase tracking-widest text-white disabled:opacity-60">{saving ? <ButtonProgress>Saving...</ButtonProgress> : 'Save product'}</button>
     </form>
   </div></div>;
 };

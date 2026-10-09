@@ -1,3 +1,4 @@
+import { PrivateLoading } from '../common/Skeleton';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect } from 'react';
@@ -13,14 +14,14 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BrandMark } from '../../config/brand';
-import { paymentPresentation, paymentSucceeded } from '../../utils/paymentState';
+import { paymentPresentation, paymentSucceeded, fulfilmentEligible } from '../../utils/paymentState';
 import { PaymentRecovery } from './PaymentRecovery';
 
 export const OrderConfirmationPage: React.FC = () => {
-  const { currentOrder, formatPrice, navigate } = useStore();
+  const { currentOrder, authStatus, isCustomerDataReady, privateDataError, formatPrice, navigate } = useStore();
 
   useEffect(() => {
-    if (!currentOrder || !paymentSucceeded(currentOrder)) return;
+    if (!currentOrder || !paymentSucceeded(currentOrder) || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     try {
       confetti({
         particleCount: 80,
@@ -33,6 +34,7 @@ export const OrderConfirmationPage: React.FC = () => {
     }
   }, [currentOrder?.id, currentOrder?.paymentStatus, currentOrder?.paymentProvider, currentOrder?.paymentReviewRequired, currentOrder?.paymentVerifiedAt]);
 
+  if (authStatus === 'loading' || (authStatus === 'authenticated' && !isCustomerDataReady)) return <PrivateLoading variant="orders" error={privateDataError} />;
   if (!currentOrder) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center">
@@ -98,13 +100,13 @@ export const OrderConfirmationPage: React.FC = () => {
               <span className="text-stone-400">Order Number:</span>
               <span className="font-mono font-bold text-stone-900 ml-1.5">{currentOrder.orderNumber}</span>
             </div>
-            {currentOrder.estimatedDeliveryDate && <div>
+            {fulfilmentEligible(currentOrder) && currentOrder.estimatedDeliveryDate && <div>
               <span className="text-stone-400">Estimated Delivery:</span>
               <span className="font-bold text-emerald-800 ml-1.5">{currentOrder.estimatedDeliveryDate}</span>
             </div>}
             <div>
               <span className="text-stone-400">Payment:</span>
-              <span className="font-bold text-stone-900 uppercase ml-1.5">{currentOrder.paymentMethod.replace('_', ' ')} · {currentOrder.paymentStatus}</span>
+              <span className="font-bold text-stone-900 uppercase ml-1.5">{payment.label}</span>
             </div>
           </div>
 

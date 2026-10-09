@@ -3,10 +3,12 @@ import { digest, identifier, object, text } from '../../server/payments/validati
 import { requireCondition } from '../../server/payments/errors.js';
 import { razorpayProvider, validSignature } from '../../server/payments/provider.js';
 import { PaymentService } from '../../server/payments/service.js';
+import { validatePaymentEnvironment } from '../../server/payments/environment.js';
 export const config = { api: { bodyParser: false } };
 export default async function handler(req: Request, res: Response) {
   try {
-    prepare(req, res); const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim(); requireCondition(secret, 'PAYMENT_CONFIGURATION_MISSING', 503);
+    prepare(req, res); validatePaymentEnvironment(process.env);
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET!.trim();
     const raw = await rawBody(req); requireCondition(validSignature(raw, req.headers['x-razorpay-signature'], secret), 'SIGNATURE_INVALID');
     const body = object(JSON.parse(raw.toString('utf8'))) as Record<string, any>;
     const eventName = text(body.event, 80); const hash = digest(raw);

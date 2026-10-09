@@ -1,3 +1,5 @@
+import { PageLoading } from './components/common/Loading';
+import { MotionConfig } from 'motion/react';
 import { useNavigationScroll } from './hooks/useNavigationScroll';
 import { PrivateLoading } from './components/common/Skeleton';
 import React, { useEffect } from 'react';
@@ -28,7 +30,7 @@ import { AuthPage } from './components/auth/AuthPage';
 import { ShieldAlert } from 'lucide-react';
 import { SeoManager } from './components/common/SeoManager';
 
-const RouteLoading = PrivateLoading;
+const RouteLoading = () => <PageLoading label="Opening your secure account..." />;
 
 const ProtectedAccount = () => {
   const { authStatus, isCustomerDataReady, privateDataError, requireAuth } = useStore();
@@ -133,9 +135,9 @@ function AppContent() {
 
 export function App() {
   return (
-    <StoreProvider>
+    <MotionConfig reducedMotion="user"><StoreProvider>
       <AppContent />
-    </StoreProvider>
+    </StoreProvider></MotionConfig>
   );
 }
 

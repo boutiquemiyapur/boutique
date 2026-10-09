@@ -1,5 +1,5 @@
 import { preferPaymentOrder, requestedOrder, type PaymentOutcome } from '../utils/paymentState';
-import { checkoutBusinessRequest, stableCheckout, paymentApi, openPayment, confirmedPayment, type CheckoutResponse } from '../services/paymentClient';
+import { checkoutBusinessRequest, stableCheckout, paymentApi, openPayment, confirmedPayment, type CheckoutResponse, type PaymentProgress } from '../services/paymentClient';
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   AppView,
@@ -124,14 +124,15 @@ interface StoreContextType {
   createOrder: (
     shippingAddress: ShippingAddress,
     shippingMethod: ShippingMethod,
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentMethod,
+    onProgress?: PaymentProgress
   ) => Promise<PaymentOutcome>;
   cancelOrder: (orderId: string) => Promise<void>;
 
   // Customer Vault
-  updateCustomerMeasurements: (measurements: CustomMeasurements) => void;
-  saveMeasurements: (measurements: CustomMeasurements) => void;
-  updateCustomerProfile: (profile: Partial<CustomerProfile>) => void;
+  updateCustomerMeasurements: (measurements: CustomMeasurements) => Promise<void>;
+  saveMeasurements: (measurements: CustomMeasurements) => Promise<void>;
+  updateCustomerProfile: (profile: Partial<CustomerProfile>) => Promise<void>;
   addSavedAddress: (address: ShippingAddress) => Promise<void>;
   updateSavedAddress: (addressId: string, address: ShippingAddress) => Promise<void>;
   deleteSavedAddress: (addressId: string) => Promise<void>;
@@ -739,20 +740,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Checkout returns a result, not an assumption that a resolved promise means paid.
   const paymentInFlight = useRef<Promise<PaymentOutcome> | null>(null);
-  const createOrder = (shippingAddress: ShippingAddress, _shippingMethod: ShippingMethod, _paymentMethod: PaymentMethod): Promise<PaymentOutcome> => {
+  const createOrder = (shippingAddress: ShippingAddress, _shippingMethod: ShippingMethod, _paymentMethod: PaymentMethod, onProgress?: PaymentProgress): Promise<PaymentOutcome> => {
     if (paymentInFlight.current) return paymentInFlight.current;
     const operation = (async (): Promise<PaymentOutcome> => {
       let prepared: CheckoutResponse | undefined;
       try {
         if (!firebaseUserId || !cart.length) throw new Error('Sign in and add products before paying.');
         const uid = firebaseUserId;
+        onProgress?.('preparing');
         const request = await stableCheckout(uid, checkoutBusinessRequest(cart, shippingAddress, appliedCoupon?.code || null));
         prepared = await paymentApi<CheckoutResponse>('create-order', request);
         const preparedOrder = prepared.order;
         if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
         setOrders(prev => [preferPaymentOrder(prev.find(order => order.id === preparedOrder.id), preparedOrder), ...prev.filter(order => order.id !== preparedOrder.id)]);
         setSelectedTrackingOrderId(preparedOrder.id);
-        const outcome = await openPayment(prepared);
+        const outcome = await openPayment(prepared, onProgress);
         if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
         // Dismissal/error carries a stale pre-Checkout snapshot. Preserve listener data.
         if (outcome.kind === 'dismissed' || outcome.kind === 'error') return outcome;
@@ -791,23 +793,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Customer Profile & Measurements
-  const updateCustomerMeasurements = (measurements: CustomMeasurements) => {
-    setCustomer((prev) => {
-      const next = { ...prev, savedMeasurements: measurements };
-      void commerceRepository.saveProfile(firebaseUserId, next);
-      return next;
-    });
+  const updateCustomerMeasurements = async (measurements: CustomMeasurements) => {
+    const uid = firebaseUserId;
+    if (!uid || activePrivateUidRef.current !== uid) throw new Error('Sign in before saving your measurements.');
+    await commerceRepository.saveProfile(uid, { ...customer, savedMeasurements: measurements });
+    if (activePrivateUidRef.current !== uid) return;
+    setCustomer(prev => ({ ...prev, savedMeasurements: measurements }));
     showToast('Measurements Saved', 'Your custom measurements are now ready for checkout.');
   };
 
   const currentOrder = requestedOrder(orders, selectedTrackingOrderId, lastPlacedOrder);
 
-  const updateCustomerProfile = (profile: Partial<CustomerProfile>) => {
-    setCustomer((prev) => {
-      const next = { ...prev, ...profile };
-      void commerceRepository.saveProfile(firebaseUserId, next);
-      return next;
-    });
+  const updateCustomerProfile = async (profile: Partial<CustomerProfile>) => {
+    const uid = firebaseUserId;
+    if (!uid || activePrivateUidRef.current !== uid) throw new Error('Sign in before saving your profile.');
+    await commerceRepository.saveProfile(uid, { ...customer, ...profile });
+    if (activePrivateUidRef.current !== uid) return;
+    setCustomer(prev => ({ ...prev, ...profile }));
     showToast('Profile Updated', 'Account details have been saved.');
   };
 

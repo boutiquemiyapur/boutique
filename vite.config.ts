@@ -1,10 +1,20 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
+import { validateBuildEnvironment } from './server/payments/environment';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const firebaseValidated = validateBuildEnvironment(env);
+  // Hosted Firebase deployments must be isolated. Payment credentials are runtime-only.
+  // Unconfigured local builds stay
+  // offline rather than silently using the existing Production Firebase config.
+  if (!firebaseValidated) {
+    console.warn('Local Firebase disabled: a distinct safe non-production Firebase configuration is required to enable it.');
+  }
   return {
+    define: { 'import.meta.env.VITE_FIREBASE_ENV_VALIDATED': JSON.stringify(String(firebaseValidated)) },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

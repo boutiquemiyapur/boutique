@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PaymentError, requireCondition } from './errors.js';
+import { validatePaymentEnvironment } from './environment.js';
 export type ProviderOrder = { id: string; amount: number; currency: string; receipt: string; notes?: { checkoutId?: string } };
 export type ProviderPayment = { id: string; order_id: string; amount: number; currency: string; status: string; captured: boolean; amount_refunded: number };
 export type ProviderRefund = { id: string; payment_id: string; amount: number; status: string };
@@ -17,11 +18,7 @@ export function validSignature(message: string | Buffer, signature: unknown, sec
   return timingSafeEqual(createHmac('sha256', secret).update(message).digest(), Buffer.from(signature, 'hex'));
 }
 export function razorpayProvider(env = process.env): PaymentProvider {
-  const keyId = env.RAZORPAY_KEY_ID?.trim(); const secret = env.RAZORPAY_KEY_SECRET?.trim();
-  requireCondition(keyId && secret && env.RAZORPAY_WEBHOOK_SECRET?.trim(), 'PAYMENT_CONFIGURATION_MISSING', 503);
-  requireCondition(/^rzp_(test|live)_/.test(keyId), 'PAYMENT_CONFIGURATION_INVALID', 503);
-  // Development/preview must never accidentally use live money.
-  requireCondition(!keyId.startsWith('rzp_live_') || (env.VERCEL_ENV === 'production' && env.PAYMENTS_LIVE_ENABLED === 'true'), 'LIVE_PAYMENTS_DISABLED', 503);
+  const { keyId, secret } = validatePaymentEnvironment(env);
   async function api<T>(path: string, body?: unknown): Promise<T> {
     try {
       const response = await fetch(`https://api.razorpay.com/v1/${path}`, { method: body ? 'POST' : 'GET', headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${secret}`).toString('base64')}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(12_000) });

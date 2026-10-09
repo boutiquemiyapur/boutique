@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { validateServerFirebase } from '../../server/payments/environment.js';
 
 const allowedFolders = new Set(['products', 'banners', 'about']);
 // Only fixed, known codes may be logged. SDK error messages can contain credentials or tokens.
@@ -25,7 +26,9 @@ export default async function handler(request: { method?: string; headers: Recor
     const { cert, getApps, initializeApp } = await import('firebase-admin/app');
     const { getAuth } = await import('firebase-admin/auth');
     stage = 'firebase-configuration';
+    const expectedProject = validateServerFirebase(process.env);
     let app = getApps()[0];
+    if (app && app.options.projectId !== expectedProject) throw new Error('FIREBASE_CACHED_ENVIRONMENT_MISMATCH');
     if (!app) {
       const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID?.trim();
       const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim();
@@ -34,7 +37,7 @@ export default async function handler(request: { method?: string; headers: Recor
         console.error('Cloudinary signature request failed.', { stage, code: 'incomplete-configuration' });
         return response.status(503).json({ error: 'Upload authorization server configuration is incomplete.' });
       }
-      app = initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
+      app = initializeApp({ projectId: expectedProject, credential: cert({ projectId, clientEmail, privateKey }) });
     }
     stage = 'firebase-token-verification';
     const decoded = await getAuth(app).verifyIdToken(token);

@@ -1,7 +1,10 @@
+import { OrderStatusBadge } from '../common/OrderStatusBadge';
+import { orderDisplayStatus, paymentPresentation } from '../../utils/paymentState';
+import { ButtonProgress } from '../common/Loading';
 import { PaymentRecovery } from '../checkout/PaymentRecovery';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, Order, ShippingAddress } from '../../types';
 import {
@@ -50,9 +53,14 @@ export const CustomerAccountPage: React.FC = () => {
   const [phone, setPhone] = useState(customer.phone);
   const [address, setAddress] = useState<ShippingAddress>({ fullName: customer.fullName, phone: customer.phone, email: customer.email, addressLine1: '', city: '', state: '', pincode: '', country: 'India' });
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const selectedOrder = orders.find(order => order.id === selectedOrderId) || null;
+  const setSelectedOrder = (order: Order | null) => setSelectedOrderId(order?.id || null);
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const saveInFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // Measurements fields
   const [measurements, setMeasurements] = useState<CustomMeasurements>(
@@ -81,18 +89,24 @@ export const CustomerAccountPage: React.FC = () => {
     if (customer.savedMeasurements) setMeasurements(customer.savedMeasurements);
   }, [customer]);
 
+  const runSave = async (action: () => Promise<void>) => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true; setIsSaving(true);
+    try { await action(); }
+    catch (error) { if (mounted.current) showToast('Save failed', error instanceof Error ? error.message : 'Please retry.', 'error'); }
+    finally { saveInFlight.current = false; if (mounted.current) setIsSaving(false); }
+  };
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    updateCustomerProfile({
+    void runSave(() => updateCustomerProfile({
       fullName: name,
       phone
-    });
+    }));
   };
 
   const handleSaveMeasurements = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMeasurements(measurements);
-    showToast('Measurements Saved', 'Your custom measurements are now ready for checkout.');
+    void runSave(() => saveMeasurements(measurements));
   };
 
   const handleSaveAddress = async (event: React.FormEvent) => {
@@ -352,7 +366,7 @@ export const CustomerAccountPage: React.FC = () => {
                   type="submit"
                   className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-wider font-semibold px-8 py-3.5 rounded-xl flex items-center gap-2 shadow-md transition-all"
                 >
-                  <Save className="w-4 h-4" /> Save Measurements
+                  {isSaving ? <ButtonProgress>Saving...</ButtonProgress> : <><Save className="w-4 h-4" /> Save Measurements</>}
                 </button>
               </div>
             </form>
@@ -371,12 +385,12 @@ export const CustomerAccountPage: React.FC = () => {
                   <div>
                     <h3 className="font-serif font-bold text-base text-stone-900">{order.orderNumber}</h3>
                     <p className="text-stone-500 mt-0.5">
-                      Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      Created on {new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full ${order.orderStatus === 'Cancelled' ? 'bg-stone-200 text-stone-700' : order.orderStatus === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{order.orderStatus}</span>
+                    <OrderStatusBadge order={order} />
                   </div>
                 </div>
 
@@ -436,7 +450,7 @@ export const CustomerAccountPage: React.FC = () => {
         {activeTab === 'addresses' && (
           <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
             <section className="rounded-3xl border border-[#E6D5B8] bg-white p-6 sm:p-8"><h3 className="font-serif text-xl text-stone-900">Saved delivery addresses</h3><div className="mt-5 space-y-3">{customer.savedAddresses.map((saved, index) => <div key={saved.id || `${saved.addressLine1}-${index}`} className="border border-[#E6D5B8] bg-[#FAF7F2] p-4 text-xs text-stone-600"><div className="flex justify-between gap-2"><p className="font-semibold text-stone-900">{saved.fullName} {saved.isDefault && <span className="ml-1 text-[10px] text-[#8B1E3F]">DEFAULT</span>}</p><div className="flex gap-2"><button onClick={() => { setEditingAddressId(saved.id || `legacy-${index}`); setAddress(saved); }} className="font-semibold text-[#8B1E3F]">Edit</button><button onClick={() => { if (window.confirm('Are you sure you want to delete this address?')) void deleteSavedAddress(saved.id || `legacy-${index}`).catch(() => showToast('Could not delete address', 'Please try again.', 'error')); }} className="font-semibold text-red-700">Delete</button></div></div><p className="mt-1">{saved.addressLine1}{saved.addressLine2 ? `, ${saved.addressLine2}` : ''}</p><p>{saved.city}, {saved.state} {saved.pincode}</p><p className="mt-1">{saved.phone}</p></div>)}{!customer.savedAddresses.length && <p className="py-8 text-center text-sm text-stone-500">No saved addresses yet.</p>}</div></section>
-            <section className="rounded-3xl border border-[#E6D5B8] bg-white p-6 sm:p-8"><h3 className="font-serif text-xl text-stone-900">{editingAddressId ? 'Edit address' : 'Add an address'}</h3><form onSubmit={handleSaveAddress} className="mt-5 grid gap-3 text-xs sm:grid-cols-2"><label>Full name<input value={address.fullName} onChange={(event) => setAddress({ ...address, fullName: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>Phone<input value={address.phone} onChange={(event) => setAddress({ ...address, phone: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label className="sm:col-span-2">Address line 1<input value={address.addressLine1} onChange={(event) => setAddress({ ...address, addressLine1: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label className="sm:col-span-2">Address line 2<input value={address.addressLine2 || ''} onChange={(event) => setAddress({ ...address, addressLine2: event.target.value })} className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>Pincode<input value={address.pincode} onChange={(event) => setAddress({ ...address, pincode: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>Country<input value={address.country} onChange={(event) => setAddress({ ...address, country: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><button disabled={isSaving} className="mt-2 inline-flex w-fit items-center gap-2 rounded-lg bg-[#8B1E3F] px-5 py-3 text-xs font-semibold uppercase tracking-wider text-white disabled:opacity-50 sm:col-span-2"><Plus className="h-4 w-4" />{isSaving ? 'Saving…' : editingAddressId ? 'Save changes' : 'Save address'}</button></form></section>
+            <section className="rounded-3xl border border-[#E6D5B8] bg-white p-6 sm:p-8"><h3 className="font-serif text-xl text-stone-900">{editingAddressId ? 'Edit address' : 'Add an address'}</h3><form onSubmit={handleSaveAddress} className="mt-5 grid gap-3 text-xs sm:grid-cols-2"><label>Full name<input value={address.fullName} onChange={(event) => setAddress({ ...address, fullName: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>Phone<input value={address.phone} onChange={(event) => setAddress({ ...address, phone: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label className="sm:col-span-2">Address line 1<input value={address.addressLine1} onChange={(event) => setAddress({ ...address, addressLine1: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label className="sm:col-span-2">Address line 2<input value={address.addressLine2 || ''} onChange={(event) => setAddress({ ...address, addressLine2: event.target.value })} className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>Pincode<input value={address.pincode} onChange={(event) => setAddress({ ...address, pincode: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><label>Country<input value={address.country} onChange={(event) => setAddress({ ...address, country: event.target.value })} required className="mt-1 w-full rounded-lg border border-[#E6D5B8] bg-[#FAF7F2] p-2.5" /></label><button disabled={isSaving} className="mt-2 inline-flex w-fit items-center gap-2 rounded-lg bg-[#8B1E3F] px-5 py-3 text-xs font-semibold uppercase tracking-wider text-white disabled:opacity-50 sm:col-span-2"><Plus className="h-4 w-4" />{isSaving ? <ButtonProgress>Saving...</ButtonProgress> : editingAddressId ? 'Save changes' : 'Save address'}</button></form></section>
           </div>
         )}
 
@@ -482,17 +496,17 @@ export const CustomerAccountPage: React.FC = () => {
                   type="submit"
                   className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase font-semibold tracking-wider px-6 py-3 rounded-lg transition-colors"
                 >
-                  Update Profile Details
+                  {isSaving ? <ButtonProgress>Saving...</ButtonProgress> : 'Update Profile Details'}
                 </button>
               </div>
             </form>
           </div>
         )}
       </div>
-      {(selectedOrder || cancellingOrder) && <div className="fixed inset-0 z-50 flex items-end bg-black/45 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true">
+      {(selectedOrderId || cancellingOrder) && <div className="fixed inset-0 z-50 flex items-end bg-black/45 p-0 sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label="Order details">
         <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-3xl">
           <div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="font-serif text-xl font-bold text-stone-900">{cancellingOrder ? 'Cancel order' : 'Order details'}</h2><p className="mt-1 text-xs text-stone-500">{(cancellingOrder || selectedOrder)?.orderNumber}</p></div><button onClick={() => { setSelectedOrder(null); setCancellingOrder(null); }} className="rounded-lg p-2 text-stone-600"><X className="h-5 w-5" /></button></div>
-          {cancellingOrder ? <div className="space-y-5 text-sm text-stone-700"><p>Are you sure you want to cancel this order? This cannot be undone.</p><div className="flex justify-end gap-3"><button onClick={() => setCancellingOrder(null)} className="min-h-11 px-4 text-xs font-semibold">Keep order</button><button disabled={isSaving} onClick={() => void cancelSelectedOrder()} className="min-h-11 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white disabled:opacity-50">{isSaving ? 'Cancelling…' : 'Cancel order'}</button></div></div> : selectedOrder && <div className="space-y-5 text-xs text-stone-700"><PaymentRecovery order={selectedOrder} /><div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF7F2] p-4"><p><b>Status</b><br />{selectedOrder.orderStatus}</p><p><b>Payment</b><br />{selectedOrder.paymentMethod === 'cod' ? 'Cash on delivery' : selectedOrder.paymentMethod} · {selectedOrder.paymentStatus}</p><p><b>Order date</b><br />{new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}</p><p><b>Total</b><br />{formatPrice(selectedOrder.totalINR)}</p></div><div><b>Items</b>{selectedOrder.items.map((item) => <p key={item.cartItemId} className="mt-2">{item.product.title} — {variantSummary(item)}, Qty {item.quantity}</p>)}</div><div><b>Delivery address</b><p className="mt-1">{selectedOrder.shippingAddress.fullName}, {selectedOrder.shippingAddress.addressLine1}, {selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.pincode}</p></div><div><b>Price breakdown</b><p className="mt-1">Merchandise {formatPrice(selectedOrder.subtotalINR)}{selectedOrder.tailoringTotalINR > 0 ? ` · Tailoring ${formatPrice(selectedOrder.tailoringTotalINR)}` : ''}{selectedOrder.couponDiscountINR > 0 ? ` · Discount −${formatPrice(selectedOrder.couponDiscountINR)}` : ''}</p>{selectedOrder.charges ? selectedOrder.charges.map((charge) => <p key={charge.id} className="mt-1">{charge.name}: {formatPrice(charge.amountINR)}</p>) : <p className="mt-1">Shipping {formatPrice(selectedOrder.shippingCostINR)} · Tax {formatPrice(selectedOrder.taxGstINR)}</p>}<p className="mt-2 font-semibold">Total: {formatPrice(selectedOrder.totalINR)}</p></div>{selectedOrder.cancellation && <div className="rounded-xl bg-stone-100 p-4"><b>Cancellation</b><p className="mt-1">Cancelled on {selectedOrder.cancellation.cancelledAt}</p></div>}</div>}
+          {cancellingOrder ? <div className="space-y-5 text-sm text-stone-700"><p>Are you sure you want to cancel this order? This cannot be undone.</p><div className="flex justify-end gap-3"><button onClick={() => setCancellingOrder(null)} className="min-h-11 px-4 text-xs font-semibold">Keep order</button><button disabled={isSaving} onClick={() => void cancelSelectedOrder()} className="min-h-11 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white disabled:opacity-50">{isSaving ? <ButtonProgress>Saving...</ButtonProgress> : 'Cancel order'}</button></div></div> : selectedOrder ? <div className="space-y-5 text-xs text-stone-700"><PaymentRecovery order={selectedOrder} /><div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF7F2] p-4"><p><b>Status</b><br />{orderDisplayStatus(selectedOrder)}</p><p><b>Payment</b><br />{paymentPresentation(selectedOrder).label}</p><p><b>Order date</b><br />{new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}</p><p><b>Total</b><br />{formatPrice(selectedOrder.totalINR)}</p></div><div><b>Items</b>{selectedOrder.items.map((item) => <p key={item.cartItemId} className="mt-2">{item.product.title} — {variantSummary(item)}, Qty {item.quantity}</p>)}</div><div><b>Delivery address</b><p className="mt-1">{selectedOrder.shippingAddress.fullName}, {selectedOrder.shippingAddress.addressLine1}, {selectedOrder.shippingAddress.city}, {selectedOrder.shippingAddress.state} {selectedOrder.shippingAddress.pincode}</p></div><div><b>Price breakdown</b><p className="mt-1">Merchandise {formatPrice(selectedOrder.subtotalINR)}{selectedOrder.tailoringTotalINR > 0 ? ` · Tailoring ${formatPrice(selectedOrder.tailoringTotalINR)}` : ''}{selectedOrder.couponDiscountINR > 0 ? ` · Discount −${formatPrice(selectedOrder.couponDiscountINR)}` : ''}</p>{selectedOrder.charges ? selectedOrder.charges.map((charge) => <p key={charge.id} className="mt-1">{charge.name}: {formatPrice(charge.amountINR)}</p>) : <p className="mt-1">Shipping {formatPrice(selectedOrder.shippingCostINR)} · Tax {formatPrice(selectedOrder.taxGstINR)}</p>}<p className="mt-2 font-semibold">Total: {formatPrice(selectedOrder.totalINR)}</p></div>{selectedOrder.cancellation && <div className="rounded-xl bg-stone-100 p-4"><b>Cancellation</b><p className="mt-1">Cancelled on {selectedOrder.cancellation.cancelledAt}</p></div>}</div> : <p role="alert">This order is no longer available. Close this dialog and refresh your orders.</p>}
         </div>
       </div>}
     </div>

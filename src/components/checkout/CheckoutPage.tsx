@@ -1,10 +1,12 @@
+import { ButtonProgress } from '../common/Loading';
+import { paymentStageText, type PaymentStage } from '../../services/paymentClient';
 import { useNavigationScroll } from '../../hooks/useNavigationScroll';
 import { PrivateLoading } from '../common/Skeleton';
 import { checkoutFeedback } from '../../utils/paymentState';
 import { PaymentRecovery } from './PaymentRecovery';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { PaymentMethod, ShippingAddress } from '../../types';
 import {
@@ -77,6 +79,10 @@ export const CheckoutPage: React.FC = () => {
 
   const [paymentMethod] = useState<PaymentMethod>('razorpay');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentStage, setPaymentStage] = useState<PaymentStage>('idle');
+  const mounted = useRef(true);
+  const submitting = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const paymentOrder = orders.find(order => order.id === paymentOrderId);
 
@@ -87,7 +93,7 @@ export const CheckoutPage: React.FC = () => {
   if (authStatus !== 'authenticated') return null;
 
   if (!isCustomerDataReady) {
-    return <PrivateLoading error={privateDataError} />;
+    return <PrivateLoading variant="checkout" error={privateDataError} />;
   }
 
   if (cart.length === 0) {
@@ -110,14 +116,15 @@ export const CheckoutPage: React.FC = () => {
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isProcessingPayment) return;
+    if (submitting.current) return;
     if (authStatus !== 'authenticated') {
       requireAuth('checkout');
       return;
     }
-    setIsProcessingPayment(true);
+    submitting.current = true; setIsProcessingPayment(true); setPaymentStage('preparing');
     try {
-      const outcome = await createOrder(address, 'standard', paymentMethod);
+      const outcome = await createOrder(address, 'standard', paymentMethod, stage => { if (mounted.current) setPaymentStage(stage); });
+      if (!mounted.current) return;
       if (outcome.order) setPaymentOrderId(outcome.order.id);
       const feedback = checkoutFeedback(outcome);
       showToast(feedback.title, feedback.message, feedback.type);
@@ -126,7 +133,8 @@ export const CheckoutPage: React.FC = () => {
       const message = error instanceof Error ? error.message : 'The order could not be recorded. Please try again.';
       showToast('Order not placed', message, 'error');
     } finally {
-      setIsProcessingPayment(false);
+      submitting.current = false;
+      if (mounted.current) { setIsProcessingPayment(false); setPaymentStage('idle'); }
     }
   };
 
@@ -405,7 +413,7 @@ export const CheckoutPage: React.FC = () => {
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-bold px-8 py-4 rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {isProcessingPayment ? (
-                      <span>Preparing payment...</span>
+                      <span role="status">{paymentStage === 'checkout' ? paymentStageText.checkout : <ButtonProgress>{paymentStageText[paymentStage] || 'Preparing secure checkout...'}</ButtonProgress>}</span>
                     ) : (
                       <>
                         <ShieldCheck className="w-4 h-4 text-[#DFBF77]" />
