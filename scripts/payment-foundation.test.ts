@@ -147,3 +147,26 @@ test('authenticated verification binds owner, stored mapping and signature befor
   assert.equal((await f.service.verify('uid', r.order.id, 'order_test1', 'pay_test1', signature, secret)).paymentStatus, 'PAID');
   assert.equal((await f.service.verify('uid', r.order.id, 'order_test1', 'pay_test1', signature, secret)).timeline.length, 1);
 });
+
+
+test('uncaptured created/failed/authorized evidence never marks PAID or consumes reservations', async () => {
+  for (const status of ['created', 'failed', 'authorized']) {
+    const f = fixture(); const r = await f.service.create('uid', f.request);
+    f.evidence({ status, captured: false });
+    const next = await f.service.syncPayment(r.order.id, 'pay_test1');
+    assert.notEqual(next.paymentStatus, 'PAID'); assert.equal(next.paidAt, undefined);
+    assert.equal(f.docs.get(`inventoryReservations/${r.order.id}`).state, 'RESERVED');
+    assert.equal(f.docs.has(`inventoryMovements/${r.order.id}-consume`), false);
+  }
+});
+test('concurrent duplicate events and delayed capture after failure consume once', async () => {
+  const f = fixture(); const r = await f.service.create('uid', f.request);
+  f.evidence({ status: 'failed', captured: false });
+  await f.service.syncPayment(r.order.id, 'pay_test1', { id: 'failure', hash: 'failure-hash' });
+  f.evidence({ status: 'captured', captured: true });
+  await Promise.all([f.service.syncPayment(r.order.id, 'pay_test1', { id: 'capture', hash: 'capture-hash' }), f.service.syncPayment(r.order.id, 'pay_test1', { id: 'capture', hash: 'capture-hash' })]);
+  const paid = f.docs.get(`orders/${r.order.id}`).data;
+  assert.equal(paid.paymentStatus, 'PAID'); assert.equal(paid.timeline.length, 1);
+  assert.equal(f.docs.get('products/dress').data.stockCount, 1);
+  assert.equal(f.docs.get(`inventoryReservations/${r.order.id}`).state, 'CONSUMED');
+});

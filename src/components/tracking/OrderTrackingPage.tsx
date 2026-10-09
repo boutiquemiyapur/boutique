@@ -8,27 +8,39 @@ const statusTone = (status: Order['orderStatus']) =>
   status === 'Cancelled' ? 'bg-rose-100 text-rose-800' : status === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800';
 
 export const OrderTrackingPage: React.FC = () => {
-  const { orders, currentOrder, formatPrice, showToast } = useStore();
+  const { orders, currentOrder, selectedTrackingOrderId, formatPrice, showToast, navigate } = useStore();
   const [searchQuery, setSearchQuery] = useState(currentOrder?.orderNumber ?? '');
-  const [activeOrder, setActiveOrder] = useState<Order | null>(currentOrder ?? orders[0] ?? null);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [activeOrder, setActiveOrder] = useState<Order | null>(currentOrder ?? null);
 
   useEffect(() => {
+    setSearchFailed(false);
     if (currentOrder) {
       setActiveOrder(currentOrder);
       setSearchQuery(currentOrder.orderNumber);
     }
-  }, [currentOrder]);
+    else if (selectedTrackingOrderId) {
+      setActiveOrder(null);
+      setSearchQuery('');
+    }
+  }, [currentOrder, selectedTrackingOrderId]);
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const found = orders.find((order) => order.orderNumber.toLowerCase() === searchQuery.trim().toLowerCase());
     if (!found) {
+      setSearchFailed(true);
       setActiveOrder(null);
       showToast('Order not found', 'Check the order number and try again.', 'error');
       return;
     }
+    setSearchFailed(false);
     setActiveOrder(found);
+    // Search is an explicit choice; select the corresponding order route.
+    navigate('order-tracking', undefined, found.id);
   };
+
+  const displayedOrder = searchFailed ? null : selectedTrackingOrderId ? currentOrder : activeOrder;
 
   return (
     <main className="min-h-screen bg-[#FAF7F2] py-12 sm:py-16">
@@ -48,7 +60,7 @@ export const OrderTrackingPage: React.FC = () => {
           <button type="submit" className="bg-[#8B1E3F] px-6 py-3 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-[#721C24]">Find order</button>
         </form>
 
-        {!activeOrder ? (
+        {!displayedOrder ? (
           <section className="border border-[#E6D5B8] bg-white px-6 py-14 text-center">
             <Package className="mx-auto h-11 w-11 text-stone-300" aria-hidden="true" />
             <h2 className="mt-4 font-serif text-2xl text-stone-900">Order not found</h2>
@@ -59,16 +71,16 @@ export const OrderTrackingPage: React.FC = () => {
             <div className="flex flex-col justify-between gap-5 border-b border-[#E6D5B8] pb-6 sm:flex-row sm:items-start">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-serif text-2xl text-stone-900">{activeOrder.orderNumber}</h2>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusTone(activeOrder.orderStatus)}`}>{activeOrder.orderStatus}</span>
+                  <h2 className="font-serif text-2xl text-stone-900">{displayedOrder.orderNumber}</h2>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusTone(displayedOrder.orderStatus)}`}>{displayedOrder.orderStatus}</span>
                 </div>
-                <PaymentRecovery order={activeOrder} /><p className="mt-2 text-xs text-stone-500">Placed {new Date(activeOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {activeOrder.paymentMethod === 'cod' ? 'COD payment' : 'Online payment'}: {activeOrder.paymentStatus}</p>
+                <PaymentRecovery order={displayedOrder} /><p className="mt-2 text-xs text-stone-500">Placed {new Date(displayedOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {displayedOrder.paymentMethod === 'cod' ? 'COD payment' : 'Online payment'}: {displayedOrder.paymentStatus}</p>
               </div>
-              {activeOrder.trackingNumber ? (
+              {displayedOrder.trackingNumber ? (
                 <div className="text-left sm:text-right">
                   <p className="text-[11px] uppercase tracking-wider text-stone-400">Courier tracking number</p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-[#8B1E3F]">{activeOrder.trackingNumber}</p>
-                  {activeOrder.courierPartner && <p className="mt-1 text-xs text-stone-500">{activeOrder.courierPartner}</p>}
+                  <p className="mt-1 font-mono text-sm font-semibold text-[#8B1E3F]">{displayedOrder.trackingNumber}</p>
+                  {displayedOrder.courierPartner && <p className="mt-1 text-xs text-stone-500">{displayedOrder.courierPartner}</p>}
                 </div>
               ) : <p className="max-w-xs text-xs leading-relaxed text-stone-500 sm:text-right">A courier reference has not been assigned yet.</p>}
             </div>
@@ -76,7 +88,7 @@ export const OrderTrackingPage: React.FC = () => {
             <div className="py-8">
               <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-stone-700">Order timeline</h3>
               <ol className="mt-5 space-y-5 border-l border-[#C5A059]/60 pl-5">
-                {activeOrder.timeline.map((event, index) => (
+                {displayedOrder.timeline.map((event, index) => (
                   <li key={`${event.status}-${index}`} className="relative">
                     <span className={`absolute -left-[1.8rem] top-1 flex h-4 w-4 items-center justify-center rounded-full ${event.completed ? 'bg-[#8B1E3F] text-white' : 'border border-[#C5A059] bg-[#FAF7F2] text-transparent'}`}><CheckCircle2 className="h-3 w-3" aria-hidden="true" /></span>
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -88,17 +100,17 @@ export const OrderTrackingPage: React.FC = () => {
                   </li>
                 ))}
               </ol>
-              {activeOrder.timeline.length === 0 && <p className="mt-4 text-sm text-stone-500">No fulfilment update has been recorded yet.</p>}
+              {displayedOrder.timeline.length === 0 && <p className="mt-4 text-sm text-stone-500">No fulfilment update has been recorded yet.</p>}
             </div>
 
             <div className="grid gap-8 border-t border-[#E6D5B8] pt-7 text-sm md:grid-cols-2">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-stone-700">Delivery address</h3>
-                <address className="mt-3 not-italic leading-relaxed text-stone-600"><strong className="text-stone-900">{activeOrder.shippingAddress.fullName}</strong><br />{activeOrder.shippingAddress.addressLine1}<br />{activeOrder.shippingAddress.city}, {activeOrder.shippingAddress.state} — {activeOrder.shippingAddress.pincode}</address>
+                <address className="mt-3 not-italic leading-relaxed text-stone-600"><strong className="text-stone-900">{displayedOrder.shippingAddress.fullName}</strong><br />{displayedOrder.shippingAddress.addressLine1}<br />{displayedOrder.shippingAddress.city}, {displayedOrder.shippingAddress.state} — {displayedOrder.shippingAddress.pincode}</address>
               </div>
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-stone-700">Order summary</h3>
-                <div className="mt-3 space-y-2 text-stone-600">{activeOrder.items.map((item) => <p key={item.cartItemId} className="flex justify-between gap-4"><span>{item.product.title} × {item.quantity}</span><span>{formatPrice(item.product.priceINR * item.quantity)}</span></p>)}<p className="flex justify-between border-t border-[#E6D5B8] pt-3 font-semibold text-stone-900"><span>Total payable on delivery</span><span>{formatPrice(activeOrder.totalINR)}</span></p></div>
+                <div className="mt-3 space-y-2 text-stone-600">{displayedOrder.items.map((item) => <p key={item.cartItemId} className="flex justify-between gap-4"><span>{item.product.title} × {item.quantity}</span><span>{formatPrice(item.product.priceINR * item.quantity)}</span></p>)}<p className="flex justify-between border-t border-[#E6D5B8] pt-3 font-semibold text-stone-900"><span>{displayedOrder.paymentMethod === 'cod' ? 'Total payable on delivery' : 'Order total'}</span><span>{formatPrice(displayedOrder.totalINR)}</span></p></div>
               </div>
             </div>
           </section>

@@ -1,7 +1,8 @@
 import { firebaseAuth } from '../firebase/config';
 import type { CartItem, Order, ShippingAddress } from '../types';
 export type CheckoutResponse = { order: Order; checkout: null | { keyId: string; orderId: string; amount: number; currency: 'INR'; expiresAt: string } };
-export const confirmedPayment = (o: Order) => o.paymentProvider === 'razorpay' && ['PAID', 'REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(o.paymentStatus);
+import { trustedPaymentOutcome, type PaymentOutcome } from '../utils/paymentState';
+export { confirmedPayment } from '../utils/paymentState';
 const messages: Record<string, string> = {
   PAYMENT_CONFIGURATION_MISSING: 'Online payment is not configured yet. Please contact the store.',
   INVALID_OPTIONS_OR_STOCK: 'Your selected options or stock have changed. Review your bag.',
@@ -34,7 +35,7 @@ export async function stableCheckout(uid: string, request: ReturnType<typeof che
   return { ...request, intentId };
 }
 type PaymentResult = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
-declare global { interface Window { Razorpay?: new (options: Record<string, unknown>) => { open(): void } } }
+declare global { interface Window { Razorpay?: new (options: Record<string, unknown>) => { open(): void; on(event: 'payment.failed', handler: () => void): void } } }
 let scriptPromise: Promise<void> | undefined;
 function loadCheckout() {
   if (window.Razorpay) return Promise.resolve();
@@ -46,22 +47,54 @@ function loadCheckout() {
     script.onerror = () => { clearTimeout(timeout); fail(); }; document.head.appendChild(script);
   }); return scriptPromise;
 }
-export async function openPayment(response: CheckoutResponse): Promise<Order> {
-  if (!response.checkout) return response.order;
-  await loadCheckout(); const c = response.checkout;
-  return new Promise((resolve, reject) => {
-    let settled = false; let verifying = false; const finish = (order: Order) => { if (!settled) { settled = true; resolve(order); } };
-    const instance = new window.Razorpay!({ key: c.keyId, order_id: c.orderId, amount: c.amount, currency: c.currency, name: 'AB Collection', prefill: { name: response.order.shippingAddress.fullName, email: response.order.shippingAddress.email, contact: response.order.shippingAddress.phone },
-      handler: async (result: PaymentResult) => {
-        verifying = true;
-        try { finish((await paymentApi<{ order: Order }>('verify', { orderId: response.order.id, ...result })).order); }
-        catch (e) { if (!settled) { settled = true; reject(e); } }
-      }, modal: { ondismiss: () => { if (!verifying) finish(response.order); } },
-    }); instance.open();
-  });
+let activeCheckout: Promise<PaymentOutcome> | null = null;
+export function openPayment(response: CheckoutResponse): Promise<PaymentOutcome> {
+  if (activeCheckout) return Promise.resolve({ kind: 'error', order: response.order,
+    message: 'A payment checkout is already open. Complete or close it before retrying.' });
+  const operation = runCheckout(response);
+  activeCheckout = operation;
+  void operation.finally(() => { if (activeCheckout === operation) activeCheckout = null; }).catch(() => undefined);
+  return operation;
 }
-export async function retryOrder(order: Order) {
-  if (!order.checkoutIntentId) throw new Error('This order cannot be retried online.');
-  const business = checkoutBusinessRequest(order.items, order.shippingAddress, order.couponCodeApplied || null);
-  return openPayment(await paymentApi<CheckoutResponse>('create-order', { ...business, intentId: order.checkoutIntentId }));
+async function runCheckout(response: CheckoutResponse): Promise<PaymentOutcome> {
+  const error = (e: unknown): PaymentOutcome => ({ kind: 'error', order: response.order,
+    message: e instanceof Error ? e.message : 'Payment could not be confirmed. Check the order before retrying.' });
+  if (!response.checkout) return trustedPaymentOutcome(response.order);
+  try {
+    await loadCheckout(); const c = response.checkout;
+    return await new Promise<PaymentOutcome>((resolve) => {
+      let settled = false; let verifying = false; let failed = false;
+      const finish = (outcome: PaymentOutcome) => { if (!settled) { settled = true; resolve(outcome); } };
+      const instance = new window.Razorpay!({ key: c.keyId, order_id: c.orderId, amount: c.amount, currency: c.currency, name: 'AB Collection',
+        prefill: { name: response.order.shippingAddress.fullName, email: response.order.shippingAddress.email, contact: response.order.shippingAddress.phone },
+        handler: async (result: PaymentResult) => {
+          if (settled || verifying) return;
+          verifying = true;
+          try {
+            const { order } = await paymentApi<{ order: Order }>('verify', { orderId: response.order.id, ...result });
+            if (order?.id !== response.order.id) throw new Error('Payment response did not match this order. Check its status before retrying.');
+            finish(trustedPaymentOutcome(order));
+          } catch (e) { finish(error(e)); }
+        },
+        modal: { ondismiss: () => {
+          if (!verifying) finish(failed
+            ? { kind: 'error', order: response.order, message: 'The payment attempt failed. Your bag is preserved. Check payment before retrying.' }
+            : { kind: 'dismissed', order: response.order });
+        } },
+      });
+      // A client failure is feedback only. It cannot write FAILED or release stock.
+      // Checkout can still offer a retry; a later successful callback is verified.
+      instance.on('payment.failed', () => { failed = true; });
+      instance.open();
+    });
+  } catch (e) { return error(e); }
+}
+export async function retryOrder(order: Order): Promise<PaymentOutcome> {
+  try {
+    if (!order.checkoutIntentId) throw new Error('This order cannot be retried online.');
+    const business = checkoutBusinessRequest(order.items, order.shippingAddress, order.couponCodeApplied || null);
+    const response = await paymentApi<CheckoutResponse>('create-order', { ...business, intentId: order.checkoutIntentId });
+    if (response.order?.id !== order.id) throw new Error('Retry response did not match this order. Contact the store.');
+    return await openPayment(response);
+  } catch (e) { return { kind: 'error', order, message: e instanceof Error ? e.message : 'Payment could not be retried.' }; }
 }

@@ -25,12 +25,14 @@ b.onResolve({filter:/^react$/},args=> /StoreContext|ProductImage|useNavigationSc
 b.onResolve({filter:/context\/StoreContext$/},args=> /StorefrontHomePage|FeaturedGrid|HeroBanner|CustomTailoringBanner|Header/.test(args.importer)?{path:'context',namespace:'fixture'}:undefined);
 b.onResolve({filter:/firebase\/auth$/},()=>({path:'auth',namespace:'fixture'}));
 b.onResolve({filter:/firebase\/config$/},()=>({path:'config',namespace:'fixture'}));
+b.onResolve({filter:/services\/paymentClient$/},()=>({path:'payments',namespace:'fixture'}));
 b.onResolve({filter:/services\/cmsRepository$/},()=>({path:'cms',namespace:'fixture'}));
 b.onResolve({filter:/^firebase\/firestore$/},()=>({path:'db',namespace:'fixture'}));
-b.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({contents:({
+b.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({resolveDir:process.cwd(),contents:({
 hooks:`export const createContext=()=>({Provider:'provider'}); export const useState=(v)=>globalThis.hooks.state(v); export const useRef=(v)=>globalThis.hooks.ref(v); export const useEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useLayoutEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useMemo=(f)=>{globalThis.hooks.index++;return f()}; export const useContext=()=>{}; export default {createContext,useState,useRef,useEffect,useMemo,useContext};`,
 context:`export const useStore=()=>globalThis.viewStore;`,
 auth:`export const startAuthSession=(fn)=>{globalThis.authCallback=fn;return ()=>{}}; export const logoutFirebaseUser=async()=>{globalThis.authCallback(null)}; export const authErrorMessage=(e)=>e.message; export const signInWithEmail=async()=>{}; export const registerWithEmail=async()=>{}; export const requestPasswordReset=async()=>{};`,
+payments:`export {confirmedPayment} from './src/utils/paymentState'; export const stableCheckout=(uid,r)=>globalThis.paymentMock.stableCheckout(uid,r); export const checkoutBusinessRequest=(...args)=>globalThis.paymentMock.checkoutBusinessRequest(...args); export const paymentApi=(...args)=>globalThis.paymentMock.paymentApi(...args); export const openPayment=(...args)=>globalThis.paymentMock.openPayment(...args);`,
 config:`export const firestore={}; export const firebaseAuth={currentUser:null};`,
 cms:`export const DEFAULT_CMS={checkoutCharges:[],lowStockThreshold:3,banners:[],content:{},contact:{}}; export const cmsRepository={loadPublicCms:async()=>DEFAULT_CMS,subscribeToStoreSettings:()=>()=>{},subscribeToCategories:()=>()=>{},};`,
 db:`export const doc=(_, ...parts)=>({path:parts.join('/')}); export const collection=doc; export const collectionGroup=doc; export const query=(ref)=>ref; export const where=()=>{}; export const serverTimestamp=()=>null;
@@ -117,4 +119,20 @@ test('direct Account A to B switch clears UI before B hydration and rejects stal
 });
 test('pending local Firestore snapshots do not expose an unconfirmed wishlist count',async()=>{
  const h=initialize();let s=await h.session('A');const listener=[...database.listeners.get('wishlists/A')][0].fn;listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:true}});s=h.render();assert.deepEqual(s.wishlist,[]);h.cleanup();
+});
+
+const pendingPayment={id:'pay-integration',orderNumber:'AB-INTEGRATION',createdAt:new Date().toISOString(),shippingAddress:{fullName:'Fixture'},items:[],charges:[],timeline:[],paymentMethod:'razorpay',paymentProvider:'razorpay',paymentStatus:'PAYMENT_PENDING',totalINR:100};
+const capturedPayment={...pendingPayment,paymentStatus:'PAID',currency:'INR',amountPaise:10000,razorpayOrderId:'order_integration',razorpayPaymentId:'pay_integration',paidAt:new Date().toISOString(),paymentVerifiedAt:new Date().toISOString(),paymentReviewRequired:false};
+function paymentFixture(openPayment){globalThis.localStorage={length:0};globalThis.paymentMock={stableCheckout:async(_uid,r)=>({...r,intentId:'integration-intent'}),checkoutBusinessRequest:()=>({}),paymentApi:async()=>({order:pendingPayment,checkout:{}}),openPayment};}
+function emitPayment(value){for(const entry of database.listeners.get('orders')||[])entry.fn({docs:[{data:()=>({data:value})}]});}
+test('real store dismissal preserves cart and newer delayed webhook capture without client financial writes',async()=>{
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();let release;paymentFixture(()=>new Promise(r=>release=r));
+ const promise=s.createOrder({},'standard','razorpay');await new Promise(r=>setImmediate(r));emitPayment(capturedPayment);s=h.render();assert.equal(s.currentOrder.paymentStatus,'PAID');release({kind:'dismissed',order:pendingPayment});assert.equal((await promise).kind,'dismissed');s=await h.flush();assert.equal(s.currentOrder.paymentStatus,'PAID');assert.equal(s.cart.length,1);assert.equal(database.records.has('orders/pay-integration'),false);h.cleanup();
+});
+test('real store receives webhook confirmation after dismissal and does not clear the preserved bag',async()=>{
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();paymentFixture(async()=>({kind:'dismissed',order:pendingPayment}));await s.createOrder({},'standard','razorpay');s=await h.flush();assert.equal(s.currentOrder.paymentStatus,'PAYMENT_PENDING');emitPayment(capturedPayment);s=await h.flush();assert.equal(s.currentOrder.paymentStatus,'PAID');assert.equal(s.cart.length,1);h.cleanup();
+});
+test('real store clears cart only for captured server evidence; pending/error preserve it',async()=>{
+ for(const outcome of [{kind:'pending',order:pendingPayment},{kind:'error',order:pendingPayment,message:'failed'},{kind:'confirmed',order:capturedPayment}]){
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();paymentFixture(async()=>outcome);const result=await s.createOrder({},'standard','razorpay');assert.equal(result.kind,outcome.kind);s=await h.flush();assert.equal(s.cart.length,outcome.kind==='confirmed'?0:1);h.cleanup();}
 });

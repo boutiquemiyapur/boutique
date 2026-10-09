@@ -1,3 +1,4 @@
+import { preferPaymentOrder, requestedOrder, type PaymentOutcome } from '../utils/paymentState';
 import { checkoutBusinessRequest, stableCheckout, paymentApi, openPayment, confirmedPayment, type CheckoutResponse } from '../services/paymentClient';
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
@@ -124,7 +125,7 @@ interface StoreContextType {
     shippingAddress: ShippingAddress,
     shippingMethod: ShippingMethod,
     paymentMethod: PaymentMethod
-  ) => Promise<Order>;
+  ) => Promise<PaymentOutcome>;
   cancelOrder: (orderId: string) => Promise<void>;
 
   // Customer Vault
@@ -736,33 +737,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Coupon Removed', 'Promo code removed from your order.', 'info');
   };
 
-  // One in-flight checkout plus durable browser intent IDs. Server remains authoritative.
-  const paymentInFlight = useRef<Promise<Order> | null>(null);
-  const createOrder = (shippingAddress: ShippingAddress, _shippingMethod: ShippingMethod, _paymentMethod: PaymentMethod): Promise<Order> => {
+  // Checkout returns a result, not an assumption that a resolved promise means paid.
+  const paymentInFlight = useRef<Promise<PaymentOutcome> | null>(null);
+  const createOrder = (shippingAddress: ShippingAddress, _shippingMethod: ShippingMethod, _paymentMethod: PaymentMethod): Promise<PaymentOutcome> => {
     if (paymentInFlight.current) return paymentInFlight.current;
-    const operation = (async () => {
-      if (!firebaseUserId || !cart.length) throw new Error('Sign in and add products before paying.');
-      const uid = firebaseUserId;
-      const request = await stableCheckout(uid, checkoutBusinessRequest(cart, shippingAddress, appliedCoupon?.code || null));
-      const prepared = await paymentApi<CheckoutResponse>('create-order', request);
-      if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
-      setOrders(prev => [prepared.order, ...prev.filter(order => order.id !== prepared.order.id)]);
-      setSelectedTrackingOrderId(prepared.order.id);
-      // The pending order is recoverable from account/history even if Checkout fails to load.
-      const newOrder = await openPayment(prepared);
-      if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
-      setOrders(prev => [newOrder, ...prev.filter(order => order.id !== newOrder.id)]);
-      setLastPlacedOrder(newOrder);
-      if (confirmedPayment(newOrder)) {
-        const cleared = await clearCart();
-        if (cleared) {
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key?.startsWith(`ab-payment-intent:${firebaseUserId}:`) && localStorage.getItem(key) === request.intentId) localStorage.removeItem(key);
+    const operation = (async (): Promise<PaymentOutcome> => {
+      let prepared: CheckoutResponse | undefined;
+      try {
+        if (!firebaseUserId || !cart.length) throw new Error('Sign in and add products before paying.');
+        const uid = firebaseUserId;
+        const request = await stableCheckout(uid, checkoutBusinessRequest(cart, shippingAddress, appliedCoupon?.code || null));
+        prepared = await paymentApi<CheckoutResponse>('create-order', request);
+        const preparedOrder = prepared.order;
+        if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
+        setOrders(prev => [preferPaymentOrder(prev.find(order => order.id === preparedOrder.id), preparedOrder), ...prev.filter(order => order.id !== preparedOrder.id)]);
+        setSelectedTrackingOrderId(preparedOrder.id);
+        const outcome = await openPayment(prepared);
+        if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
+        // Dismissal/error carries a stale pre-Checkout snapshot. Preserve listener data.
+        if (outcome.kind === 'dismissed' || outcome.kind === 'error') return outcome;
+        const newOrder = outcome.order;
+        setOrders(prev => [preferPaymentOrder(prev.find(order => order.id === newOrder.id), newOrder), ...prev.filter(order => order.id !== newOrder.id)]);
+        setLastPlacedOrder(newOrder);
+        if (confirmedPayment(newOrder)) {
+          const cleared = await clearCart();
+          if (cleared) {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const key = localStorage.key(i);
+              if (key?.startsWith(`ab-payment-intent:${uid}:`) && localStorage.getItem(key) === request.intentId) localStorage.removeItem(key);
+            }
           }
         }
+        return outcome;
+      } catch (e) {
+        return { kind: 'error', order: activePrivateUidRef.current === firebaseUserId ? prepared?.order : undefined,
+          message: e instanceof Error ? e.message : 'Payment could not be confirmed. Check your order before retrying.' };
       }
-      return newOrder;
     })();
     paymentInFlight.current = operation;
     void operation.finally(() => { if (paymentInFlight.current === operation) paymentInFlight.current = null; }).catch(() => undefined);
@@ -790,7 +800,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Measurements Saved', 'Your custom measurements are now ready for checkout.');
   };
 
-  const currentOrder = orders.find((order) => order.id === selectedTrackingOrderId) || lastPlacedOrder || null;
+  const currentOrder = requestedOrder(orders, selectedTrackingOrderId, lastPlacedOrder);
 
   const updateCustomerProfile = (profile: Partial<CustomerProfile>) => {
     setCustomer((prev) => {

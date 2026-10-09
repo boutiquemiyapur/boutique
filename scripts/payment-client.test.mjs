@@ -4,38 +4,59 @@ import { build } from 'esbuild';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const outfile = resolve('node_modules/.cache/payment-client-tests.mjs');
-await build({ absWorkingDir: process.cwd(), stdin: { resolveDir: process.cwd(), contents: `export * from './src/services/paymentClient'; import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import {OrderConfirmationPage} from './src/components/checkout/OrderConfirmationPage'; export const confirmation=()=>renderToStaticMarkup(React.createElement(OrderConfirmationPage));` }, outfile, bundle: true, format: 'esm', platform: 'node', packages: 'external', plugins: [{ name: 'payment-client-fixtures', setup(b) {
-  b.onResolve({ filter: /firebase\/config$/ }, () => ({ path: 'firebase', namespace: 'fixture' }));
-  b.onResolve({ filter: /context\/StoreContext$/ }, () => ({ path: 'context', namespace: 'fixture' }));
-  b.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({ contents: path === 'firebase' ? `export const firebaseAuth={currentUser:{uid:'client-user',getIdToken:async()=> 'mock-token'}};` : `export const useStore=()=>globalThis.paymentStore;` }));
+await build({ stdin: { resolveDir: process.cwd(), contents: `
+export * from './src/services/paymentClient';
+export * from './src/utils/paymentState';
+export {CheckoutPage} from './src/components/checkout/CheckoutPage';
+export {PaymentRecovery} from './src/components/checkout/PaymentRecovery';
+import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server';
+import {OrderConfirmationPage} from './src/components/checkout/OrderConfirmationPage';
+import {OrderTrackingPage} from './src/components/tracking/OrderTrackingPage';
+export const confirmation=()=>renderToStaticMarkup(React.createElement(OrderConfirmationPage));
+export const tracking=()=>renderToStaticMarkup(React.createElement(OrderTrackingPage));
+` }, outfile, bundle: true, format: 'esm', platform: 'node', packages: 'external', plugins: [{ name: 'payment-boundaries', setup(b) {
+  b.onResolve({ filter: /^react$/ }, args => /CheckoutPage|PaymentRecovery|OrderConfirmationPage/.test(args.importer) ? {path:'hooks',namespace:'fixture'} : undefined);
+  b.onResolve({ filter: /hooks\/useNavigationScroll$/ }, () => ({path:'scroll',namespace:'fixture'}));
+  b.onResolve({ filter: /firebase\/config$/ }, () => ({ path:'firebase',namespace:'fixture' }));
+  b.onResolve({ filter: /context\/StoreContext$/ }, () => ({ path:'context',namespace:'fixture' }));
+  b.onResolve({ filter: /^canvas-confetti$/ }, () => ({ path:'confetti',namespace:'fixture' }));
+  b.onLoad({ filter: /.*/, namespace:'fixture' }, ({path}) => ({resolveDir:process.cwd(),contents: {
+    scroll: 'export const useNavigationScroll=()=>{};',
+    firebase: "export const firebaseAuth={currentUser:{uid:'client-user',getIdToken:async()=> 'mock-token'}};",
+    context: 'export const useStore=()=>globalThis.paymentStore;',
+    confetti: 'export default ()=>{globalThis.celebrations=(globalThis.celebrations||0)+1};',
+    hooks: 'import React from "react"; export default React; export const useState=v=>globalThis.uiHooks?globalThis.uiHooks.state(v):React.useState(v); export const useRef=v=>globalThis.uiHooks?globalThis.uiHooks.ref(v):React.useRef(v); export const useEffect=(f,d)=>globalThis.uiHooks?globalThis.uiHooks.effect(f,d):React.useEffect(f,d);'
+  }[path]}));
 } }] });
-const { stableCheckout, openPayment, confirmedPayment, confirmation } = await import(pathToFileURL(outfile).href);
-const storage = new Map(); globalThis.localStorage = { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v) };
-Object.defineProperty(globalThis, 'navigator', { value: { locks: { request: async (_key, fn) => fn() } }, configurable: true });
-const order = { id: 'pay-business', orderNumber: 'AB-TEST', createdAt: new Date().toISOString(), shippingAddress: { fullName: 'Test', email: 'test@example.com', phone: '9999999999' }, items: [], charges: [], paymentMethod: 'razorpay', paymentProvider: 'razorpay', paymentStatus: 'PAYMENT_PENDING', timeline: [], totalINR: 100 };
-const response = { order, checkout: { keyId: 'public-fixture', orderId: 'order_fixture', amount: 10000, currency: 'INR' } };
-let options;
-globalThis.window = { Razorpay: class { constructor(value) { options = value; } open() {} } };
-test('checkout intent survives repeated calls and refresh-equivalent state', async () => {
-  const request = { items: [], shippingAddress: {}, couponCode: null };
-  const [a,b] = await Promise.all([stableCheckout('user',request), stableCheckout('user',request)]);
-  assert.equal(a.intentId,b.intentId); assert.equal((await stableCheckout('user',JSON.parse(JSON.stringify(request)))).intentId,a.intentId);
-  assert.notEqual((await stableCheckout('other',request)).intentId,a.intentId);
-});
-test('Checkout dismissal never fabricates failure or payment success', async () => {
-  const pending = openPayment(response); await new Promise(r => setImmediate(r)); options.modal.ondismiss();
-  const result = await pending; assert.equal(result.paymentStatus,'PAYMENT_PENDING'); assert.equal(confirmedPayment(result),false);
-});
-test('browser callback waits for trusted verification; dismissal cannot race it', async () => {
-  let release; globalThis.fetch = async () => new Promise(resolve => { release=()=>resolve({ok:true,json:async()=>({order:{...order,paymentStatus:'PAID'}})}); });
-  const pending = openPayment(response); await new Promise(r=>setImmediate(r));
-  const handler = options.handler({razorpay_order_id:'order_fixture',razorpay_payment_id:'pay_fixture',razorpay_signature:'fixture-only'});
-  await new Promise(r=>setImmediate(r)); options.modal.ondismiss(); release(); await handler;
-  assert.equal((await pending).paymentStatus,'PAID');
-});
-test('confirmation distinguishes pending online payments and historical COD', () => {
-  globalThis.paymentStore={currentOrder:order,formatPrice:v=>String(v),navigate:()=>{}};
-  assert.match(confirmation(), /Confirming your payment/); assert.doesNotMatch(confirmation(), /Payment received/);
-  globalThis.paymentStore.currentOrder={...order,paymentMethod:'cod',paymentProvider:undefined,paymentStatus:'Pending'};
-  assert.match(confirmation(), /historical Cash on Delivery/);
-});
+const api=await import(pathToFileURL(outfile).href);
+const storage=new Map(); globalThis.localStorage={getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)};
+Object.defineProperty(globalThis,'navigator',{value:{locks:{request:async(_key,fn)=>fn()}},configurable:true});
+const tick=()=>new Promise(r=>setImmediate(r));
+const order={id:'pay-business',orderNumber:'AB-TEST',createdAt:new Date().toISOString(),shippingAddress:{fullName:'Test',email:'test@example.com',phone:'9999999999'},items:[],charges:[],paymentMethod:'razorpay',paymentProvider:'razorpay',paymentStatus:'PAYMENT_PENDING',timeline:[],totalINR:100};
+const paid={...order,paymentStatus:'PAID',razorpayOrderId:'order_fixture',razorpayPaymentId:'pay_fixture',amountPaise:10000,currency:'INR',paidAt:new Date().toISOString(),paymentVerifiedAt:new Date().toISOString(),paymentReviewRequired:false};
+const response={order,checkout:{keyId:'public-fixture',orderId:'order_fixture',amount:10000,currency:'INR'}};
+let options, failure;
+function checkout(){globalThis.window={Razorpay:class{constructor(v){options=v;}on(event,fn){assert.equal(event,'payment.failed');failure=fn;}open(){}}};}
+function hooks(){const slots=[];let index=0;let effects=[];globalThis.uiHooks={state(v){const i=index++;if(!(i in slots))slots[i]=typeof v==='function'?v():v;return [slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];},ref(v){const i=index++;return slots[i]??={current:v};},effect(f){effects.push(f);}};return {set(i,v){slots[i]=v;},render(fn){index=0;return fn();},effects(){const run=effects;effects=[];run.forEach(f=>f());},cleanup(){globalThis.uiHooks=null;}};}
+function find(tree,predicate){if(!tree||typeof tree!=='object')return null;if(predicate(tree))return tree;return [tree.props?.children].flat(Infinity).map(c=>find(c,predicate)).find(Boolean)||null;}
+function store(currentOrder=order){globalThis.paymentStore={currentOrder,formatPrice:String,navigate(){},orders:[currentOrder].filter(Boolean),selectedTrackingOrderId:currentOrder?.id};}
+test('checkout identity survives retries and remains user-scoped',async()=>{const request={items:[],shippingAddress:{},couponCode:null};const [a,b]=await Promise.all([api.stableCheckout('user',request),api.stableCheckout('user',request)]);assert.equal(a.intentId,b.intentId);assert.equal((await api.stableCheckout('user',request)).intentId,a.intentId);assert.notEqual((await api.stableCheckout('other',request)).intentId,a.intentId);});
+test('dismissal is explicit, makes no verification call, and never requests success navigation',async()=>{checkout();globalThis.fetch=()=>{throw Error('Unexpected verification');};const promise=api.openPayment(response);await tick();options.modal.ondismiss();const result=await promise;assert.equal(result.kind,'dismissed');assert.equal(result.order.paymentStatus,'PAYMENT_PENDING');assert.equal(api.checkoutFeedback(result).navigate,false);assert.equal(api.checkoutFeedback(result).type,'info');});
+test('failed event followed by closure is error feedback, never a client FAILED write',async()=>{checkout();const promise=api.openPayment(response);await tick();failure();options.modal.ondismiss();const result=await promise;assert.equal(result.kind,'error');assert.equal(result.order.paymentStatus,'PAYMENT_PENDING');assert.equal(api.checkoutFeedback(result).navigate,false);});
+test('handler waits for server capture; duplicate callbacks and dismissal cannot race verification',async()=>{checkout();let release,calls=0;globalThis.fetch=async()=>{calls++;return new Promise(r=>release=()=>r({ok:true,json:async()=>({order:paid})}));};const promise=api.openPayment(response);await tick();const result={razorpay_order_id:'order_fixture',razorpay_payment_id:'pay_fixture',razorpay_signature:'fixture'};const handler=options.handler(result);await tick();await options.handler(result);options.modal.ondismiss();assert.equal(calls,1);release();await handler;assert.equal((await promise).kind,'confirmed');});
+test('successful API response with pending/authorized or incomplete PAID evidence is never confirmed',async()=>{for(const value of [order,{...order,paymentStatus:'AUTHORIZED'},{...order,paymentStatus:'PAID'}]){checkout();globalThis.fetch=async()=>({ok:true,json:async()=>({order:value})});const promise=api.openPayment(response);await tick();await options.handler({});assert.equal((await promise).kind,'pending');}});
+test('verification errors and wrong-order responses fail closed',async()=>{for(const data of [{ok:false,json:async()=>({code:'SIGNATURE_INVALID'})},{ok:true,json:async()=>({order:{...paid,id:'wrong-order'}})}]){checkout();globalThis.fetch=async()=>data;const promise=api.openPayment(response);await tick();await options.handler({});assert.equal((await promise).kind,'error');}});
+test('failure can retry inside Checkout and confirm only through the server',async()=>{checkout();globalThis.fetch=async()=>({ok:true,json:async()=>({order:paid})});const promise=api.openPayment(response);await tick();failure();await options.handler({});assert.equal((await promise).kind,'confirmed');});
+test('late callback after dismissal is ignored; webhook evidence drives later confirmation',async()=>{checkout();globalThis.fetch=()=>{throw Error('Settled callback must not verify');};const promise=api.openPayment(response);await tick();options.modal.ondismiss();assert.equal((await promise).kind,'dismissed');await options.handler({});store();assert.doesNotMatch(api.confirmation(),/data-payment-indicator="success"/);store(paid);assert.match(api.confirmation(),/data-payment-indicator="success"/);assert.equal(api.preferPaymentOrder(paid,order),paid);});
+test('retry reuses intent/order mapping and rejects another order',async()=>{checkout();const retry={...order,checkoutIntentId:'intent-fixture'};let body;globalThis.fetch=async(_url,request)=>{body=JSON.parse(request.body);return {ok:true,json:async()=>({...response,order:retry})};};const promise=api.retryOrder(retry);await tick();assert.equal(body.intentId,retry.checkoutIntentId);options.modal.ondismiss();assert.equal((await promise).kind,'dismissed');globalThis.fetch=async()=>({ok:true,json:async()=>({...response,order:{...retry,id:'other'}})});assert.equal((await api.retryOrder(retry)).kind,'error');});
+test('confirmation has distinct unpaid states, no success marker or confetti, and correct online total',()=>{for(const [status,title] of [['PAYMENT_PENDING','Complete your payment'],['AUTHORIZED','Payment authorized'],['FAILED','Payment failed'],['EXPIRED','Payment reservation expired']]){store({...order,paymentStatus:status});const h=hooks();const html=h.render(api.confirmation);h.effects();h.cleanup();assert.match(html,new RegExp(title));assert.doesNotMatch(html,/Thank You|data-payment-indicator="success"|Total payable on delivery/);assert.match(html,/Order total/);}assert.equal(globalThis.celebrations||0,0);});
+test('missing provider and incomplete paid metadata cannot celebrate; review/refunds are not purchase success',()=>{for(const value of [{...order,paymentProvider:undefined},{...paid,paymentProvider:undefined},{...paid,paymentVerifiedAt:undefined},{...paid,paymentReviewRequired:true},{...paid,paymentStatus:'REFUND_PENDING'},{...paid,paymentStatus:'PARTIALLY_REFUNDED'},{...paid,paymentStatus:'REFUNDED'}]){store(value);assert.doesNotMatch(api.confirmation(),/Thank You|data-payment-indicator="success"/);}store({...paid,paymentReviewRequired:true});assert.match(api.confirmation(),/Store review required/);});
+test('only verified PAID without a review hold renders success and celebrates',()=>{store(paid);const h=hooks();const html=h.render(api.confirmation);h.effects();h.cleanup();assert.match(html,/Thank You/);assert.match(html,/data-payment-indicator="success"/);assert.equal(globalThis.celebrations,1);});
+test('unknown route never falls back to a previous paid order in confirmation or tracking',()=>{assert.equal(api.requestedOrder([paid],'missing',paid),null);assert.equal(api.requestedOrder([],order.id,paid),paid);store(null);paymentStore.orders=[paid];paymentStore.selectedTrackingOrderId='missing';assert.match(api.confirmation(),/Requested order unavailable/);assert.doesNotMatch(api.tracking(),/AB-TEST/);});
+test('historical COD remains readable without implying verified online payment',()=>{store({...order,paymentMethod:'cod',paymentProvider:undefined,paymentStatus:'Pending'});const html=api.confirmation();assert.match(html,/historical Cash on Delivery/);assert.match(html,/Total payable on delivery/);assert.doesNotMatch(html,/data-payment-indicator="success"/);});
+test('newer refund and review snapshots cannot be overwritten by stale capture API results',()=>{const refund={...paid,paymentStatus:'REFUNDED',refundedAmountPaise:10000};assert.equal(api.preferPaymentOrder(refund,paid),refund);const review={...paid,paymentReviewRequired:true};assert.equal(api.preferPaymentOrder(review,paid),review);});
+test('actual checkout submit keeps dismissed/error outcomes on checkout and preserves cart',async()=>{for(const kind of ['dismissed','error','pending','confirmed']){const h=hooks();const routes=[],toasts=[];const cart=[{product:{id:'fixture'},quantity:1}];store();Object.assign(paymentStore,{cart,customer:{savedAddresses:[]},authStatus:'authenticated',isCustomerDataReady:true,cartCharges:[],cartTotalINR:100,requireAuth(){},showToast:(...v)=>toasts.push(v),navigate:(...v)=>routes.push(v),createOrder:async()=>kind==='error'?{kind,message:'fixture error',order}:{kind,order:kind==='confirmed'?paid:order}});h.render(()=>api.CheckoutPage());h.set(0,3);const tree=h.render(()=>api.CheckoutPage());const form=find(tree,n=>typeof n.props?.onSubmit==='function');assert.ok(form);await form.props.onSubmit({preventDefault(){}});assert.equal(routes.length,kind==='dismissed'||kind==='error'?0:1);assert.equal(paymentStore.cart,cart);assert.equal(toasts[0][2],kind==='confirmed'?'success':kind==='error'?'error':'info');h.cleanup();}});
+
+test('only one Razorpay modal can open across checkout and recovery controls',async()=>{checkout();const first=api.openPayment(response);await tick();const second=await api.openPayment(response);assert.equal(second.kind,'error');options.modal.ondismiss();assert.equal((await first).kind,'dismissed');});
+test('recovery blocks unsafe retries for authorized, captured, review-held, or incomplete-provider records',()=>{for(const value of [{...order,paymentStatus:'AUTHORIZED'},paid,{...paid,paymentReviewRequired:true},{...order,paymentProvider:undefined}]){const h=hooks();const tree=h.render(()=>api.PaymentRecovery({order:value}));assert.equal(find(tree,n=>n.type==='button'&&n.props.children==='Retry payment'),null);h.cleanup();}});
+test('recovery status check is single-flight, rejects wrong orders, and handles later server capture',async()=>{const h=hooks();let release,calls=0;globalThis.fetch=async()=>{calls++;return new Promise(r=>release=value=>r({ok:true,json:async()=>({order:value})}));};let tree=h.render(()=>api.PaymentRecovery({order}));const button=find(tree,n=>n.type==='button'&&n.props.children==='Check payment');button.props.onClick();button.props.onClick();await tick();assert.equal(calls,1);release({...paid,id:'other'});await tick();tree=h.render(()=>api.PaymentRecovery({order}));assert.ok(find(tree,n=>n.props?.role==='status'&&/did not match/.test(n.props.children)));find(tree,n=>n.type==='button'&&n.props.children==='Check payment').props.onClick();await tick();release(paid);await tick();tree=h.render(()=>api.PaymentRecovery({order}));assert.equal(find(tree,n=>n.type==='button'&&n.props.children==='Retry payment'),null);h.cleanup();});

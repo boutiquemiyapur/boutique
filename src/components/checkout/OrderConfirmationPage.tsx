@@ -4,6 +4,8 @@ import React, { useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
 import {
   CheckCircle2,
+  Clock3,
+  AlertCircle,
   Truck,
   Printer,
   ArrowRight,
@@ -11,14 +13,14 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BrandMark } from '../../config/brand';
-import { confirmedPayment } from '../../services/paymentClient';
+import { paymentPresentation, paymentSucceeded } from '../../utils/paymentState';
 import { PaymentRecovery } from './PaymentRecovery';
 
 export const OrderConfirmationPage: React.FC = () => {
   const { currentOrder, formatPrice, navigate } = useStore();
 
   useEffect(() => {
-    if (!currentOrder || (currentOrder.paymentProvider === 'razorpay' && !confirmedPayment(currentOrder))) return;
+    if (!currentOrder || !paymentSucceeded(currentOrder)) return;
     try {
       confetti({
         particleCount: 80,
@@ -29,12 +31,12 @@ export const OrderConfirmationPage: React.FC = () => {
     } catch {
       // safe fallback
     }
-  }, [currentOrder?.id, currentOrder?.paymentStatus]);
+  }, [currentOrder?.id, currentOrder?.paymentStatus, currentOrder?.paymentProvider, currentOrder?.paymentReviewRequired, currentOrder?.paymentVerifiedAt]);
 
   if (!currentOrder) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-20 text-center">
-        <h2 className="text-2xl font-serif">No Recent Order Found</h2>
+        <h2 className="text-2xl font-serif">Requested order unavailable</h2>
         <button
           onClick={() => navigate('shop')}
           className="mt-4 bg-[#8B1E3F] text-white text-xs uppercase px-6 py-3 rounded-lg"
@@ -45,26 +47,28 @@ export const OrderConfirmationPage: React.FC = () => {
     );
   }
 
+  const payment = paymentPresentation(currentOrder);
+
   return (
     <div className="bg-[#FAF7F2] min-h-screen py-10 sm:py-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Success Card Header */}
+        {/* Payment state header */}
         <div className="bg-white border border-[#E6D5B8] rounded-3xl p-8 sm:p-12 shadow-sm text-center space-y-4">
           <div className="flex justify-center"><BrandMark /></div>
-          <div className="w-16 h-16 rounded-full bg-emerald-100 border-2 border-emerald-500 text-emerald-600 mx-auto flex items-center justify-center shadow-md">
-            <CheckCircle2 className="w-10 h-10" />
+          <div data-payment-indicator={payment.success ? 'success' : payment.tone} className={`w-16 h-16 rounded-full border-2 mx-auto flex items-center justify-center shadow-md ${payment.success ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : payment.tone === 'error' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-amber-50 border-amber-300 text-amber-700'}`}>
+            {payment.success ? <CheckCircle2 className="w-10 h-10" /> : payment.tone === 'error' || payment.tone === 'warning' ? <AlertCircle className="w-10 h-10" /> : <Clock3 className="w-10 h-10" />}
           </div>
 
           <span className="text-xs uppercase tracking-[0.25em] font-bold text-[#8B1E3F]">
-            {currentOrder.paymentMethod === 'cod' ? 'Order request received' : confirmedPayment(currentOrder) ? 'Payment received' : 'Confirming your payment'}
+            {payment.label}
           </span>
 
           <h1 className="text-2xl sm:text-4xl font-serif font-bold text-[#1A1715]">
-            {currentOrder.paymentProvider === 'razorpay' && !confirmedPayment(currentOrder) ? 'Complete your payment' : `Thank You, ${currentOrder.shippingAddress.fullName}!`}
+            {payment.title}
           </h1>
 
           <p className="text-xs sm:text-sm text-stone-600 max-w-lg mx-auto font-sans leading-relaxed">
-            {currentOrder.paymentMethod === 'cod' ? 'Your historical Cash on Delivery order is recorded.' : currentOrder.paymentReviewRequired ? 'Your payment was received. Contact the store for inventory review before fulfilment.' : confirmedPayment(currentOrder) ? `Your payment state is ${currentOrder.paymentStatus}.` : 'Payment is awaiting trusted confirmation. Check or retry below.'} Order <strong>#{currentOrder.orderNumber}</strong>. Fulfilment details appear when available.
+            {payment.message} Order <strong>#{currentOrder.orderNumber}</strong>. Fulfilment details appear when available.
           </p>
 
           <PaymentRecovery order={currentOrder} />
@@ -161,7 +165,7 @@ export const OrderConfirmationPage: React.FC = () => {
               )}
               {currentOrder.charges?.map((charge) => <div key={charge.id} className="flex justify-between text-stone-600"><span>{charge.name}</span><span>{formatPrice(charge.amountINR)}</span></div>) || <><div className="flex justify-between text-stone-600"><span>Tax</span><span>{formatPrice(currentOrder.taxGstINR)}</span></div><div className="flex justify-between text-stone-600"><span>Shipping</span><span>{formatPrice(currentOrder.shippingCostINR)}</span></div></>}
               <div className="flex justify-between text-base font-serif font-bold text-[#8B1E3F] pt-2 border-t border-[#E6D5B8]">
-                <span>Total payable on delivery</span>
+                <span>{currentOrder.paymentMethod === 'cod' ? 'Total payable on delivery' : 'Order total'}</span>
                 <span>{formatPrice(currentOrder.totalINR)}</span>
               </div>
             </div>

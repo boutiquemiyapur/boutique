@@ -1,6 +1,7 @@
 import { useNavigationScroll } from '../../hooks/useNavigationScroll';
 import { PrivateLoading } from '../common/Skeleton';
-import { confirmedPayment } from '../../services/paymentClient';
+import { checkoutFeedback } from '../../utils/paymentState';
+import { PaymentRecovery } from './PaymentRecovery';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
 import React, { useEffect, useState } from 'react';
@@ -34,6 +35,7 @@ export const CheckoutPage: React.FC = () => {
     cartTotalINR,
     appliedCoupon,
     createOrder,
+    orders,
     navigate,
     showToast
   } = useStore();
@@ -75,6 +77,8 @@ export const CheckoutPage: React.FC = () => {
 
   const [paymentMethod] = useState<PaymentMethod>('razorpay');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
+  const paymentOrder = orders.find(order => order.id === paymentOrderId);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') requireAuth('checkout');
@@ -113,9 +117,11 @@ export const CheckoutPage: React.FC = () => {
     }
     setIsProcessingPayment(true);
     try {
-      const newOrder = await createOrder(address, 'standard', paymentMethod);
-      showToast(confirmedPayment(newOrder) ? 'Payment confirmed' : 'Payment awaiting confirmation', confirmedPayment(newOrder) ? `Order #${newOrder.orderNumber} is recorded.` : 'Check or retry payment from your order page.', confirmedPayment(newOrder) ? 'success' : 'info');
-      navigate('order-confirmation', undefined, newOrder.id);
+      const outcome = await createOrder(address, 'standard', paymentMethod);
+      if (outcome.order) setPaymentOrderId(outcome.order.id);
+      const feedback = checkoutFeedback(outcome);
+      showToast(feedback.title, feedback.message, feedback.type);
+      if (feedback.navigate && outcome.order) navigate('order-confirmation', undefined, outcome.order.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The order could not be recorded. Please try again.';
       showToast('Order not placed', message, 'error');
@@ -150,6 +156,11 @@ export const CheckoutPage: React.FC = () => {
           </div>
         </div>
 
+        {paymentOrder && <section aria-label="Current payment attempt" className="mb-6 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+          <p>Your payment attempt is saved as #{paymentOrder.orderNumber}. Closing Checkout does not confirm payment.</p>
+          <PaymentRecovery order={paymentOrder} />
+          <button type="button" onClick={() => navigate('order-confirmation', undefined, paymentOrder.id)} className="mt-3 text-xs font-semibold underline">View this order</button>
+        </section>}
         {/* Step Indicator */}
         <div className="flex items-center justify-center gap-4 sm:gap-12 mb-10 max-w-xl mx-auto text-xs uppercase tracking-wider font-semibold">
           <button
