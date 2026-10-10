@@ -1,5 +1,8 @@
 # Payment status and loading UX implementation
 
+Current payment labels and webhook/cart corrections are documented in
+PAYMENT_GATEWAY_SHOPPING_AUDIT.md; its latest mapping supersedes the original labels below.
+
 ## Audit findings
 
 `PaymentService.create` creates an internal order with `orderStatus: 'Order Placed'`

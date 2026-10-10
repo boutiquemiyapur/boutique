@@ -39,7 +39,7 @@ const pending = {id:'fixture-order',orderNumber:'AB-FIXTURE',orderStatus:'Order 
 const paid = {...pending,paymentStatus:'PAID',razorpayOrderId:'order_fixture',razorpayPaymentId:'pay_fixture',amountPaise:135000,currency:'INR',paidAt:new Date().toISOString(),paymentVerifiedAt:new Date().toISOString(),paymentReviewRequired:false};
 
 test('customer badges and admin summaries consistently gate unpaid fulfilment presentation',()=>{
-  for(const [status,label] of [['PAYMENT_PENDING','Verifying Payment'],['AUTHORIZED','Verifying Payment'],['FAILED','Payment Failed'],['EXPIRED','Payment Expired'],['CREATED','Payment Incomplete']]){
+  for(const [status,label] of [['PAYMENT_PENDING','Payment Pending'],['AUTHORIZED','Verifying Payment'],['FAILED','Payment Failed'],['EXPIRED','Payment Expired'],['CREATED','Payment Pending']]){
     const order={...pending,paymentStatus:status,orderStatus:'Delivered'};
     assert.equal(api.fulfilmentEligible(order),false); assert.equal(api.completedSale(order),false); assert.equal(api.capturedRevenue(order),0);
     assert.match(api.badge(order),new RegExp(label));
@@ -64,8 +64,8 @@ test('captured success, review holds, and refunds have distinct truthful labels 
 
 test('dismissal is feedback only; delayed trusted capture overrides unpaid evidence without rewriting it',()=>{
   const snapshot=JSON.stringify(pending);
-  const result=api.checkoutFeedback({kind:'dismissed',order:pending}); assert.equal(result.title,'Payment Cancelled'); assert.equal(result.navigate,false);
-  assert.match(result.message,/may still arrive/); assert.equal(api.orderDisplayStatus(pending),'Verifying Payment'); assert.equal(JSON.stringify(pending),snapshot);
+  const result=api.checkoutFeedback({kind:'dismissed',order:pending}); assert.equal(result.title,'Payment Incomplete'); assert.equal(result.navigate,false);
+  assert.match(result.message,/may still arrive/); assert.equal(api.orderDisplayStatus(pending),'Payment Pending'); assert.equal(JSON.stringify(pending),snapshot);
   assert.equal(api.preferPaymentOrder(paid,pending),paid); assert.equal(api.orderDisplayStatus(api.preferPaymentOrder(pending,paid)),'Order Confirmed');
 });
 
@@ -80,9 +80,9 @@ test('admin search/filters and exports use shared labels, safe CSV, and current 
   const failed={...pending,id:'failed',paymentStatus:'FAILED'},refund={...paid,id:'refund',paymentStatus:'REFUNDED',refundedAmountPaise:135000};
   const orders=[pending,paid,failed,refund];
   assert.deepEqual(api.filterOrders(orders,'','paid'),[paid]); assert.deepEqual(api.filterOrders(orders,'','unpaid'),[pending,failed]);
-  assert.deepEqual(api.filterOrders(orders,'Verifying Payment','all'),[pending]); assert.deepEqual(api.filterOrders(orders,'','refund'),[refund]);
+  assert.deepEqual(api.filterOrders(orders,'Payment Pending','all'),[pending]); assert.deepEqual(api.filterOrders(orders,'','refund'),[refund]);
   const csv=api.ordersCsv([{...pending,shippingAddress:{...pending.shippingAddress,fullName:'=malicious()'}}]);
-  assert.match(csv,/Verifying Payment/); assert.doesNotMatch(csv,/PAYMENT_PENDING|Order Placed/); assert.match(csv,/'=malicious\(\)/);
+  assert.match(csv,/Payment Pending/); assert.doesNotMatch(csv,/PAYMENT_PENDING|Order Placed/); assert.match(csv,/'=malicious\(\)/);
 });
 
 test('initialization, product/order/detail loading and buttons render accessible nonblank feedback',()=>{
@@ -98,7 +98,7 @@ test('CSS provides moderate transitions and reduced-motion overrides without blo
 });
 
 test('account history and open order details use current listener records, including delayed capture and missing IDs',()=>{
-  const initial=api.account([pending],pending.id);assert.match(initial,/Verifying Payment/);assert.doesNotMatch(initial,/PAYMENT_PENDING|>Order Placed</);
+  const initial=api.account([pending],pending.id);assert.match(initial,/Payment Pending/);assert.doesNotMatch(initial,/PAYMENT_PENDING|>Order Placed</);
   const captured=api.account([paid],paid.id);assert.match(captured,/Payment Successful/);assert.match(captured,/Order Confirmed/);
   const missing=api.account([paid],'missing-order');const dialog=missing.slice(missing.indexOf('role="dialog"'));assert.match(dialog,/no longer available/);assert.doesNotMatch(dialog,/Payment Successful|AB-FIXTURE/);
 });

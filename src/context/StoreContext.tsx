@@ -32,6 +32,7 @@ interface Toast {
   title: string;
   message: string;
   type: 'success' | 'info' | 'error';
+  action?: { label: string; onClick: () => void };
 }
 
 interface StoreContextType {
@@ -152,7 +153,7 @@ interface StoreContextType {
   resetFilters: () => void;
 
   // Notifications
-  showToast: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
+  showToast: (title: string, message: string, type?: 'success' | 'info' | 'error', action?: Toast['action']) => void;
   removeToast: (id: string) => void;
   requireAuth: (view?: AppView) => void;
   completeAuthentication: () => void;
@@ -472,9 +473,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [authStatus, firebaseUserId, privateDataReady]);
 
   // Toast Helper
-  const showToast = (title: string, message: string, type: 'success' | 'info' | 'error' = 'success') => {
+  const showToast = (title: string, message: string, type: 'success' | 'info' | 'error' = 'success', action?: Toast['action']) => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, title, message, type }]);
+    setToasts((prev) => [...prev, { id, title, message, type, action }]);
     setTimeout(() => {
       removeToast(id);
     }, 4000);
@@ -592,8 +593,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     const lineKey = cartLineKey(newItem);
     const currentCart = normalizeCartItems(cart);
-    if (currentCart.some((item) => cartLineKey(item) === lineKey) || pendingCartLineKeysRef.current.has(lineKey)) {
-      showToast('Already added', `${product.title} is already in your shopping bag.`, 'info');
+    const alreadyInBag = () => showToast('Already in Bag', 'This item is already in your shopping bag.', 'info', { label: 'View Bag', onClick: () => setIsCartDrawerOpen(true) });
+    if (currentCart.some((item) => cartLineKey(item) === lineKey)) {
+      alreadyInBag();
+      return false;
+    }
+    if (pendingCartLineKeysRef.current.has(lineKey)) {
+      showToast('Adding to Bag', 'Please wait while this item is saved.', 'info');
       return false;
     }
 
@@ -602,13 +608,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const operationUid = firebaseUserId;
     pendingCartLineKeysRef.current.add(lineKey);
     try {
+      let inserted = false;
       const saved = await commitCart((items) => {
+        inserted = false; // Firestore can retry this callback after a competing tab.
         if (items.some((item) => cartLineKey(item) === lineKey)) return items;
         const next = [newItem, ...items];
         const issue = cartCatalogIssue(next, products);
         if (issue) throw new Error(issue);
+        inserted = true;
         return next;
       });
+      if (saved && !inserted) { alreadyInBag(); return false; }
       if (saved) {
         showToast('Added to Shopping Bag', `${product.title}${selectedSize ? ` (${selectedSize})` : ""} is now in your bag.`);
         setIsCartDrawerOpen(true);

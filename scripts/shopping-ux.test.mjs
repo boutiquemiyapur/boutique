@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 const outfile=resolve('node_modules/.cache/shopping-ux-tests.mjs');
 await build({stdin:{resolveDir:process.cwd(),contents:`
 export {StoreProvider} from './src/context/StoreContext';
-export {commerceRepository} from './src/services/commerceRepository';
+export {commerceRepository,cartLineKey,normalizeCartItems} from './src/services/commerceRepository';
 export {ProductImage} from './src/components/common/ProductImage';
 export {positionNavigation,useNavigationScroll} from './src/hooks/useNavigationScroll';
 import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server';
@@ -146,4 +146,30 @@ test('profile save waits for persistence, reports no false success on failure, a
   assert.equal(h.render().customer.fullName,name);assert.equal(h.render().toasts.some(t=>t.title==='Profile Updated'),false);
   const stale=s.updateCustomerProfile({fullName:'Account A update'});await h.session('B');const other=h.render().customer.fullName;resolve();await stale;assert.equal(h.render().customer.fullName,other);
  }finally{api.commerceRepository.saveProfile=original;h.cleanup();}
+});
+
+
+test('same-variant rapid additions do not increment; variants, quantity controls and View Bag stay distinct',async()=>{
+ const h=initialize();let s=await h.session('A');
+ const p={...product('a'),colors:['Red','Blue'],availableSizes:['XS','S']};
+ database.put('products',{}); database.snapshot=((original)=>path=>path==='products'?{docs:[{id:'a',data:()=>({data:p})}]}:original(path))(database.snapshot.bind(database));
+ for(const listener of database.listeners.get('products')||[]) listener.fn(database.snapshot('products'));s=await h.flush();
+ const results=await Promise.all([s.addToCart(p,'Red','XS'),s.addToCart(p,'Red','XS'),s.addToCart(p,'Red','XS')]);
+ assert.equal(results.filter(Boolean).length,1);s=await h.flush();assert.equal(s.cart.length,1);assert.equal(s.cart[0].quantity,1);
+ assert.equal(await s.addToCart(p,'Red','XS'),false);s=h.render();const toast=s.toasts.find(t=>t.title==='Already in Bag');assert.ok(toast);assert.equal(toast.message,'This item is already in your shopping bag.');toast.action.onClick();assert.equal(h.render().isCartDrawerOpen,true);
+ await s.addToCart(p,'Red','S');await s.addToCart(p,'Blue','XS');s=await h.flush();assert.equal(s.cart.length,3);
+ await s.updateCartQuantity(s.cart.find(i=>i.selectedSize==='S').cartItemId,2);s=await h.flush();assert.equal(s.cart.find(i=>i.selectedSize==='S').quantity,2);
+ assert.equal(await s.updateCartQuantity(s.cart[0].cartItemId,100),false);s=await h.flush();assert.equal(s.cart.reduce((n,i)=>n+i.quantity,0),4);h.cleanup();
+});
+
+test('stale tab adding an already committed line reports Already in Bag and preserves quantity',async()=>{
+ const h=initialize();let s=await h.session('A');
+ database.records.set('carts/A',{items:[line('a',3)]}); // Another tab committed before this tab listener delivered.
+ assert.equal(await s.addToCart(product('a'),'',''),false);s=await h.flush();assert.equal(s.cart[0].quantity,3);assert.ok(s.toasts.some(t=>t.title==='Already in Bag'));assert.ok(!s.toasts.some(t=>t.title==='Added to Shopping Bag'));h.cleanup();
+});
+
+test('canonical cart identity avoids delimiter collisions and normalization retains distinct variants',()=>{
+ const a={...line('a'),selectedColor:'x::y',selectedSize:'z'};const b={...line('a'),selectedColor:'x',selectedSize:'y::z'};
+ assert.notEqual(api.cartLineKey(a),api.cartLineKey(b));assert.equal(api.normalizeCartItems([a,b]).length,2);
+ assert.equal(api.normalizeCartItems([a,{...a,cartItemId:'legacy',quantity:2}])[0].quantity,3);
 });

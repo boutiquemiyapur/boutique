@@ -6,8 +6,8 @@ export { confirmedPayment } from '../utils/paymentState';
 export type PaymentStage = 'preparing' | 'loading' | 'opening' | 'checkout' | 'verifying' | 'checking' | 'idle';
 export type PaymentProgress = (stage: PaymentStage) => void;
 export const paymentStageText: Record<PaymentStage, string> = {
-  preparing: 'Preparing secure checkout…', loading: 'Loading secure payment options…',
-  opening: 'Opening payment options…', checkout: 'Complete payment in the secure Razorpay window.',
+  preparing: 'Preparing secure payment\u2026', loading: 'Opening Razorpay\u2026',
+  opening: 'Opening Razorpay\u2026', checkout: 'Complete payment in the secure Razorpay window.',
   verifying: 'Verifying your payment…', checking: 'Checking latest payment status…', idle: '',
 };
 const reportProgress = (notify: PaymentProgress | undefined, stage: PaymentStage) => { try { notify?.(stage); } catch { /* UI feedback cannot decide payment state. */ } };

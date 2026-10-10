@@ -14,12 +14,12 @@ export interface CustomerDataSnapshot {
   legacyOrders?: Order[];
 }
 
-export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => [
+export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => JSON.stringify([
   item.product.id || item.product.sku,
   (item.selectedColor || '').trim().toLowerCase(),
   (item.selectedSize || '').trim().toLowerCase(),
   item.isCustomTailored ? 'tailored' : 'ready'
-].join('::');
+]);
 
 export const normalizeCartItems = (items: CartItem[]) => {
   const normalized = new Map<string, CartItem>();

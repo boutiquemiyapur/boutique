@@ -36,12 +36,31 @@ export function jsonBody(req: Request) {
   } catch (e) { if (e instanceof PaymentError) throw e; throw new PaymentError('INVALID_JSON'); }
 }
 export async function rawBody(req: Request) {
-  // bodyParser:false is mandatory. Reject a parsed object rather than reserializing it.
-  requireCondition(req.body === undefined || Buffer.isBuffer(req.body), 'RAW_BODY_REQUIRED');
-  if (Buffer.isBuffer(req.body)) { requireCondition(req.body.length <= 262_144, 'REQUEST_TOO_LARGE', 413); return req.body; }
-  const chunks: Buffer[] = []; let length = 0;
-  for await (const chunk of req) { const b = Buffer.from(chunk); length += b.length; requireCondition(length <= 262_144, 'REQUEST_TOO_LARGE', 413); chunks.push(b); }
-  return Buffer.concat(chunks);
+  // Vercel Node helpers expose body as a lazy JSON getter and restore the wire
+  // stream for data/end consumers. Never invoke that getter or reserialize JSON.
+  // A supplied parsed data property has no trustworthy bytes and remains rejected.
+  const descriptor = Object.getOwnPropertyDescriptor(req, 'body');
+  const supplied = descriptor && 'value' in descriptor ? descriptor.value : undefined;
+  requireCondition(supplied === undefined || Buffer.isBuffer(supplied), 'RAW_BODY_REQUIRED');
+  if (Buffer.isBuffer(supplied)) { requireCondition(supplied.length <= 262_144, 'REQUEST_TOO_LARGE', 413); return supplied; }
+  requireCondition(typeof req.on === 'function', 'RAW_BODY_REQUIRED');
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = []; let length = 0; let settled = false;
+    const cleanup = () => { clearTimeout(timer); req.removeListener('data', data); req.removeListener('end', end); req.removeListener('error', error); req.removeListener('aborted', aborted); };
+    const fail = (e: unknown) => { if (settled) return; settled = true; cleanup(); reject(e); };
+    const data = (chunk: unknown) => {
+      if (settled) return;
+      if (!Buffer.isBuffer(chunk) && !(chunk instanceof Uint8Array)) return fail(new PaymentError('RAW_BODY_REQUIRED'));
+      const bytes = Buffer.from(chunk); length += bytes.length;
+      if (length > 262_144) return fail(new PaymentError('REQUEST_TOO_LARGE', 413));
+      chunks.push(bytes);
+    };
+    const end = () => { if (settled) return; settled = true; cleanup(); resolve(Buffer.concat(chunks)); };
+    const error = () => fail(new PaymentError('RAW_BODY_REQUIRED'));
+    const aborted = error;
+    const timer = setTimeout(error, 15_000);
+    req.on('data', data); req.on('end', end); req.on('error', error); req.on('aborted', aborted);
+  });
 }
 export async function rateLimit(db: Firestore, uid: string, action: string, now = Date.now()) {
   const ref = db.collection('paymentRateLimits').doc(digest(`${uid}:${action}`));

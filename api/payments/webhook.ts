@@ -10,7 +10,10 @@ export default async function handler(req: Request, res: Response) {
     prepare(req, res); validatePaymentEnvironment(process.env);
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET!.trim();
     const raw = await rawBody(req); requireCondition(validSignature(raw, req.headers['x-razorpay-signature'], secret), 'SIGNATURE_INVALID');
-    const body = object(JSON.parse(raw.toString('utf8'))) as Record<string, any>;
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw.toString('utf8')); }
+    catch { requireCondition(false, 'INVALID_JSON'); }
+    const body = object(parsed) as Record<string, any>;
     const eventName = text(body.event, 80); const hash = digest(raw);
     const event = { id: typeof req.headers['x-razorpay-event-id'] === 'string' ? text(req.headers['x-razorpay-event-id'], 120) : hash, hash };
     const db = database(); const prior = await db.collection('paymentEvents').doc(digest(event.id)).get();

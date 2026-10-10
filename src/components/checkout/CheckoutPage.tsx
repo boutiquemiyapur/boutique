@@ -408,9 +408,10 @@ export const CheckoutPage: React.FC = () => {
 
                   <button
                     id="checkout-place-order-submit-btn"
+                    aria-busy={isProcessingPayment && paymentStage !== 'checkout'}
                     type="submit"
                     disabled={isProcessingPayment}
-                    className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-bold px-8 py-4 rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 flex items-center gap-2"
+                    className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-bold px-4 py-4 w-full sm:w-[22rem] min-h-16 justify-center rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {isProcessingPayment ? (
                       <span role="status">{paymentStage === 'checkout' ? paymentStageText.checkout : <ButtonProgress>{paymentStageText[paymentStage] || 'Preparing secure checkout...'}</ButtonProgress>}</span>

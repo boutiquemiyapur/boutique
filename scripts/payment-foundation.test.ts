@@ -7,7 +7,7 @@ import { parseCheckout, paise, checkoutId, fingerprint } from '../server/payment
 import { validSignature, razorpayProvider, type PaymentProvider, type ProviderPayment, type ProviderOrder } from '../server/payments/provider.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import { rawBody, rateLimit } from '../server/payments/http.js';
-import { Readable } from 'node:stream';
+import { Readable, PassThrough } from 'node:stream';
 
 // Serializable in-memory transactions with staged writes, rollback and a
 // reads-before-writes assertion. Provider calls assert they are outside them.
@@ -115,6 +115,27 @@ test('signature validates exact bytes, not reserialized JSON; missing credential
   const stream = Readable.from([raw]) as any; stream.body = undefined; assert.deepEqual(await rawBody(stream), raw);
   await assert.rejects(rawBody({ body: { event: 'payment.captured' } } as any), /RAW_BODY_REQUIRED/);
 });
+test('Vercel lazy body getter is never invoked; restored data/end stream retains exact signed bytes', async () => {
+  const raw = Buffer.from('{ \"event\": \"payment.captured\", \"note\": \"unicode \u20b9\" }');
+  const restored = new PassThrough(); const req = new PassThrough() as any;
+  const originalOn = req.on.bind(req);
+  req.on = (name: string, listener: (...args: any[]) => void) => ['data', 'end'].includes(name) ? restored.on(name, listener) : originalOn(name, listener);
+  Object.defineProperty(req, 'body', { get() { throw new Error('Lazy JSON getter must not execute'); } });
+  const reading = rawBody(req); restored.end(raw);
+  const result = await reading; assert.deepEqual(result, raw);
+  const signature = createHmac('sha256', 'fixture-secret').update(raw).digest('hex');
+  assert.equal(validSignature(result, signature, 'fixture-secret'), true);
+  assert.equal(validSignature(Buffer.from(JSON.stringify(JSON.parse(raw.toString()))), signature, 'fixture-secret'), false);
+});
+
+test('raw body rejects parsed strings/objects, oversized bytes and interrupted streams', async () => {
+  for (const body of [{event:'payment.captured'}, '{"event":"payment.captured"}']) await assert.rejects(rawBody({body} as any), /RAW_BODY_REQUIRED/);
+  await assert.rejects(rawBody({body:Buffer.alloc(262145)} as any), /REQUEST_TOO_LARGE/);
+  await assert.rejects(rawBody(Readable.from([Buffer.alloc(262145)]) as any), /REQUEST_TOO_LARGE/);
+  const req = new PassThrough(); const reading = rawBody(req as any); req.emit('aborted');
+  await assert.rejects(reading, /RAW_BODY_REQUIRED/); assert.equal(req.listenerCount('data'), 0);
+});
+
 test('rate limit is durable and allows normal retry volume', async () => {
   const f = fixture(); for (let i = 0; i < 10; i++) await rateLimit(f.db, 'uid', 'create', 100000);
   await assert.rejects(rateLimit(f.db, 'uid', 'create', 100000), /RATE_LIMITED/); await rateLimit(f.db, 'uid', 'create', 160000);
@@ -169,4 +190,9 @@ test('concurrent duplicate events and delayed capture after failure consume once
   assert.equal(paid.paymentStatus, 'PAID'); assert.equal(paid.timeline.length, 1);
   assert.equal(f.docs.get('products/dress').data.stockCount, 1);
   assert.equal(f.docs.get(`inventoryReservations/${r.order.id}`).state, 'CONSUMED');
+});
+
+
+test('raw-body stalled streams time out and remove listeners instead of hanging verification',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const req=new PassThrough();const work=rawBody(req as any);const rejected=assert.rejects(work,/RAW_BODY_REQUIRED/);t.mock.timers.tick(15000);await rejected;assert.equal(req.listenerCount('data'),0);t.mock.timers.reset();
 });

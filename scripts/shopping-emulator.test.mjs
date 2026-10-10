@@ -19,5 +19,15 @@ try {
  await new Promise((resolve,reject)=>{let cart=false,wishlist=false;timer=setTimeout(()=>reject(Error('Snapshot timeout')),10000);stop=repo.subscribeToShopping(uid,items=>{cart=items.length===2;if(cart&&wishlist)resolve();},ids=>{wishlist=ids.length===2;if(cart&&wishlist)resolve();},reject);});clearTimeout(timer);stop();
  await assert.rejects(repo.mutateCart('another-account',()=>[]));
  await repo.mutateCart(uid,()=>[]);await repo.mutateWishlist(uid,()=>[]);
+ // Competing clients use the same transaction guard as Add to Bag. No increment.
+ const variant=(size,color='Red')=>({...line('v'),cartItemId:size+color,selectedSize:size,selectedColor:color});
+ const same=(a,b)=>a.product.id===b.product.id&&a.selectedSize===b.selectedSize&&a.selectedColor===b.selectedColor;
+ const add=item=>repo.mutateCart(uid,items=>items.some(old=>same(old,item))?items:[...items,item]);
+ await Promise.all([add(variant('XS')),add(variant('XS')),add(variant('XS'))]);
+ await Promise.all([add(variant('S')),add(variant('XS','Blue'))]);
+ const variants=await repo.mutateCart(uid,items=>items);assert.equal(variants.length,3);assert.equal(variants.reduce((n,i)=>n+i.quantity,0),3);
+ await repo.mutateCart(uid,items=>items.map(item=>item.selectedSize==='S'?{...item,quantity:2}:item));
+ await add(variant('S'));assert.equal((await repo.mutateCart(uid,items=>items)).find(item=>item.selectedSize==='S').quantity,2);
+ await repo.mutateCart(uid,()=>[]);
  console.log('Real Firestore shopping transactions, concurrent mutations, unique IDs, restoration, confirmed listeners and cross-account denial passed.');
 } finally { await terminate(firestore); }

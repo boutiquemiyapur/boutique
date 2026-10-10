@@ -91,16 +91,16 @@ export function paymentPresentation(order: Order) {
     case 'REFUND_PENDING': return state('Refund pending', 'Refund Processing', 'A refund is awaiting processing. Contact the store for assistance.', 'warning');
     case 'PARTIALLY_REFUNDED': return state('Payment partially refunded', 'Partially Refunded', 'Part of your captured payment has been refunded.');
     case 'REFUNDED': return state('Payment refunded', 'Refunded', 'Your captured payment has been fully refunded.');
-    case 'CREATED': return state('Complete your payment', 'Payment Incomplete', 'Your order request exists, but payment is not confirmed. Check its status before paying again.');
+    case 'CREATED': return state('Complete your payment', 'Payment Pending', 'Your order request exists, but payment is not confirmed. Check its status before paying again.');
     case 'Pending':
-    case 'PAYMENT_PENDING': return state('Verifying your payment', 'Verifying Payment', 'Payment has not been confirmed. Updates appear automatically when received. Check its latest status before retrying.');
+    case 'PAYMENT_PENDING': return state('Payment pending', 'Payment Pending', 'Payment has not been confirmed. Updates appear automatically when received. Check its latest status before retrying.');
     default: return state('Payment status unavailable', 'Payment Under Review', 'Contact the store to confirm this payment.', 'warning');
   }
 }
 
 export function checkoutFeedback(outcome: PaymentOutcome) {
   if (outcome.kind === 'error') return { title: 'Payment could not be confirmed', message: outcome.message, type: 'error' as const, navigate: false };
-  if (outcome.kind === 'dismissed') return { title: 'Payment Cancelled', message: 'You closed checkout. Payment is not confirmed and may still arrive later. Your bag is preserved; check the order before paying again.', type: 'info' as const, navigate: false };
+  if (outcome.kind === 'dismissed') return { title: 'Payment Incomplete', message: 'You closed checkout. Payment is not confirmed and may still arrive later. Your bag is preserved; check the order before paying again.', type: 'info' as const, navigate: false };
   const view = paymentPresentation(outcome.order);
   return { title: view.label, message: view.message, type: view.success ? 'success' as const : 'info' as const, navigate: true };
 }
