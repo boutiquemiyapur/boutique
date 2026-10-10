@@ -36,7 +36,7 @@ export const BrandMark = ({ className = '', inverse = false }: { className?: str
       alt="AB Collection by Aadya"
       className="block h-16 w-auto shrink-0 object-contain object-center sm:h-[4.5rem] lg:h-[5.5rem] xl:h-24"
     />
-    <span className={`min-w-0 text-left font-serif font-semibold leading-[1.2] tracking-[-0.01em] text-sm whitespace-normal sm:whitespace-nowrap sm:text-[17px] lg:text-[21px] xl:text-[23px] ${inverse ? 'text-white' : 'text-[#2c2926]'}`}>
+    <span className={`min-w-0 text-left font-brand font-semibold leading-[1.2] tracking-[-0.01em] text-sm whitespace-normal sm:whitespace-nowrap sm:text-[17px] lg:text-[21px] xl:text-[23px] ${inverse ? 'text-white' : 'text-[#2c2926]'}`}>
       {BRAND.title}
     </span>
   </span>

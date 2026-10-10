@@ -182,7 +182,7 @@ export const CartDrawer: React.FC = () => {
                     </div>
 
                     <div className="text-right">
-                      <span className="text-xs font-serif font-bold text-[#8B1E3F]">
+                      <span className="text-sm font-sans font-semibold tabular-nums text-[#8B1E3F]">
                         {formatPrice((item.product.priceINR + (item.isCustomTailored ? item.tailoringFeeINR : 0)) * item.quantity)}
                       </span>
                     </div>

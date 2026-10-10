@@ -12,8 +12,11 @@
 }
 
 @theme {
-  --font-serif: "Cormorant Garamond", Georgia, serif;
-  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter", "Roboto", Arial, sans-serif;
+  /* Existing screens use font-serif for shopping headings and totals. Keep
+     those utilities/layouts intact while giving interface text a readable face.
+     Decorative typography is reserved for the explicit brand utility. */
+  --font-serif: "Inter", "Roboto", Arial, sans-serif;
   --font-display: "Cormorant Garamond", Georgia, serif;
 
   /* AB Collection's shared luxury palette: navy is the anchor, while gold
@@ -37,18 +40,23 @@
     color: var(--color-boutique-charcoal);
     background-color: var(--color-boutique-sand);
     overflow-x: hidden;
-    letter-spacing: 0.01em;
+    letter-spacing: normal;
   }
 
   h1, h2, h3, .font-luxury {
-    font-family: var(--font-serif);
-    letter-spacing: -0.018em;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: normal;
   }
 
   .font-brand {
     font-family: var(--font-display);
   }
 }
+
+/* Preserve existing control sizes and behavior; excessive tracking makes
+   compact shopping actions harder to scan, especially on narrow screens. */
+:where(button, a, label, legend)[class*="tracking-"] { letter-spacing: .025em; }
 
 button, input, select, textarea { border-radius: 0 !important; }
 button { cursor: pointer; }

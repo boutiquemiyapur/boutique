@@ -106,7 +106,7 @@ export const QuickViewModal: React.FC = () => {
               <span className="text-stone-400 font-mono text-[11px]">SKU: {product.sku}</span>
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#1A1715] mt-1 leading-snug">
+            <h2 className="text-xl sm:text-2xl font-sans font-semibold break-words text-[#1A1715] mt-1 leading-snug">
               {product.title}
             </h2>
 
@@ -126,12 +126,12 @@ export const QuickViewModal: React.FC = () => {
             </div>}
 
             {/* Price */}
-            <div className="flex items-baseline gap-3 mt-4">
-              <span className="text-2xl font-serif font-bold text-[#8B1E3F]">
+            <div className="flex flex-wrap items-baseline gap-3 mt-4">
+              <span className="whitespace-nowrap text-2xl font-sans font-bold tabular-nums text-[#8B1E3F]">
                 {formatPrice(product.priceINR)}
               </span>
               {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
-                <span className="text-sm line-through text-stone-400 font-serif">
+                <span className="whitespace-nowrap text-sm line-through text-stone-600 font-sans font-normal tabular-nums">
                   {formatPrice(product.originalPriceINR)}
                 </span>
               )}

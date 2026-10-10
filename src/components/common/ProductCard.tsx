@@ -22,7 +22,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
       <button onClick={() => navigate('product-detail', product.id)} className="block h-full w-full text-left" aria-label={`View ${product.title}`}>
         <ProductImage src={image} alt={product.title} loading={priority ? 'eager' : 'lazy'} className="boutique-image h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]" />
       </button>
-      <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5 text-[9px] font-semibold uppercase tracking-[.14em]">
+      <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
         {product.isNewArrival && <span className="bg-[#fffdf9] px-2 py-1 text-[#2c2926]">New</span>}
         {product.discountPercentage > 0 && <span className="bg-[#625e59] px-2 py-1 text-white">{product.discountPercentage}% off</span>}
         {isSoldOut && <span className="bg-[#2c2926] px-2 py-1 text-white">Sold out</span>}
@@ -31,14 +31,14 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
         <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
       </button>
       <div className="absolute inset-x-3 bottom-3 flex translate-y-2 gap-2 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100">
-        <button onClick={() => setQuickViewProduct(product)} className="flex h-10 flex-1 items-center justify-center gap-1.5 bg-[#fffdf9] text-[10px] font-semibold uppercase tracking-[.12em] text-[#2c2926]"><Eye className="h-3.5 w-3.5" />Quick view</button>
+        <button onClick={() => setQuickViewProduct(product)} className="flex h-10 flex-1 items-center justify-center gap-1.5 bg-[#fffdf9] text-[11px] font-semibold uppercase tracking-wide text-[#2c2926]"><Eye className="h-3.5 w-3.5" />Quick view</button>
         <button disabled={isSoldOut} onClick={handleAddToBag} className="grid h-10 w-10 place-items-center bg-[#2c2926] text-white disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Add ${product.title} to bag`}><ShoppingBag className="h-4 w-4" /></button>
       </div>
     </div>
     <div className="px-1 pb-1 pt-4">
       <p className="text-[10px] uppercase tracking-[.16em] text-[#6f87a5]">{product.category}</p>
-      <button onClick={() => navigate('product-detail', product.id)} className="mt-1 line-clamp-1 text-left text-sm font-medium text-[#2c2926] hover:underline">{product.title}</button>
-      <div className="mt-1.5 flex items-center gap-2"><span className="font-serif text-base text-[#2c2926]">{formatPrice(product.priceINR)}</span>{product.originalPriceINR != null && product.originalPriceINR > product.priceINR && <span className="text-xs text-stone-400 line-through">{formatPrice(product.originalPriceINR)}</span>}</div>
+      <button onClick={() => navigate('product-detail', product.id)} className="mt-1 max-w-full line-clamp-1 break-words text-left text-sm font-semibold text-[#2c2926] hover:underline">{product.title}</button>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="whitespace-nowrap font-sans text-base font-semibold tabular-nums text-[#2c2926]">{formatPrice(product.priceINR)}</span>{product.originalPriceINR != null && product.originalPriceINR > product.priceINR && <span className="whitespace-nowrap font-sans text-[13px] font-normal leading-5 tabular-nums text-stone-600 line-through">{formatPrice(product.originalPriceINR)}</span>}</div>
       <p className={`mt-1 text-[10px] ${isSoldOut ? 'text-stone-500' : product.stockCount <= cms.lowStockThreshold ? 'text-[#8a5738]' : 'text-stone-500'}`}>{stockMessage(product, cms.lowStockThreshold)}</p>
     </div>
   </article>;

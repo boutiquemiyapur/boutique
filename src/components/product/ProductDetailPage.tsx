@@ -270,7 +270,7 @@ export const ProductDetailPage: React.FC = () => {
                 <span className="text-stone-400 font-mono">SKU: {product.sku}</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#1A1715] mt-1.5 leading-snug">
+              <h1 className="text-2xl sm:text-3xl font-sans font-semibold break-words text-[#1A1715] mt-1.5 leading-snug">
                 {product.title}
               </h1>
 
@@ -295,12 +295,12 @@ export const ProductDetailPage: React.FC = () => {
               </div>}
 
               {/* Pricing */}
-              <div className="flex items-baseline gap-3 mt-4 p-3.5 bg-white border border-[#E6D5B8] rounded-xl">
-                <span className="text-2xl sm:text-3xl font-serif font-bold text-[#8B1E3F]">
+              <div className="flex flex-wrap items-baseline gap-3 mt-4 p-3.5 bg-white border border-[#E6D5B8] rounded-xl">
+                <span className="whitespace-nowrap text-2xl sm:text-3xl font-sans font-bold tabular-nums text-[#8B1E3F]">
                   {formatPrice(product.priceINR)}
                 </span>
                 {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
-                  <span className="text-sm line-through text-stone-400 font-serif">
+                  <span className="whitespace-nowrap text-sm line-through text-stone-600 font-sans font-normal tabular-nums">
                     {formatPrice(product.originalPriceINR)}
                   </span>
                 )}
