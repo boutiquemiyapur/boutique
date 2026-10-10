@@ -2,11 +2,16 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
-import { validateBuildEnvironment } from './server/payments/environment';
+import { firebaseBuildDiagnostics, validateBuildEnvironment } from './server/payments/environment';
 
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
-  const firebaseValidated = validateBuildEnvironment(env);
+  let firebaseValidated: boolean;
+  try { firebaseValidated = validateBuildEnvironment(env); }
+  catch (error) {
+    console.error('Firebase build configuration diagnostics:', JSON.stringify(firebaseBuildDiagnostics(env, process.env)));
+    throw error;
+  }
   // Hosted Firebase deployments must be isolated. Payment credentials are runtime-only.
   // Unconfigured local builds stay
   // offline rather than silently using the existing Production Firebase config.

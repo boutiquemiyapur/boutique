@@ -71,7 +71,60 @@ resource ownership, IAM permission, API-key restrictions or private-key validity
 verify these existing settings in their consoles. Default project domains remain
 the simplest existing configuration. Emulator variables are forbidden on server APIs.
 
-## Preview and Development
+## Diagnosing a Production API-key pin mismatch
+
+`FIREBASE_AUTH_KEY_ENVIRONMENT_MISMATCH` means the effective raw
+`VITE_FIREBASE_API_KEY` does not equal the trimmed Production web API-key pin
+(or the Test pin for a non-production deployment). Presence alone is insufficient.
+The browser consumes the raw client key, so trimming only its validation comparison
+would allow a broken SDK configuration. Validation intentionally remains strict.
+
+Vite config explicitly calls `loadEnv(mode, process.cwd(), '')` before validation,
+then overlays `process.env`. Injected Vercel values take precedence over dotenv files,
+including empty strings. Dotenv syntax quotes are parsed; quotes pasted into an
+injected dashboard value are literal. A Production Vite mode alone does not select
+LIVE mode: that decision uses Vercel's `VERCEL_ENV` system variable.
+
+Failed builds now print allowlisted diagnostics: deployment scope, variable presence,
+process injection, surrounding whitespace/quotes, and equality booleans. No values,
+credential prefixes, lengths, hashes, private keys or payment secrets are printed.
+Diagnostics cannot prove Firebase ownership or distinguish which unequal key is
+the correct one. Do not infer the actual dashboard cause from a dummy reproduction.
+
+In project `boutique`, check Settings > Environment Variables > Production for both
+API-key names and both project-ID names. Use the existing Production Firebase web
+app configuration as the authority. Both API-key variables must contain that same
+key without literal quotes, spaces or newlines; both project IDs must identify the
+existing Production project. Check applicable overrides, shared/project variables,
+and the build command for injected assignments. Do not regenerate keys or paste
+credential values into logs/chat. Keep the pins server-only; do not add `VITE_` to
+their names. Restore the normal build command to `npm run build` if diagnosing it
+required a temporary command. Updated settings apply to a new deployment, not an
+old deployment. Build-cache clearing cannot repair unequal environment values.
+
+If the failed release predates these diagnostics, obtain the same safe metadata
+through an explicitly authorized build before claiming a precise dashboard cause.
+For that diagnostic build only, the following temporary Vercel Build Command uses
+the currently injected variables without printing their values. It retains the
+normal build and strict validation. Running it requires owner deployment approval:
+
+```sh
+node -e 'const e=process.env,a=e.VITE_FIREBASE_API_KEY,b=e.FIREBASE_PRODUCTION_WEB_API_KEY;const q=v=>!!v&&[34,39].some(c=>v.trim().charCodeAt(0)===c||v.trim().charCodeAt(v.trim().length-1)===c);console.log("Firebase injected diagnostics",JSON.stringify({productionScope:e.VERCEL_ENV==="production",clientPresent:a!==undefined,pinPresent:b!==undefined,clientNonEmpty:!!a?.trim(),pinNonEmpty:!!b?.trim(),keysExactlyEqual:!!a&&!!b&&a===b,keyMatchesValidator:!!a&&!!b?.trim()&&a===b.trim(),equalAfterTrimming:!!a?.trim()&&!!b?.trim()&&a.trim()===b.trim(),clientWhitespace:a!==undefined&&a!==a.trim(),pinWhitespace:b!==undefined&&b!==b.trim(),clientQuoted:q(a),pinQuoted:q(b),projectIdsPresent:!!e.VITE_FIREBASE_PROJECT_ID?.trim()&&!!e.FIREBASE_PRODUCTION_PROJECT_ID?.trim(),projectIdsMatch:!!e.VITE_FIREBASE_PROJECT_ID?.trim()&&!!e.FIREBASE_PRODUCTION_PROJECT_ID?.trim()&&e.VITE_FIREBASE_PROJECT_ID.trim()===e.FIREBASE_PRODUCTION_PROJECT_ID.trim()}));' && npm run build
+```
+
+Share only that JSON diagnostic line. If `keyMatchesValidator` is false but
+`equalAfterTrimming` is true, correct whitespace on the client setting. If quote
+flags are true, remove literal dashboard quotes. If the trimmed keys differ,
+compare both privately with the existing Firebase web app configuration; neither
+key should be changed to match an unverified value. Missing variables or a false
+Production scope require correcting the applied deployment configuration first.
+
+Do not commit/push/deploy the diagnostic change without owner approval. Once the
+metadata identifies the cause, correct the effective Production setting and create
+a fresh Production build of the approved correction commit; verify login, catalog,
+checkout cancellation, genuine webhook delivery and reconciliation afterward.
+
+## Preview and Development policy
 
 Connected Preview/Development is unavailable until a separate safe environment is
 configured. Hosted non-production builds fail if isolation configuration is absent;

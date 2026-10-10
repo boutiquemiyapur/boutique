@@ -2,6 +2,33 @@ import { requireCondition } from './errors.js';
 
 type Environment = Record<string, string | undefined>;
 
+// Allowlisted metadata only: never return values, prefixes, lengths or hashes.
+// Diagnostics observe the configuration; they do not normalize or authorize it.
+export function firebaseBuildDiagnostics(env: Environment, injected: Environment = {}) {
+  const scope = ['production', 'preview', 'development'].includes(env.VERCEL_ENV || '') ? env.VERCEL_ENV : env.VERCEL_ENV ? 'invalid' : 'missing';
+  const keys = ['VITE_FIREBASE_API_KEY', 'FIREBASE_PRODUCTION_WEB_API_KEY', 'VITE_FIREBASE_PROJECT_ID', 'FIREBASE_PRODUCTION_PROJECT_ID'] as const;
+  const variables = Object.fromEntries(keys.map(name => {
+    const value = env[name]; const trimmed = value?.trim();
+    return [name, {
+      present: value !== undefined,
+      nonEmpty: Boolean(trimmed),
+      injected: injected[name] !== undefined,
+      surroundingWhitespace: value !== undefined && value !== trimmed,
+      surroundingQuotes: Boolean(trimmed && (/^["']/.test(trimmed) || /["']$/.test(trimmed))),
+    }];
+  }));
+  const client = env.VITE_FIREBASE_API_KEY; const pin = env.FIREBASE_PRODUCTION_WEB_API_KEY;
+  return {
+    deploymentScope: scope,
+    vercelPresent: Boolean(env.VERCEL),
+    variables,
+    productionKeysExactlyEqual: Boolean(client && pin && client === pin),
+    productionKeysEqualAfterTrimming: Boolean(client?.trim() && pin?.trim() && client.trim() === pin.trim()),
+    productionKeyMatchesValidator: Boolean(client && pin?.trim() && client === pin.trim()),
+    productionProjectsMatch: Boolean(env.VITE_FIREBASE_PROJECT_ID?.trim() && env.FIREBASE_PRODUCTION_PROJECT_ID?.trim() && env.VITE_FIREBASE_PROJECT_ID.trim() === env.FIREBASE_PRODUCTION_PROJECT_ID.trim()),
+  };
+}
+
 // VERCEL_ENV is supplied by Vercel, not by the browser. Unknown/custom environments
 // deliberately fail closed until an explicit policy is added.
 export function paymentMode(env: Environment): 'live' | 'test' {

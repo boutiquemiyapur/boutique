@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { deleteApp, getApps, initializeApp } from 'firebase-admin/app';
-import { validateBuildEnvironment, validateClientFirebase, validatePaymentEnvironment, validateServerFirebase, paymentMode } from '../server/payments/environment.js';
+import { firebaseBuildDiagnostics, validateBuildEnvironment, validateClientFirebase, validatePaymentEnvironment, validateServerFirebase, paymentMode } from '../server/payments/environment.js';
 import { razorpayProvider } from '../server/payments/provider.js';
 import { database } from '../server/payments/http.js';
 
@@ -22,6 +22,92 @@ function fixture(deployment = 'preview'): Record<string, string> {
     RAZORPAY_WEBHOOK_SECRET: 'fixture-only-webhook-secret', PAYMENTS_LIVE_ENABLED: live ? 'true' : 'false',
   };
 }
+
+function isolatedBuildEnv(env: Record<string, string>) {
+  const inherited = { ...process.env };
+  for (const name of Object.keys(inherited)) {
+    if (/^(?:VITE_FIREBASE_|FIREBASE_|FIRESTORE_|RAZORPAY_|PAYMENTS_|CRON_SECRET$|CLOUDINARY_|VERCEL)/.test(name)) delete inherited[name];
+  }
+  return { ...inherited, ...env, CRON_SECRET: 'fixture-only-cron-secret' };
+}
+
+test('key mismatch reproduction and diagnostics distinguish whitespace, quotes and unequal values without leaking credentials', () => {
+  const env = fixture('production');
+  for (const key of [' production-public-fixture\n', '"production-public-fixture"', 'different-public-fixture', '']) {
+    const bad = { ...env, VITE_FIREBASE_API_KEY: key };
+    assert.throws(() => validateBuildEnvironment(bad), /FIREBASE_AUTH_KEY_ENVIRONMENT_MISMATCH/);
+    const diagnostic = firebaseBuildDiagnostics(bad, bad);
+    assert.equal(diagnostic.productionKeyMatchesValidator, false);
+    assert.equal(diagnostic.productionKeysEqualAfterTrimming, key.startsWith(' '));
+    assert.equal(diagnostic.variables.VITE_FIREBASE_API_KEY.surroundingWhitespace, key.startsWith(' '));
+    assert.equal(diagnostic.variables.VITE_FIREBASE_API_KEY.surroundingQuotes, key.startsWith('"'));
+    const serialized = JSON.stringify(diagnostic);
+    for (const value of Object.values(bad).filter(value => value.includes('fixture'))) assert.ok(!serialized.includes(value));
+  }
+  assert.equal(firebaseBuildDiagnostics(env, env).productionKeyMatchesValidator, true);
+  assert.equal(firebaseBuildDiagnostics({ VERCEL_ENV: 'private-sentinel' }).deploymentScope, 'invalid');
+  assert.ok(!JSON.stringify(firebaseBuildDiagnostics({ VERCEL_ENV: 'private-sentinel' })).includes('private-sentinel'));
+  assert.equal(firebaseBuildDiagnostics({}).productionKeysExactlyEqual, false);
+});
+
+test('real Vercel-style injected variables override dotenv; mismatches and literal quotes fail with safe diagnostics', () => {
+  const workspace = resolve('.'); const cache = resolve('node_modules/.cache');
+  mkdirSync(cache, { recursive: true });
+  const root = mkdtempSync(resolve(cache, 'firebase-loading-'));
+  writeFileSync(resolve(root, '.env.production'), 'VITE_FIREBASE_API_KEY="dotenv-public-fixture"\nFIREBASE_PRODUCTION_WEB_API_KEY="dotenv-public-fixture"\n');
+  writeFileSync(resolve(root, 'index.html'), '<div id="app"></div><script type="module" src="/entry.ts"></script>');
+  writeFileSync(resolve(root, 'entry.ts'), 'document.body.textContent = import.meta.env.VITE_FIREBASE_API_KEY + import.meta.env.VITE_FIREBASE_PROJECT_ID;');
+  const env = fixture('production'); env.VERCEL = '1';
+  delete env.FIREBASE_TEST_PROJECT_ID; delete env.FIREBASE_TEST_WEB_API_KEY;
+  delete env.RAZORPAY_KEY_ID; delete env.RAZORPAY_KEY_SECRET; delete env.RAZORPAY_WEBHOOK_SECRET;
+  const cases = [
+    { name: 'injected', env, ok: true },
+    { name: 'dotenv-quotes', env: { ...env, VITE_FIREBASE_API_KEY: undefined, FIREBASE_PRODUCTION_WEB_API_KEY: undefined }, ok: true },
+    { name: 'different', env: { ...env, VITE_FIREBASE_API_KEY: 'wrong-injected-public-fixture' }, ok: false },
+    { name: 'whitespace', env: { ...env, VITE_FIREBASE_API_KEY: ' production-public-fixture\n' }, ok: false },
+    { name: 'literal-quotes', env: { ...env, VITE_FIREBASE_API_KEY: '"production-public-fixture"' }, ok: false },
+  ];
+  for (const c of cases) {
+    const outDir = resolve(root, c.name);
+    const injected = isolatedBuildEnv(env);
+    for (const [name, value] of Object.entries(c.env)) { if (value === undefined) delete injected[name]; else injected[name] = value; }
+    const result = spawnSync(process.execPath, [resolve(workspace, 'node_modules/vite/bin/vite.js'), 'build', root, '--config', resolve(workspace, 'vite.config.ts'), '--outDir', outDir], { cwd: root, env: injected, encoding: 'utf8', timeout: 60000 });
+    assert.equal(result.status === 0, c.ok, `${c.name} unexpected build exit status`);
+    if (c.ok) {
+      const bundle = readdirSync(resolve(outDir, 'assets')).filter(name => name.endsWith('.js')).map(name => readFileSync(resolve(outDir, 'assets', name), 'utf8')).join('\n');
+      assert.ok(bundle.includes(c.name === 'injected' ? 'production-public-fixture' : 'dotenv-public-fixture'));
+      assert.ok(!bundle.includes('fixture-only-cron-secret'));
+    } else {
+      const output = result.stdout + result.stderr;
+      assert.match(output, /FIREBASE_AUTH_KEY_ENVIRONMENT_MISMATCH/);
+      const line = output.split('\n').find(line => line.includes('Firebase build configuration diagnostics:'))!;
+      const diagnostic = JSON.parse(line.slice(line.indexOf('{')));
+      assert.equal(diagnostic.deploymentScope, 'production');
+      assert.equal(diagnostic.productionKeyMatchesValidator, false);
+      assert.equal(diagnostic.variables.VITE_FIREBASE_API_KEY.injected, true);
+      for (const value of ['production-public-fixture', 'wrong-injected-public-fixture', 'dotenv-public-fixture', 'fixture-only-cron-secret']) assert.ok(!output.includes(value));
+    }
+  }
+});
+
+test('documented diagnostic command reports only safe metadata for the existing release', () => {
+  const doc = readFileSync('PAYMENT_ENVIRONMENTS.md', 'utf8');
+  const command = doc.match(/node -e '([^']+)' && npm run build/);
+  assert.ok(command);
+  for (const value of ['production-public-fixture', ' production-public-fixture\n', '"production-public-fixture"', 'different-public-fixture']) {
+    const env = { ...fixture('production'), VITE_FIREBASE_API_KEY: value };
+    const result = spawnSync(process.execPath, ['-e', command[1]], { encoding: 'utf8', env: isolatedBuildEnv(env) });
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, '');
+    const output = result.stdout;
+    const diagnostic = JSON.parse(output.slice(output.indexOf('{')));
+    assert.ok(Object.values(diagnostic).every(value => typeof value === 'boolean'));
+    assert.equal(diagnostic.productionScope, true);
+    assert.equal(diagnostic.keyMatchesValidator, value === 'production-public-fixture');
+    assert.equal(diagnostic.equalAfterTrimming, ['production-public-fixture', ' production-public-fixture\n'].includes(value));
+    for (const secret of ['production-public-fixture', 'different-public-fixture', 'fixture-only-api-secret', 'fixture-only-webhook-secret', 'fixture-only-not-a-key']) assert.ok(!output.includes(secret));
+  }
+});
 
 test('Production uses LIVE; Preview and development use TEST with distinct Firebase targets', () => {
   for (const deployment of ['production', 'preview', 'development']) {
@@ -172,7 +258,7 @@ test('real Production and Preview builds select the correct Firebase config and 
     const outDir = resolve('node_modules/.cache', `payment-environment-${deployment}`);
     assert.ok(outDir.startsWith(`${workspace}\\node_modules\\.cache\\`) || outDir.startsWith(`${workspace}/node_modules/.cache/`));
     const result = spawnSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', outDir, '--emptyOutDir', 'false'], {
-      encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env, CRON_SECRET: 'fixture-only-cron-secret' },
+      encoding: 'utf8', timeout: 60000, env: isolatedBuildEnv(env),
     });
     // Avoid printing build output/env: tests use only fixture credentials.
     assert.equal(result.status, 0, `${deployment} build failed`);
