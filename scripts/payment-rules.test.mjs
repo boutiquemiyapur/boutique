@@ -26,14 +26,21 @@ for (const auth of [uid, admin]) {
     await expect('orders/online', 'PATCH', auth, existing, false);
   }
   await expect('orders/fabricated', 'PATCH', auth, order, false); await expect('orders/online', 'DELETE', auth, null, false);
-  for (const name of ['checkoutRequests', 'paymentAttempts', 'paymentEvents', 'inventoryReservations', 'inventoryMovements', 'paymentRateLimits']) await expect(`${name}/fake`, 'PATCH', auth, { state: 'PAID' }, false);
+  for (const name of ['checkoutRequests', 'paymentAttempts', 'paymentEvents', 'inventoryReservations', 'inventoryMovements', 'paymentRateLimits', 'cancellationAudits']) await expect(`${name}/fake`, 'PATCH', auth, { state: 'PAID' }, false);
 }
-await expect('orders/online', 'PATCH', admin, { ...order, orderStatus: 'Processing', data: { ...order.data, orderStatus: 'Processing' } }, true);
+await expect('orders/online', 'PATCH', admin, { ...order, orderStatus: 'Processing', data: { ...order.data, orderStatus: 'Processing' } }, false);
 await expect('orders/online', 'PATCH', admin, { ...order, orderStatus: 'PAID', data: { ...order.data, orderStatus: 'PAID' } }, false);
 await expect('orders/online', 'PATCH', 'owner', { ...order, data: { ...order.data, paymentReviewRequired: true } }, true);
 await expect('orders/online', 'PATCH', admin, { ...order, orderStatus: 'Processing', data: { ...order.data, paymentReviewRequired: true, orderStatus: 'Processing' } }, false);
 const historical = { ...order, data: { ...order.data, paymentMethod: 'cod', paymentStatus: 'Pending' }, paymentStatus: 'Pending' };
 await expect('orders/historical', 'PATCH', 'owner', historical, true); await expect('orders/historical', 'GET', uid, null, true);
-await expect('orders/historical', 'PATCH', admin, { ...historical, orderStatus: 'Processing', data: { ...historical.data, orderStatus: 'Processing' } }, true);
+await expect('orders/historical', 'PATCH', admin, { ...historical, orderStatus: 'Processing', data: { ...historical.data, orderStatus: 'Processing' } }, false);
 await expect('users/customer/orders/old', 'PATCH', 'owner', historical, true); await expect('users/customer/orders/old', 'GET', uid, null, true); await expect('users/customer/orders/old', 'GET', other, null, false); await expect('users/customer/orders/old', 'PATCH', admin, order, false);
+for (const auth of [uid, admin]) {
+ await expect('orders/online', 'PATCH', auth, {...order,data:{...order.data,cancellationRequest:{status:'APPROVED'},refund:{state:'PROCESSED'},cartCleanupStatus:'DONE'}}, false);
+ await expect('orders/historical','PATCH',auth,{...historical,orderStatus:'Cancelled',data:{...historical.data,orderStatus:'Cancelled'}},false);
+}
+await expect('carts/customer','PATCH','owner',{ownerId:'customer',items:[],lastPurchasedOrderId:'trusted-order'},true);
+await expect('carts/customer','PATCH',uid,{ownerId:'customer',items:[],lastPurchasedOrderId:'forged-order'},false);
+await expect('carts/customer','PATCH',uid,{ownerId:'customer',items:[],lastPurchasedOrderId:'trusted-order',checkoutGeneration:'forged-generation'},false);
 console.log(`${checks} Firestore payment authorization checks passed.`);

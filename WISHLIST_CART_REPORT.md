@@ -1,3 +1,5 @@
+> Historical report for the previously committed Cart/Wishlist release. Current cleanup, cancellation and refund work is documented in ORDER_CANCELLATION_REFUND_IMPLEMENTATION.md and remains uncommitted. Backend-unchanged and deferred-cleanup statements below apply only to that historical release.
+
 # AB Collections Cart and Wishlist stabilization report
 
 Release review and local validation: 2026-10-13. This report supersedes the earlier report that included server payment-success Cart cleanup. The owner authorized a local commit on 2026-10-13. This report is prepared before that commit; its SHA is reported separately. No push, deployment, Production data write, credential/configuration change or LIVE transaction is authorized or performed.

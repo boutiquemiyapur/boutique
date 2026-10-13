@@ -273,6 +273,9 @@ export interface Order {
   estimatedDeliveryDate?: string;
   timeline: OrderTimelineEvent[];
   cancellation?: OrderCancellation;
+  cancellationRequest?: { status: 'REQUESTED' | 'APPROVED' | 'REJECTED'; reason: string; requestedAt: string; requestedBy: string; reviewedAt?: string; reviewedBy?: string; decisionReason?: string; inventory?: 'RESTORED' | 'RELEASED' | 'MANUAL_REVIEW'; audit: { action: string; at: string; by: string }[] };
+  refund?: { state: 'AWAITING_ENABLEMENT' | 'APPROVED' | 'INITIATING' | 'UNKNOWN' | 'PENDING' | 'PROCESSED' | 'FAILED' | 'MANUAL_REVIEW' | 'NOT_REQUIRED'; amountPaise: number; paymentId?: string; id?: string; idempotencyKey?: string; approvedBy?: string; approvedAt?: string; error?: string; updatedAt: string };
+  cartCleanupStatus?: 'PENDING' | 'DONE' | 'SKIPPED';
 }
 
 export interface Coupon {

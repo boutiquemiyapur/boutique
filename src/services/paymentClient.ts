@@ -44,13 +44,27 @@ export function checkoutBusinessRequest(items: CartItem[], a: ShippingAddress, c
   const { fullName, phone, email, addressLine1, addressLine2 = '', city, state, pincode, country } = a;
   return { items: items.map(l => ({ productId: l.product.id, selectedColor: l.selectedColor, selectedSize: l.selectedSize, quantity: l.quantity, isCustomTailored: l.isCustomTailored, ...(l.isCustomTailored && l.customMeasurements ? { customMeasurements: l.customMeasurements } : {}), giftPackaging: l.giftPackaging === true, ...(l.giftNote ? { giftNote: l.giftNote } : {}) })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))), shippingAddress: { fullName, phone, email, addressLine1, addressLine2, city, state, pincode, country }, couponCode };
 }
-export async function stableCheckout(uid: string, request: ReturnType<typeof checkoutBusinessRequest>) {
+export async function stableCheckout(uid: string, request: ReturnType<typeof checkoutBusinessRequest>, cartGeneration = '') {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(request)));
   const hash = [...new Uint8Array(bytes)].map(v => v.toString(16).padStart(2, '0')).join('');
-  const key = `ab-payment-intent:${uid}:${hash}`;
+  const key = `ab-payment-intent:${uid}:${hash}${cartGeneration ? `:cart:${cartGeneration}` : ''}`;
   const obtain = () => { const value = localStorage.getItem(key) || crypto.randomUUID(); localStorage.setItem(key, value); return value; };
   const intentId = navigator.locks ? await navigator.locks.request(key, obtain) : obtain();
   return { ...request, intentId };
+}
+// A different completed checkout can advance Cart generation while another
+// attempt is outstanding. Reuse that customer's existing attempt, not a new charge.
+export async function prepareCartCheckout(uid: string, request: ReturnType<typeof checkoutBusinessRequest>, generation: string, ownedOrders: Order[]) {
+  const business = JSON.stringify(request);
+  const outstanding = ownedOrders.find(order => order.paymentProvider === 'razorpay' && order.checkoutIntentId
+    && order.orderStatus !== 'Cancelled' && !['REQUESTED', 'APPROVED'].includes(order.cancellationRequest?.status || '')
+    && ['CREATED', 'PAYMENT_PENDING', 'AUTHORIZED', 'FAILED', 'EXPIRED'].includes(order.paymentStatus)
+    && JSON.stringify(checkoutBusinessRequest(order.items, order.shippingAddress, order.couponCodeApplied || null)) === business);
+  if (outstanding) {
+    if (outstanding.paymentReviewRequired) throw new Error('The existing payment needs store review. Check My Orders before paying again.');
+    return { ...request, intentId: outstanding.checkoutIntentId! };
+  }
+  return stableCheckout(uid, request, generation);
 }
 type PaymentResult = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 declare global { interface Window { Razorpay?: new (options: Record<string, unknown>) => { open(): void; on(event: 'payment.failed', handler: () => void): void } } }

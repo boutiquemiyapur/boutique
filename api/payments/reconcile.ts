@@ -1,3 +1,5 @@
+import { LIVE_REFUND_EXECUTION_ENABLED } from '../../server/orders/refundPolicy.js';
+import { CancellationService } from '../../server/orders/cancellation.js';
 import { timingSafeEqual } from 'node:crypto';
 import { database, failure, prepare, type Request, type Response } from '../../server/payments/http.js';
 import { requireCondition } from '../../server/payments/errors.js';
@@ -15,7 +17,7 @@ export default async function handler(req: Request, res: Response) {
     let processed = 0; let failed = 0;
     await Promise.all(expired.docs.map(async record => {
       let delay = 60_000;
-      try { const order = await service.reconcile(record.id); processed++; if (['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(order.paymentStatus)) delay = 86_400_000; }
+      try { const order = await service.reconcile(record.id); await new CancellationService(db, service.provider, LIVE_REFUND_EXECUTION_ENABLED).recoverRefund(record.id); processed++; if (order.cartCleanupStatus !== 'PENDING' && !['APPROVED', 'INITIATING', 'UNKNOWN', 'PENDING'].includes(order.refund?.state || '') && ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(order.paymentStatus)) delay = 86_400_000; }
       catch { failed++; console.error('Payment reconciliation failed', { orderId: record.id, code: 'RECONCILIATION_RETRY_REQUIRED' }); }
       finally { await record.ref.update({ nextCheckAt: Date.now() + delay }); }
     }));

@@ -1,3 +1,4 @@
+import { cancellationHold } from './cancellationPolicy.js';
 import type { Order } from '../types';
 
 export type PaymentOutcome =
@@ -21,7 +22,7 @@ export const paymentSucceeded = (order: Order) => confirmedPayment(order)
 export const historicalCod = (order: Order) => order.paymentMethod === 'cod'
   && (!order.paymentProvider || order.paymentProvider === 'cod')
   && !order.razorpayOrderId && !order.razorpayPaymentId && !order.paymentVerifiedAt;
-export const fulfilmentEligible = (order: Order) => historicalCod(order) || paymentSucceeded(order);
+export const fulfilmentEligible = (order: Order) => !cancellationHold(order) && (historicalCod(order) || paymentSucceeded(order));
 export const completedSale = (order: Order) => order.orderStatus === 'Delivered'
   && (paymentSucceeded(order) || (historicalCod(order) && order.paymentStatus === 'Paid'));
 export function capturedRevenue(order: Order) {
@@ -44,6 +45,8 @@ export function paymentGroup(order: Order) {
 }
 
 export function orderDisplayStatus(order: Order) {
+  if (order.orderStatus === 'Cancelled') return 'Cancelled';
+  if (order.cancellationRequest?.status === 'REQUESTED') return 'Cancellation Requested';
   if (!fulfilmentEligible(order)) return paymentPresentation(order).label;
   if (order.orderStatus === 'Order Placed') return historicalCod(order) ? 'Cash on Delivery' : 'Order Confirmed';
   return order.orderStatus;
@@ -61,6 +64,8 @@ export function requestedOrder(orders: Order[], id: string | null, last: Order |
 // A dismissal or slow API response must not undo a newer captured/refunded snapshot.
 export function preferPaymentOrder(current: Order | undefined, incoming: Order): Order {
   if (!current || current.id !== incoming.id) return incoming;
+  if (current.cancellationRequest && current.cancellationRequest.status !== 'REQUESTED' && (!incoming.cancellationRequest || incoming.cancellationRequest.status === 'REQUESTED')) return current;
+  if (current.refund?.state === 'PROCESSED' && incoming.refund?.state !== 'PROCESSED') return current;
   if (confirmedPayment(current) && !confirmedPayment(incoming)) return current;
   if (confirmedPayment(current) && confirmedPayment(incoming)
     && ((current.refundedAmountPaise || 0) > (incoming.refundedAmountPaise || 0)
@@ -75,6 +80,8 @@ export function paymentPresentation(order: Order) {
     return state('Order request received', 'Historical order', 'Your historical Cash on Delivery order is recorded.');
   if (order.paymentProvider !== 'razorpay' || order.paymentMethod !== 'razorpay')
     return state('Payment status unavailable', 'Payment Under Review', 'Payment details are incomplete. Contact the store before paying again.', 'warning');
+  if (order.orderStatus === 'Cancelled' && !confirmedPayment(order))
+    return state('Order cancelled', 'Payment unconfirmed', 'Do not pay this cancelled order. Contact the store if payment is received later.');
   if (order.paymentReviewRequired)
     return state('Store review required', 'Payment Under Review', confirmedPayment(order)
       ? 'Payment was captured, but inventory needs store review before fulfilment. Do not pay again.'

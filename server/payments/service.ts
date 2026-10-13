@@ -1,3 +1,4 @@
+import { purchasedSnapshot, subtractPurchased, type PurchasedLine } from './cartCleanup.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Order, PaymentState } from '../../src/types/index.js';
 import { sanitizeFirestoreData } from '../../src/utils/firestoreData.js';
@@ -9,7 +10,7 @@ import { validSignature, type PaymentProvider, type ProviderOrder, type Provider
 
 const PAID = ['PAID', 'REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED'];
 type ReservedLine = { productId: string; color: string; size: string; quantity: number; variantInventory: boolean };
-type Reservation = { customerId: string; orderId: string; state: 'RESERVED' | 'CONSUMED' | 'RELEASED'; expiresAt: number; items: ReservedLine[] };
+type Reservation = { customerId: string; orderId: string; state: 'RESERVED' | 'CONSUMED' | 'RELEASED' | 'RESTORED'; expiresAt: number; items: ReservedLine[] };
 export class PaymentService {
   constructor(public db: Firestore, public provider: PaymentProvider, public now = () => Date.now()) {}
   ref(collection: string, id: string) { return this.db.collection(collection).doc(id); }
@@ -27,6 +28,8 @@ export class PaymentService {
         return { fresh: false, order: (await tx.get(this.ref('orders', id))).data()!.data as Order };
       }
       const checkout = await trustedCheckout(this.db, tx, request, now);
+      const cart = await tx.get(this.ref('carts', uid));
+      const cartLines = cart.data()?.ownerId === uid ? purchasedSnapshot(cart.data()?.items, checkout.items) : [];
       const iso = new Date(now).toISOString(); const expiresAt = now + 15 * 60_000;
       const order: Order = { id, checkoutIntentId: request.intentId, orderNumber: `AB-${id.slice(4, 24).toUpperCase()}`, createdAt: iso, items: checkout.items, shippingAddress: request.shippingAddress, shippingMethod: 'standard', ...checkout.legacy, subtotalINR: checkout.totals.subtotalINR, tailoringTotalINR: checkout.totals.tailoringTotalINR, couponDiscountINR: checkout.totals.couponDiscountINR, couponCodeApplied: request.couponCode, charges: checkout.totals.charges, totalINR: checkout.amountPaise / 100, amountPaise: checkout.amountPaise, currency: 'INR', paymentMethod: 'razorpay', paymentProvider: 'razorpay', paymentStatus: 'CREATED', orderStatus: 'Order Placed', reservationExpiresAt: new Date(expiresAt).toISOString(), timeline: [] };
       const versions = new Map<string, number>();
@@ -41,7 +44,7 @@ export class PaymentService {
         const data = withDeductedStock(p, lines);
         tx.update(this.ref('products', p.id), { data: sanitizeFirestoreData(data), inventoryVersion: version + 1, updatedAt: new Date(now) });
       }
-      tx.set(this.ref('checkoutRequests', id), { customerId: uid, fingerprint: fp, orderId: id, createdAt: new Date(now) });
+      tx.set(this.ref('checkoutRequests', id), { customerId: uid, fingerprint: fp, orderId: id, cartSnapshot: { version: 1, purchased: checkout.items.map(l => ({ productId: l.product.id, color: l.selectedColor, size: l.selectedSize, tailored: l.isCustomTailored, quantity: l.quantity })), lines: cartLines }, cartCleanup: { state: 'AWAITING_CAPTURE' }, createdAt: new Date(now) });
       const reserved = checkout.items.map(l => ({ productId: l.product.id, color: l.selectedColor, size: l.selectedSize, quantity: l.quantity, variantInventory: hasVariantInventory(l.product) }));
       tx.set(this.ref('inventoryReservations', id), { customerId: uid, orderId: id, state: 'RESERVED', expiresAt, items: reserved });
       tx.set(this.ref('inventoryMovements', `${id}-reserve`), { orderId: id, type: 'RESERVE', items: reserved, createdAt: new Date(now) });
@@ -49,6 +52,7 @@ export class PaymentService {
       tx.set(this.ref('orders', id), { customerId: uid, orderNumber: order.orderNumber, paymentStatus: order.paymentStatus, orderStatus: order.orderStatus, data: sanitizeFirestoreData(order), createdAt: new Date(now), updatedAt: new Date(now) });
       return { fresh: true, order };
     });
+    requireCondition(result.order.orderStatus !== 'Cancelled' && result.order.cancellationRequest?.status !== 'APPROVED', 'ORDER_CANCELLED', 409);
     if (PAID.includes(result.order.paymentStatus)) return { order: result.order, checkout: null };
     if (this.now() >= Date.parse(result.order.reservationExpiresAt!)) {
       await this.reconcile(id);
@@ -80,7 +84,7 @@ export class PaymentService {
       const or = this.ref('orders', id); const order = (await tx.get(or)).data()!.data as Order;
       const rr = this.ref('inventoryReservations', id); const reservation = (await tx.get(rr)).data() as Reservation & { generation?: number };
       if (reservation.state === 'RESERVED' && reservation.expiresAt > this.now()) return;
-      requireCondition(reservation.state === 'RELEASED' && !PAID.includes(order.paymentStatus) && !order.paymentReviewRequired, 'RESERVATION_REQUIRES_REVIEW', 409);
+      requireCondition(order.orderStatus !== 'Cancelled' && order.cancellationRequest?.status !== 'APPROVED' && reservation.state === 'RELEASED' && !PAID.includes(order.paymentStatus) && !order.paymentReviewRequired, 'RESERVATION_REQUIRES_REVIEW', 409);
       const c = await trustedCheckout(this.db, tx, request, this.now());
       requireCondition(c.amountPaise === order.amountPaise && c.items.every((l, i) => l.product.priceINR === order.items[i].product.priceINR && l.tailoringFeeINR === order.items[i].tailoringFeeINR), 'RETRY_PRICE_CHANGED', 409);
       const versions = await tx.getAll(...c.products.map(p => this.ref('products', p.id)));
@@ -103,6 +107,7 @@ export class PaymentService {
   }
   async apply(id: string, payment: ProviderPayment, event?: { id: string; hash: string }, refundPending = false) {
     return this.db.runTransaction(async tx => {
+      const checkoutRef = this.ref('checkoutRequests', id); const checkout = await tx.get(checkoutRef);
       const ref = this.ref('orders', id); const snapshot = await tx.get(ref);
       requireCondition(snapshot.exists, 'ORDER_NOT_FOUND', 404); const order = snapshot.data()!.data as Order;
       const eventRef = event ? this.ref('paymentEvents', digest(event.id)) : null;
@@ -118,7 +123,7 @@ export class PaymentService {
         requireCondition(!order.razorpayPaymentId || order.razorpayPaymentId === payment.id, 'MULTIPLE_CAPTURED_PAYMENTS', 409);
         const refunded = Math.max(order.refundedAmountPaise || 0, payment.amount_refunded);
         state = refunded === payment.amount ? 'REFUNDED' : refunded > 0 ? 'PARTIALLY_REFUNDED' : refundPending ? 'REFUND_PENDING' : 'PAID';
-        next = { ...next, razorpayPaymentId: payment.id, refundedAmountPaise: refunded, paidAt: order.paidAt || now, paymentVerifiedAt: order.paymentVerifiedAt || now, paymentReviewRequired: order.paymentReviewRequired === true || reservation.state === 'RELEASED' };
+        next = { ...next, razorpayPaymentId: payment.id, refundedAmountPaise: refunded, paidAt: order.paidAt || now, paymentVerifiedAt: order.paymentVerifiedAt || now, paymentReviewRequired: order.paymentReviewRequired === true || (!order.paidAt && (['RELEASED', 'RESTORED'].includes(reservation.state) || order.orderStatus === 'Cancelled')) };
         if (reservation.state === 'RESERVED') {
           tx.update(reservationRef, { state: 'CONSUMED', consumedAt: this.now() });
           tx.set(this.ref('inventoryMovements', `${id}-consume`), { orderId: id, type: 'CONSUME', items: reservation.items, createdAt: new Date(this.now()) });
@@ -127,6 +132,12 @@ export class PaymentService {
       } else if (!PAID.includes(order.paymentStatus) && reservation.state !== 'RELEASED') {
         if (payment.status === 'authorized') state = 'AUTHORIZED';
         else if (payment.status === 'failed' && state !== 'AUTHORIZED') state = 'FAILED';
+      }
+      if (captured && !order.paidAt && !PAID.includes(order.paymentStatus) && checkout.data()?.cartSnapshot?.version === 1) {
+        const eligible = !next.paymentReviewRequired && order.orderStatus !== 'Cancelled';
+        next.cartCleanupStatus = eligible ? 'PENDING' : 'SKIPPED';
+        tx.update(checkoutRef, { cartCleanup: { state: next.cartCleanupStatus, markedAt: now } });
+        if (eligible) tx.update(this.ref('paymentAttempts', id), { nextCheckAt: this.now() + 60_000 });
       }
       next.paymentStatus = state;
       tx.update(ref, { data: sanitizeFirestoreData(next), paymentStatus: state, updatedAt: new Date(this.now()) });
@@ -140,7 +151,32 @@ export class PaymentService {
     const refunds = payment.captured ? await this.provider.refunds(paymentId) : [];
     requireCondition(refunds.every(r => r.payment_id === paymentId && Number.isSafeInteger(r.amount) && r.amount >= 0), 'REFUND_EVIDENCE_INVALID', 409);
     const processed = refunds.filter(r => r.status === 'processed').reduce((sum, r) => sum + r.amount, 0);
-    return this.apply(id, { ...payment, amount_refunded: Math.max(payment.amount_refunded, processed) }, event, refunds.some(r => ['pending', 'created'].includes(r.status)));
+    const order = await this.apply(id, { ...payment, amount_refunded: Math.max(payment.amount_refunded, processed) }, event, refunds.some(r => ['pending', 'created'].includes(r.status)));
+    return this.recoverCart(id, order);
+  }
+  async recoverCart(id: string, fallback: Order): Promise<Order> {
+    if (fallback.cartCleanupStatus !== 'PENDING') return fallback;
+    try {
+      return await this.db.runTransaction(async tx => {
+        const cr = this.ref('checkoutRequests', id); const checkout = (await tx.get(cr)).data();
+        const or = this.ref('orders', id); const record = (await tx.get(or)).data()!; const order = record.data as Order;
+        if (checkout?.cartCleanup?.state !== 'PENDING' || checkout.cartSnapshot?.version !== 1) return order;
+        requireCondition(checkout.customerId === record.customerId && PAID.includes(order.paymentStatus) && order.paidAt && order.paymentVerifiedAt, 'CART_CLEANUP_REVIEW', 409);
+        const ref = this.ref('carts', record.customerId); const cart = await tx.get(ref);
+        const lines = checkout.cartSnapshot.lines as PurchasedLine[];
+        const items = cart.exists && cart.data()?.ownerId === record.customerId ? subtractPurchased(cart.data()?.items, lines) : null;
+        const skipped = order.orderStatus === 'Cancelled' || order.paymentReviewRequired || !lines.length || items === null;
+        const state = skipped ? 'SKIPPED' : 'DONE';
+        if (!skipped) tx.update(ref, { items: sanitizeFirestoreData(items), lastPurchasedOrderId: id, checkoutGeneration: id, updatedAt: new Date(this.now()) });
+        tx.update(cr, { cartCleanup: { state, completedAt: new Date(this.now()).toISOString() } });
+        tx.update(or, { 'data.cartCleanupStatus': state, updatedAt: new Date(this.now()) });
+        return { ...order, cartCleanupStatus: state };
+      });
+    } catch {
+      // Capture is already durable. Never demote or fail the paid order for Cart errors.
+      console.error('Cart cleanup deferred', { orderId: id, code: 'CART_CLEANUP_PENDING' });
+      return fallback;
+    }
   }
   async verify(uid: string, id: string, providerOrderId: unknown, paymentId: string, signature: string, secret: string) {
     const order = await this.owned(uid, id);
@@ -150,8 +186,8 @@ export class PaymentService {
   }
   async release(id: string) {
     return this.db.runTransaction(async tx => {
-      const rr = this.ref('inventoryReservations', id); const reservation = (await tx.get(rr)).data() as Reservation;
       const or = this.ref('orders', id); const order = (await tx.get(or)).data()!.data as Order;
+      const rr = this.ref('inventoryReservations', id); const reservation = (await tx.get(rr)).data() as Reservation;
       if (reservation.state !== 'RESERVED' || reservation.expiresAt > this.now() || PAID.includes(order.paymentStatus)) return false;
       const ids = [...new Set(reservation.items.map(l => l.productId))];
       const products = await tx.getAll(...ids.map(p => this.ref('products', p)));
@@ -189,7 +225,8 @@ export class PaymentService {
       for (const payment of payments) order = await this.syncPayment(id, payment.id);
     }
     await this.release(id);
-    return (await this.ref('orders', id).get()).data()!.data as Order;
+    const latest = (await this.ref('orders', id).get()).data()!.data as Order;
+    return this.recoverCart(id, latest);
   }
 }
 

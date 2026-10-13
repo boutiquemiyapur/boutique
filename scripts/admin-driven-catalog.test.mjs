@@ -140,6 +140,18 @@ test('live repository listener replaces catalog on edits, deletion and failure, 
   globalThis.failCatalog(new Error('offline')); assert.equal(failure.message, 'offline');
   unsubscribe(); assert.equal(globalThis.catalogUnsubscribed, true);
 });
+
+test('admin order progress waits for confirmed snapshots and delivers backend workflow updates', () => {
+  let received;
+  const stop = api.commerceRepository.subscribeToAdminOrders(value => { received = value; }, () => {});
+  assert.deepEqual(globalThis.catalogListenerOptions, { includeMetadataChanges: true });
+  const order = { id: 'workflow-order', cancellationRequest: { status: 'APPROVED' }, refund: { state: 'PENDING' } };
+  const documents = [{ id: order.id, data: () => ({ data: order }) }];
+  globalThis.emitCatalog(documents, { fromCache: true, hasPendingWrites: false }); assert.equal(received, undefined);
+  globalThis.emitCatalog(documents, { fromCache: false, hasPendingWrites: true }); assert.equal(received, undefined);
+  globalThis.emitCatalog(documents, { fromCache: false, hasPendingWrites: false }); assert.equal(received[0].refund.state, 'PENDING');
+  stop();
+});
 test('normalization trims and deduplicates without changing names or overwriting other properties', () => {
   const p = product({ availableSizes: [' S ', '', 's', '42'], colors: [{ colorName: ' Green ', colorHex: '#008000', images: [' a ', ''] }, { colorName: 'green' }], customField: 'preserved', weightGrams: 0 });
   assert.deepEqual(p.availableSizes, ['S', '42']); assert.equal(p.colors.length, 1);

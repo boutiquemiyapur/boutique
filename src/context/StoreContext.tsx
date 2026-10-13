@@ -1,6 +1,7 @@
+import { cancellationApi } from '../services/cancellationClient';
 import { cartPurchaseIssue as cartCatalogIssue, displayableWishlist } from '../utils/shoppingState';
 import { preferPaymentOrder, requestedOrder, type PaymentOutcome } from '../utils/paymentState';
-import { checkoutBusinessRequest, stableCheckout, paymentApi, openPayment, type CheckoutResponse, type PaymentProgress } from '../services/paymentClient';
+import { checkoutBusinessRequest, prepareCartCheckout, paymentApi, openPayment, type CheckoutResponse, type PaymentProgress } from '../services/paymentClient';
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   AppView,
@@ -134,7 +135,7 @@ interface StoreContextType {
     paymentMethod: PaymentMethod,
     onProgress?: PaymentProgress
   ) => Promise<PaymentOutcome>;
-  cancelOrder: (orderId: string) => Promise<void>;
+  cancelOrder: (orderId: string, reason: string) => Promise<void>;
 
   // Customer Vault
   updateCustomerMeasurements: (measurements: CustomMeasurements) => Promise<void>;
@@ -231,6 +232,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Do not hydrate cart or wishlist before Firebase resolves the owner.
   // This prevents a prior account's browser state from flashing for another user.
   const [storedCart, setCart] = useState<CartItem[]>([]);
+  const [cartGeneration, setCartGeneration] = useState('');
   const [storedWishlist, setWishlist] = useState<string[]>([]);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -296,7 +298,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     pendingWishlistProductIdsRef.current.clear();
     setPrivateDataError(false);
     setPrivateDataReady(false);
-    setCart([]);
+    setCart([]); setCartGeneration('');
     setWishlist([]);
     setOrders([]);
     setCustomer(session ? customerForSession(session) : INITIAL_CUSTOMER);
@@ -345,7 +347,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // A signed-out visitor never reads or writes a browser-backed cart or
       // wishlist. Both stay empty until Firebase Auth resolves a real UID.
       if (authStatus === 'loading') return;
-      setCart([]);
+      setCart([]); setCartGeneration('');
       setWishlist([]);
       setPrivateDataReady(true);
       return;
@@ -357,16 +359,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const readiness = { cart: false, wishlist: false, profile: false, failed: false };
     const currentOwner = () => privateLoadVersionRef.current === loadVersion && activePrivateUidRef.current === uid;
     const ready = () => { if (currentOwner()) setPrivateDataReady(!readiness.failed && readiness.cart && readiness.wishlist && readiness.profile); };
-    const shoppingOff = commerceRepository.subscribeToShopping(uid, (items) => {
+    const shoppingOff = commerceRepository.subscribeToShopping(uid, (items, generation) => {
       if (!currentOwner()) return;
-      setCart(items); readiness.cart = true; ready();
+      setCart(items); setCartGeneration(generation || ''); readiness.cart = true; ready();
     }, (ids) => {
       if (!currentOwner()) return;
       setWishlist(ids); readiness.wishlist = true; ready();
     }, () => {
       if (!currentOwner()) return;
       readiness.failed = true;
-      setCart([]); setWishlist([]); setPrivateDataReady(false); setPrivateDataError(true);
+      setCart([]); setCartGeneration(''); setWishlist([]); setPrivateDataReady(false); setPrivateDataError(true);
       showToast('Unable to load your selections', 'Refresh to reconnect your shopping cart and wishlist.', 'error');
     });
     const sessionCustomer = authSession ? customerForSession(authSession) : INITIAL_CUSTOMER;
@@ -407,15 +409,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Customer tracking reads the same canonical order documents that the
   // admin fulfils. Legacy subcollection records remain as read-only history.
   useEffect(() => {
-    if (!firebaseUserId || authSession?.isAdmin) return;
-    const uid = firebaseUserId;
-    return commerceRepository.subscribeToCustomerOrders(uid, (canonicalOrders) => {
-      if (activePrivateUidRef.current !== uid) return;
+    if (!firebaseUserId) return;
+    const uid = firebaseUserId; let active = true;
+    const receive = (canonicalOrders: Order[]) => {
+      if (!active || activePrivateUidRef.current !== uid) return;
       setOrders((current) => {
         const legacy = current.filter((order) => !canonicalOrders.some((item) => item.id === order.id));
         return [...canonicalOrders, ...legacy].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
       });
-    }, (error) => console.warn('Customer order tracking listener failed.', error));
+    };
+    const error = (error: Error) => { if (active && activePrivateUidRef.current === uid) showToast('Order updates unavailable', 'Refresh to reconnect before making order decisions.', 'error'); };
+    const unsubscribe = authSession?.isAdmin ? commerceRepository.subscribeToAdminOrders(receive, error) : commerceRepository.subscribeToCustomerOrders(uid, receive, error);
+    return () => { active = false; unsubscribe(); };
   }, [authSession?.isAdmin, firebaseUserId]);
 
   const login = async (email: string, password: string, remember = true) => {
@@ -792,7 +797,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!firebaseUserId || !cart.length) throw new Error('Sign in and add products before paying.');
         const uid = firebaseUserId;
         onProgress?.('preparing');
-        const request = await stableCheckout(uid, checkoutBusinessRequest(cart, shippingAddress, appliedCoupon?.code || null));
+        const request = await prepareCartCheckout(uid, checkoutBusinessRequest(cart, shippingAddress, appliedCoupon?.code || null), cartGeneration, authSession?.isAdmin ? [] : orders);
         prepared = await paymentApi<CheckoutResponse>('create-order', request);
         const preparedOrder = prepared.order;
         if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
@@ -819,15 +824,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return operation;
   };
 
-  const cancelOrder = async (orderId: string) => {
-    if (!firebaseUserId) throw new Error('Please sign in to cancel an order.');
-    const order = orders.find((item) => item.id === orderId);
-    const cancellable = ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection'];
-    if (order?.paymentProvider === 'razorpay') throw new Error('Contact the store for cancellation and dashboard refund assistance.');
-    if (!order || !cancellable.includes(order.orderStatus)) throw new Error('This order can no longer be cancelled.');
-    const updated = await commerceRepository.cancelCustomerOrder(firebaseUserId, order);
-    setOrders((current) => current.map((item) => item.id === updated.id ? updated : item));
-    showToast('Order Cancelled', 'Your order has been cancelled.', 'info');
+  const cancelOrder = async (orderId: string, reason: string) => {
+    const uid = firebaseUserId; const version = privateLoadVersionRef.current;
+    if (!uid || activePrivateUidRef.current !== uid) throw new Error('Please sign in to request cancellation.');
+    const result = await cancellationApi('request', orderId, reason);
+    if (!stillOwnsPrivateData(uid, version)) return;
+    if (result.order) setOrders(current => current.map(order => order.id === result.order!.id ? preferPaymentOrder(order, result.order!) : order));
+    showToast('Cancellation requested', 'The store must approve your request. No refund has been initiated.', 'info');
   };
 
   // Customer Profile & Measurements

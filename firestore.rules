@@ -76,24 +76,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isAdmin() || (signedIn() && resource.data.customerId == request.auth.uid);
       allow create: if false;
-      // Customers can only make one narrowly defined cancellation before
-      // dispatch. All other fulfilment changes remain admin-only.
-      allow update: if (isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orderStatus', 'data', 'updatedAt'])
-        && request.resource.data.data.diff(resource.data.data).affectedKeys().hasOnly(['orderStatus', 'timeline', 'trackingNumber', 'courierPartner', 'estimatedDeliveryDate'])
-        && request.resource.data.orderStatus == request.resource.data.data.orderStatus
-        && request.resource.data.orderStatus in ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection', 'Dispatched', 'In Transit', 'Out for Delivery', 'Delivered', 'Cancelled']
-        && (resource.data.data.paymentMethod == 'cod' || (resource.data.data.paymentStatus == 'PAID' && resource.data.data.paymentReviewRequired == false))) || (signedIn()
-        && resource.data.data.paymentMethod == 'cod'
-        && resource.data.customerId == request.auth.uid
-        && resource.data.orderStatus in ['Order Placed', 'Confirmed', 'Processing', 'Artisan Tailoring', 'Ready for Dispatch', 'Quality Inspection']
-        && request.resource.data.orderStatus == 'Cancelled'
-        && request.resource.data.data.orderStatus == 'Cancelled'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orderStatus', 'cancelledAt', 'cancelledBy', 'updatedAt', 'data'])
-        && request.resource.data.cancelledAt == request.time
-        && request.resource.data.cancelledBy == request.auth.uid
-        && request.resource.data.data.diff(resource.data.data).affectedKeys().hasOnly(['orderStatus', 'cancellation', 'timeline'])
-        && request.resource.data.data.cancellation.cancelledBy == request.auth.uid);
+      // Approval, inventory and financial effects are trusted backend operations.
+      allow update: if false;
       allow delete: if false;
     }
 
@@ -110,6 +94,7 @@ service cloud.firestore {
     match /paymentEvents/{id} { allow read, write: if false; }
     match /inventoryReservations/{id} { allow read, write: if false; }
     match /inventoryMovements/{id} { allow read, write: if false; }
+    match /cancellationAudits/{id} { allow read, write: if false; }
     match /paymentRateLimits/{id} { allow read, write: if false; }
 
     match /users/{userId} {

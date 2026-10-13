@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PaymentError, requireCondition } from './errors.js';
+import { LIVE_REFUND_EXECUTION_ENABLED } from '../orders/refundPolicy.js';
 import { validatePaymentEnvironment } from './environment.js';
 export type ProviderOrder = { id: string; amount: number; currency: string; receipt: string; notes?: { checkoutId?: string } };
 export type ProviderPayment = { id: string; order_id: string; amount: number; currency: string; status: string; captured: boolean; amount_refunded: number };
-export type ProviderRefund = { id: string; payment_id: string; amount: number; status: string };
+export type ProviderRefund = { id: string; payment_id: string; amount: number; status: string; receipt?: string; currency?: string };
 export interface PaymentProvider {
   keyId: string;
   createOrder(amount: number, receipt: string, checkoutId: string): Promise<ProviderOrder>;
@@ -12,6 +13,7 @@ export interface PaymentProvider {
   order(id: string): Promise<ProviderOrder>;
   payments(orderId: string): Promise<ProviderPayment[]>;
   refunds(paymentId: string): Promise<ProviderRefund[]>;
+  createRefund?(paymentId: string, amountPaise: number, idempotencyKey: string): Promise<ProviderRefund>;
 }
 export function validSignature(message: string | Buffer, signature: unknown, secret: string) {
   if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature)) return false;
@@ -19,9 +21,9 @@ export function validSignature(message: string | Buffer, signature: unknown, sec
 }
 export function razorpayProvider(env = process.env): PaymentProvider {
   const { keyId, secret } = validatePaymentEnvironment(env);
-  async function api<T>(path: string, body?: unknown): Promise<T> {
+  async function api<T>(path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
     try {
-      const response = await fetch(`https://api.razorpay.com/v1/${path}`, { method: body ? 'POST' : 'GET', headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${secret}`).toString('base64')}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(12_000) });
+      const response = await fetch(`https://api.razorpay.com/v1/${path}`, { method: body ? 'POST' : 'GET', headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${secret}`).toString('base64')}`, 'Content-Type': 'application/json', ...extraHeaders }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(12_000) });
       if (!response.ok) throw new PaymentError('PROVIDER_UNAVAILABLE', 503);
       return await response.json() as T;
     } catch { throw new PaymentError('PROVIDER_UNAVAILABLE', 503); }
@@ -44,5 +46,10 @@ export function razorpayProvider(env = process.env): PaymentProvider {
     order: id => api(`orders/${encodeURIComponent(id)}`),
     payments: id => list(`orders/${encodeURIComponent(id)}/payments`),
     refunds: id => list(`payments/${encodeURIComponent(id)}/refunds`),
+    createRefund: (id, amount, key) => {
+      requireCondition(LIVE_REFUND_EXECUTION_ENABLED, 'LIVE_REFUNDS_DISABLED', 409);
+      requireCondition(/^pay_[a-zA-Z0-9]+$/.test(id) && Number.isSafeInteger(amount) && amount > 0 && /^[a-zA-Z0-9_-]{10,64}$/.test(key), 'INVALID_REFUND_REQUEST');
+      return api(`payments/${encodeURIComponent(id)}/refund`, { amount, speed: 'normal', receipt: key }, { 'X-Refund-Idempotency': key });
+    },
   };
 }

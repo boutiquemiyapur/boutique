@@ -58,10 +58,10 @@ const mergeOrders = (...groups: Order[][]) => newestFirst(
 );
 
 export const commerceRepository = {
-  subscribeToShopping(uid: string, onCart: (items: CartItem[]) => void, onWishlist: (ids: string[]) => void, onError: (error: Error) => void) {
+  subscribeToShopping(uid: string, onCart: (items: CartItem[], generation: string) => void, onWishlist: (ids: string[]) => void, onError: (error: Error) => void) {
     if (!firestore) { onError(new Error('Shopping service is not configured.')); return () => undefined; }
     const cartOff = onSnapshot(privateDoc('carts', uid), { includeMetadataChanges: true }, (snapshot) => {
-      if (!snapshot.metadata.hasPendingWrites && !snapshot.metadata.fromCache) onCart(normalizeCartItems(snapshot.data()?.items || []));
+      if (!snapshot.metadata.hasPendingWrites && !snapshot.metadata.fromCache) onCart(normalizeCartItems(snapshot.data()?.items || []), typeof snapshot.data()?.checkoutGeneration === 'string' ? snapshot.data()!.checkoutGeneration : typeof snapshot.data()?.lastPurchasedOrderId === 'string' ? snapshot.data()!.lastPurchasedOrderId : '');
     }, onError);
     const wishlistOff = onSnapshot(privateDoc('wishlists', uid), { includeMetadataChanges: true }, (snapshot) => {
       if (!snapshot.metadata.hasPendingWrites && !snapshot.metadata.fromCache) onWishlist(normalizeWishlistProductIds(snapshot.data()?.productIds || []));
@@ -87,6 +87,13 @@ export const commerceRepository = {
       transaction.set(ref, toFirestore({ ownerId: uid, productIds }), { merge: true });
       return productIds;
     });
+  },
+  subscribeToAdminOrders(onOrders: (orders: Order[]) => void, onError: (error: Error) => void) {
+    if (!firestore) { onError(new Error('Order service is not configured.')); return () => undefined; }
+    return onSnapshot(collection(firestore, 'orders'), { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.hasPendingWrites || snapshot.metadata.fromCache) return;
+      onOrders(snapshot.docs.map(item => item.data().data as Order).filter(Boolean));
+    }, onError);
   },
   async loadCatalog(): Promise<Product[]> {
     if (!firestore) throw new Error('Catalog service is not configured.');
@@ -191,14 +198,6 @@ export const commerceRepository = {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-  },
-  async cancelCustomerOrder(uid: string, order: Order) {
-    if (!firestore) throw new Error('Order service is not configured for this deployment.');
-    const timestamp = new Date().toLocaleString('en-IN');
-    const cancellation = { cancelledAt: timestamp, cancelledBy: uid };
-    const timeline = [...order.timeline, { status: 'Cancelled' as const, timestamp, description: 'Order cancelled by customer.', completed: true }];
-    await updateDoc(doc(firestore, 'orders', order.id), { orderStatus: 'Cancelled', cancelledAt: serverTimestamp(), cancelledBy: uid, 'data.orderStatus': 'Cancelled', 'data.cancellation': cancellation, 'data.timeline': timeline, updatedAt: serverTimestamp() });
-    return { ...order, orderStatus: 'Cancelled' as const, cancellation, timeline };
   },
   async saveProduct(product: Product) {
     if (!firestore) throw new Error('Catalog service is not configured.');

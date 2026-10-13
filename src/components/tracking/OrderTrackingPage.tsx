@@ -1,3 +1,4 @@
+import { CancellationStatus } from '../common/CancellationStatus';
 import { OrderStatusBadge } from '../common/OrderStatusBadge';
 import { orderDisplayStatus, paymentPresentation, fulfilmentEligible } from '../../utils/paymentState';
 import { PrivateLoading } from '../common/Skeleton';
@@ -77,7 +78,7 @@ export const OrderTrackingPage: React.FC = () => {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-serif text-2xl text-stone-900">{displayedOrder.orderNumber}</h2>
-                  <OrderStatusBadge order={displayedOrder} />
+                  <OrderStatusBadge order={displayedOrder} /><CancellationStatus order={displayedOrder} />
                 </div>
                 <PaymentRecovery order={displayedOrder} /><p className="mt-2 text-xs text-stone-500">Placed {new Date(displayedOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {displayedOrder.paymentMethod === 'cod' ? 'COD payment' : 'Online payment'}: {paymentPresentation(displayedOrder).label}</p>
               </div>

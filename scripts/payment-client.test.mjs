@@ -99,3 +99,31 @@ test('Pay Online immediately disables repeated submission, keeps dimensions and 
  progress('verifying');tree=h.render(()=>api.CheckoutPage());assert.equal(find(tree,n=>n.type?.name==='ButtonProgress').props.children,api.paymentStageText.verifying);
  release({kind:'dismissed',order});await work;tree=h.render(()=>api.CheckoutPage());assert.equal(find(tree,n=>n.props?.id==='checkout-place-order-submit-btn').props.disabled,false);assert.equal(find(tree,n=>n.type?.name==='ButtonProgress'),null);h.cleanup();
 });
+
+test('backend Cart generation permits a fresh identical purchase while unchanged retries reuse their intent',async()=>{
+ const request={items:[],shippingAddress:{},couponCode:null};
+ const pending=await api.stableCheckout('generation-user',request,'');
+ assert.equal((await api.stableCheckout('generation-user',request,'')).intentId,pending.intentId);
+ const next=await api.stableCheckout('generation-user',request,'paid-cleanup-order');
+ assert.notEqual(next.intentId,pending.intentId);assert.equal((await api.stableCheckout('generation-user',request,'paid-cleanup-order')).intentId,next.intentId);
+ assert.notEqual((await api.stableCheckout('other-generation-user',request,'paid-cleanup-order')).intentId,next.intentId);
+ assert.deepEqual(Object.keys(next).sort(),['couponCode','intentId','items','shippingAddress']);
+});
+
+test('cancellation holds block payment retry while a rejected request restores ordinary unpaid retry',()=>{
+ for(const [status,allowed] of [['REQUESTED',false],['APPROVED',false],['REJECTED',true]]) {
+  const h=hooks();const current={...order,cancellationRequest:{status,reason:'Other',audit:[]},orderStatus:status==='APPROVED'?'Cancelled':'Order Placed'};
+  const tree=h.render(()=>api.PaymentRecovery({order:current}));
+  assert.equal(Boolean(find(tree,node=>node.type==='button'&&node.props.children==='Retry payment')),allowed);h.cleanup();
+ }
+});
+
+test('an outstanding owned attempt survives a Cart-generation change caused by another capture',async()=>{
+ const existing={...order,checkoutIntentId:'existing-pending-intent'};
+ const request=api.checkoutBusinessRequest(existing.items,existing.shippingAddress,null);
+ const reused=await api.prepareCartCheckout('user',request,'other-completed-order',[existing]);
+ assert.equal(reused.intentId,existing.checkoutIntentId);
+ await assert.rejects(api.prepareCartCheckout('user',request,'other-completed-order',[{...existing,paymentReviewRequired:true}]),/store review/);
+ const newPurchase=await api.prepareCartCheckout('user',request,'other-completed-order',[{...existing,orderStatus:'Cancelled'}]);
+ assert.notEqual(newPurchase.intentId,existing.checkoutIntentId);
+});

@@ -1,3 +1,4 @@
+import { CancellationService } from '../../server/orders/cancellation.js';
 import { database, failure, prepare, rawBody, type Request, type Response } from '../../server/payments/http.js';
 import { digest, identifier, object, text } from '../../server/payments/validation.js';
 import { requireCondition } from '../../server/payments/errors.js';
@@ -38,6 +39,7 @@ export default async function handler(req: Request, res: Response) {
     const id = identifier(providerOrder.notes.checkoutId);
     const service = new PaymentService(db, provider); await service.attach(id, providerOrder);
     await service.syncPayment(id, paymentId, event);
+    await new CancellationService(db, provider).syncRefund(id);
     return res.status(200).json({ received: true });
   } catch (e) { return failure(res, e); }
 }

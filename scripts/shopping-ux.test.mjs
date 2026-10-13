@@ -46,7 +46,7 @@ motion:`import React from 'react'; export const motion={div:({initial,animate,ex
 hooks:`export const createContext=()=>({Provider:'provider'}); export const useState=(v)=>globalThis.hooks.state(v); export const useRef=(v)=>globalThis.hooks.ref(v); export const useEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useLayoutEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useMemo=(f)=>{globalThis.hooks.index++;return f()}; export const useContext=()=>{}; export default {createContext,useState,useRef,useEffect,useMemo,useContext};`,
 context:`export const useStore=()=>globalThis.viewStore;`,
 auth:`export const startAuthSession=(fn)=>{globalThis.authCallback=fn;return ()=>{}}; export const logoutFirebaseUser=async()=>{globalThis.authCallback(null)}; export const authErrorMessage=(e)=>e.message; export const signInWithEmail=async()=>{}; export const registerWithEmail=async()=>{}; export const requestPasswordReset=async()=>{};`,
-payments:`export const retryOrder=()=>{throw Error("Unexpected payment retry in shopping fixture")}; export const paymentStageText={}; export {confirmedPayment} from './src/utils/paymentState'; export const stableCheckout=(uid,r)=>globalThis.paymentMock.stableCheckout(uid,r); export const checkoutBusinessRequest=(...args)=>globalThis.paymentMock.checkoutBusinessRequest(...args); export const paymentApi=(...args)=>globalThis.paymentMock.paymentApi(...args); export const openPayment=(...args)=>globalThis.paymentMock.openPayment(...args);`,
+payments:`export const prepareCartCheckout=(uid,r,g)=>globalThis.paymentMock.stableCheckout(uid,r,g); export const retryOrder=()=>{throw Error("Unexpected payment retry in shopping fixture")}; export const paymentStageText={}; export {confirmedPayment} from './src/utils/paymentState'; export const stableCheckout=(uid,r,g)=>globalThis.paymentMock.stableCheckout(uid,r,g); export const checkoutBusinessRequest=(...args)=>globalThis.paymentMock.checkoutBusinessRequest(...args); export const paymentApi=(...args)=>globalThis.paymentMock.paymentApi(...args); export const openPayment=(...args)=>globalThis.paymentMock.openPayment(...args);`,
 config:`export const firestore={}; export const firebaseAuth={currentUser:null};`,
 cms:`export const DEFAULT_CMS={checkoutCharges:[],lowStockThreshold:3,banners:[],content:{},contact:{}}; export const cmsRepository={loadPublicCms:async()=>DEFAULT_CMS,subscribeToStoreSettings:()=>()=>{},subscribeToCategories:()=>()=>{},};`,
 db:`export const doc=(_, ...parts)=>({path:parts.join('/')}); export const collection=doc; export const collectionGroup=doc; export const query=(ref)=>ref; export const where=()=>{}; export const serverTimestamp=()=>null;
@@ -259,7 +259,7 @@ test('retained paid selections are explained without inferring Cart payment stat
  globalThis.viewStore={...s,isCartDrawerOpen:true,orders:[{id:'paid-order',paymentStatus:'PAID',items:[line('a',2)]}]};
  for(const markup of [api.cartPage(),api.cartDrawer()]) {
   assert.match(markup,/Your Cart shows saved selections, not payment status/);
-  assert.match(markup,/Purchased items may remain here after payment/);
+  assert.match(markup,/Verified purchased quantities are removed automatically/);
   assert.match(markup,/manually remove purchased items/);
   assert.doesNotMatch(markup,/awaiting payment|payment pending/i);
  }

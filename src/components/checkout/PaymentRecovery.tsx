@@ -18,7 +18,7 @@ export function PaymentRecovery({ order }: { order: Order }) {
   const latest = checkedOrder?.source === order ? preferPaymentOrder(order, checkedOrder.order) : order;
   const payment = paymentPresentation(latest);
   if (order.paymentMethod !== 'razorpay' && order.paymentProvider !== 'razorpay') return null;
-  const retryAllowed = latest.paymentProvider === 'razorpay' && latest.paymentMethod === 'razorpay'
+  const retryAllowed = latest.orderStatus !== 'Cancelled' && !['REQUESTED', 'APPROVED'].includes(latest.cancellationRequest?.status || '') && latest.paymentProvider === 'razorpay' && latest.paymentMethod === 'razorpay'
     && !latest.paymentReviewRequired && ['CREATED', 'PAYMENT_PENDING', 'FAILED', 'EXPIRED'].includes(latest.paymentStatus);
   async function run(retry: boolean) {
     if (inFlight.current) return;

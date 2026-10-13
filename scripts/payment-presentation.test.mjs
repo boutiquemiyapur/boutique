@@ -14,6 +14,8 @@ export {LoadingFeedback} from './src/components/common/Loading';
 import {PrivateLoading,DetailsSkeleton,ProductGridSkeleton,AdminSkeleton} from './src/components/common/Skeleton';
 import {AdminOrders} from './src/components/admin/AdminOrders';
 import {CustomerAccountPage} from './src/components/account/CustomerAccountPage';
+import {CancellationStatus} from './src/components/common/CancellationStatus';
+export const cancellation=order=>renderToStaticMarkup(React.createElement(CancellationStatus,{order}));
 export const account=(orders,selectedId=null)=>{globalThis.presentationStateSlot=0;globalThis.presentationSelectedId=selectedId;globalThis.presentationStore={orders,customer:{fullName:'Fixture customer',email:'fixture@example.com',phone:'9999999999',savedAddresses:[]},wishlist:[],products:[],formatPrice:String};return renderToStaticMarkup(React.createElement(CustomerAccountPage));};
 export const badge=order=>renderToStaticMarkup(React.createElement(OrderStatusBadge,{order}));
 export const admin=orders=>renderToStaticMarkup(React.createElement(AdminOrders,{orders,formatPrice:String,error:null,onUpdate:async()=>{}}));
@@ -108,4 +110,15 @@ test('slow loading offers recovery and navigation/unmount clears its feedback ti
   globalThis.loadingHooks={state:()=>[state,value=>state=value],effect:fn=>cleanup=fn()};
   try{api.LoadingFeedback({label:'Loading orders'});t.mock.timers.tick(15000);assert.equal(state,true);cleanup();state=false;api.LoadingFeedback({label:'Loading orders'});cleanup();t.mock.timers.tick(15000);assert.equal(state,false);}
   finally{delete globalThis.loadingHooks;t.mock.timers.reset();}
+});
+
+test('customer cancellation controls use the approved early-stage policy for captured orders',()=>{
+ assert.match(api.account([paid]),/Request cancellation/);
+ for(const status of ['Processing','Ready for Dispatch','Dispatched','Delivered','Cancelled'])assert.doesNotMatch(api.account([{...paid,orderStatus:status}]),/Request cancellation/);
+});
+test('cancellation/refund presentation distinguishes admin review, pending, unknown and processed money',()=>{
+ const request={status:'REQUESTED',reason:'Other',audit:[]};assert.match(api.cancellation({...paid,cancellationRequest:request}),/awaiting admin review/);
+ const approved={...paid,orderStatus:'Cancelled',cancellationRequest:{...request,status:'APPROVED'}};
+ for(const [state,text] of [['PENDING','does not mean the money'],['UNKNOWN','status unknown'],['PROCESSED','Bank credit timing'],['FAILED','Refund failed'],['AWAITING_ENABLEMENT','currently disabled']])assert.match(api.cancellation({...approved,refund:{state,amountPaise:135000}}),new RegExp(text));
+ assert.equal(api.fulfilmentEligible(approved),false);assert.equal(api.orderDisplayStatus(approved),'Cancelled');
 });

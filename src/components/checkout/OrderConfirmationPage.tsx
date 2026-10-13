@@ -1,3 +1,4 @@
+import { CancellationStatus } from '../common/CancellationStatus';
 import { PrivateLoading } from '../common/Skeleton';
 import { ProductImage } from '../common/ProductImage';
 import { variantSummary, productImages } from '../../utils/productData';
@@ -21,7 +22,7 @@ export const OrderConfirmationPage: React.FC = () => {
   const { currentOrder, authStatus, isCustomerDataReady, privateDataError, formatPrice, navigate } = useStore();
 
   useEffect(() => {
-    if (!currentOrder || !paymentSucceeded(currentOrder) || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (!currentOrder || !paymentSucceeded(currentOrder) || !fulfilmentEligible(currentOrder) || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     try {
       confetti({
         particleCount: 80,
@@ -57,6 +58,7 @@ export const OrderConfirmationPage: React.FC = () => {
         {/* Payment state header */}
         <div className="bg-white border border-[#E6D5B8] rounded-3xl p-8 sm:p-12 shadow-sm text-center space-y-4">
           <div className="flex justify-center"><BrandMark /></div>
+          <CancellationStatus order={currentOrder} />
           <div data-payment-indicator={payment.success ? 'success' : payment.tone} className={`w-16 h-16 rounded-full border-2 mx-auto flex items-center justify-center shadow-md ${payment.success ? 'bg-emerald-100 border-emerald-500 text-emerald-600' : payment.tone === 'error' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-amber-50 border-amber-300 text-amber-700'}`}>
             {payment.success ? <CheckCircle2 className="w-10 h-10" /> : payment.tone === 'error' || payment.tone === 'warning' ? <AlertCircle className="w-10 h-10" /> : <Clock3 className="w-10 h-10" />}
           </div>

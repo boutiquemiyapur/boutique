@@ -204,7 +204,7 @@ test('unchanged payment processing preserves Cart for capture, replay and older 
   const r = await f.service.create('uid', f.request);
   assert.deepEqual(f.docs.get('carts/uid'), cart);
   const checkout = f.docs.get(`checkoutRequests/${r.order.id}`);
-  assert.equal(checkout.cartLines, undefined); // Existing request schema is retained.
+  assert.equal(checkout.cartSnapshot.version, 1); assert.deepEqual(checkout.cartSnapshot.lines, []); // Ambiguous legacy Cart data is never guessed.
   await f.service.syncPayment(r.order.id, 'pay_test1', { id: 'preserve-cart', hash: 'original' });
   assert.deepEqual(f.docs.get('carts/uid'), cart);
   cart.items[0].quantity = 5;

@@ -31,6 +31,14 @@ function isolatedBuildEnv(env: Record<string, string>) {
   return { ...inherited, ...env, CRON_SECRET: 'fixture-only-cron-secret' };
 }
 
+test('refund provider rejects execution before any transport call while LIVE refunds are disabled', t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls++; throw Error('Unexpected transport'); });
+  const provider = razorpayProvider(fixture('production'));
+  assert.throws(() => provider.createRefund!('pay_fixture', 100, 'abr-fixture-key-12345'), /LIVE_REFUNDS_DISABLED/);
+  assert.equal(calls, 0);
+});
+
 test('key mismatch reproduction and diagnostics distinguish whitespace, quotes and unequal values without leaking credentials', () => {
   const env = fixture('production');
   for (const key of [' production-public-fixture\n', '"production-public-fixture"', 'different-public-fixture', '']) {

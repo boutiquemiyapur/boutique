@@ -1,3 +1,5 @@
+> Superseded by the owner-approved local implementation in ORDER_CANCELLATION_REFUND_IMPLEMENTATION.md. The text below records the earlier deferred proposal; it is not the current execution instruction. No new commit, push, deployment or LIVE refund is authorized.
+
 # Payment-success Cart cleanup: separate approval required
 
 Status: DEFERRED by owner decision on 2026-10-13. Documentation only; do not implement at this stage. This replaces earlier reports that included backend Cart cleanup in the release.

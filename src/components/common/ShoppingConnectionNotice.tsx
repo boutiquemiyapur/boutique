@@ -16,6 +16,6 @@ export const ShoppingConnectionNotice = () => {
 };
 
 export const CartRetentionNotice = () => <p className="my-3 text-xs leading-5 text-stone-600">
-  Your Cart shows saved selections, not payment status. Purchased items may remain here after payment.
+  Your Cart shows saved selections, not payment status. Verified purchased quantities are removed automatically. Items may remain while cleanup is pending or when an older checkout cannot be matched safely.
   Check My Orders for payment status before paying again. You can manually remove purchased items from your Cart.
 </p>;

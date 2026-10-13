@@ -4,7 +4,7 @@ import { confirmedPayment, orderDisplayStatus, paymentGroup, paymentPresentation
 export function filterOrders(orders: Order[], query: string, filter: string) {
   const search = query.trim().toLowerCase();
   return orders.filter(order => (!search || [order.id, order.orderNumber, order.shippingAddress.fullName, order.shippingAddress.email, orderDisplayStatus(order), paymentPresentation(order).label].join(' ').toLowerCase().includes(search))
-    && (filter === 'all' || (filter === 'unpaid' ? !confirmedPayment(order) && order.paymentMethod !== 'cod' : paymentGroup(order) === filter)));
+    && (filter === 'all' || (filter === 'cancelled' ? order.orderStatus === 'Cancelled' || Boolean(order.cancellation) : filter === 'cancellation-requests' ? order.cancellationRequest?.status === 'REQUESTED' : filter === 'unpaid' ? !confirmedPayment(order) && order.paymentMethod !== 'cod' : paymentGroup(order) === filter)));
 }
 
 // Export only the currently visible snapshot, with friendly labels and no new reads.
