@@ -1,3 +1,4 @@
+import { CartRetentionNotice } from '../common/ShoppingConnectionNotice';
 import { ButtonProgress } from '../common/Loading';
 import { paymentStageText, type PaymentStage } from '../../services/paymentClient';
 import { useNavigationScroll } from '../../hooks/useNavigationScroll';
@@ -99,7 +100,7 @@ export const CheckoutPage: React.FC = () => {
   if (cart.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center">
-        <h2 className="text-2xl font-serif font-bold text-stone-900">Your Shopping Bag is Empty</h2>
+        <h2 className="text-2xl font-serif font-bold text-stone-900">Your Shopping Cart is Empty</h2>
         <p className="text-xs text-stone-500 mt-2">Add products to continue to checkout.</p>
         <button
           onClick={() => navigate('shop')}
@@ -117,6 +118,7 @@ export const CheckoutPage: React.FC = () => {
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting.current) return;
+    if (cartIssue) { showToast('Cart needs attention', cartIssue, 'error'); return; }
     if (authStatus !== 'authenticated') {
       requireAuth('checkout');
       return;
@@ -144,6 +146,7 @@ export const CheckoutPage: React.FC = () => {
     <div className="bg-[#FAF7F2] min-h-screen py-8 sm:py-12">
       <div data-checkout-top className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {cartIssue && <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-xs">{cartIssue} You can still check or retry an existing payment from your order history. Availability will be checked before a new payment.</p>}
+        <CartRetentionNotice />
         {/* Checkout Header */}
         <div className="flex items-center justify-between pb-6 border-b border-[#E6D5B8] mb-8">
           <div>
@@ -410,7 +413,7 @@ export const CheckoutPage: React.FC = () => {
                     id="checkout-place-order-submit-btn"
                     aria-busy={isProcessingPayment && paymentStage !== 'checkout'}
                     type="submit"
-                    disabled={isProcessingPayment}
+                    disabled={isProcessingPayment || Boolean(cartIssue)}
                     className="bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs uppercase tracking-widest font-bold px-4 py-4 w-full sm:w-[22rem] min-h-16 justify-center rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {isProcessingPayment ? (
@@ -463,7 +466,7 @@ export const CheckoutPage: React.FC = () => {
               {/* Price Details */}
               <div className="pt-3 border-t border-[#E6D5B8] space-y-2 text-xs text-stone-600">
                 <div className="flex justify-between">
-                  <span>Bag Subtotal</span>
+                  <span>Cart Subtotal</span>
                   <span className="font-semibold text-stone-900">{formatPrice(cartSubtotalINR)}</span>
                 </div>
                 {cartTailoringTotalINR > 0 && (

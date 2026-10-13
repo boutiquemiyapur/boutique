@@ -1,5 +1,6 @@
+import { cartPurchaseIssue as cartCatalogIssue, displayableWishlist } from '../utils/shoppingState';
 import { preferPaymentOrder, requestedOrder, type PaymentOutcome } from '../utils/paymentState';
-import { checkoutBusinessRequest, stableCheckout, paymentApi, openPayment, confirmedPayment, type CheckoutResponse, type PaymentProgress } from '../services/paymentClient';
+import { checkoutBusinessRequest, stableCheckout, paymentApi, openPayment, type CheckoutResponse, type PaymentProgress } from '../services/paymentClient';
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   AppView,
@@ -20,7 +21,7 @@ import {
   SizeOption,
   StoreCategory
 } from '../types';
-import { cartCatalogIssue, refreshCartProducts } from '../utils/productData';
+import { refreshCartProducts } from '../utils/productData';
 import { calculateCheckoutTotals, legacyChargeAmounts } from '../utils/checkoutTotals';
 import { CURRENCIES } from '../data/initialData';
 import { AuthSession, authErrorMessage, logoutFirebaseUser, registerWithEmail, requestPasswordReset, signInWithEmail, startAuthSession } from '../firebase/auth';
@@ -47,6 +48,10 @@ interface StoreContextType {
   cartIssue: string | null;
   cart: CartItem[];
   wishlist: string[];
+  wishlistProducts: Product[];
+  wishlistStatus: 'loading' | 'ready' | 'error';
+  wishlistUnavailableCount: number;
+  wishlistMissingCount: number;
   orders: Order[];
   coupons: Coupon[];
   customer: CustomerProfile;
@@ -97,6 +102,7 @@ interface StoreContextType {
     giftNote?: string
   ) => Promise<boolean>;
   updateCartQuantity: (cartItemId: string, quantity: number) => Promise<boolean>;
+  adjustCartQuantity: (cartItemId: string, delta: number) => Promise<boolean>;
   removeFromCart: (cartItemId: string) => Promise<boolean>;
   clearCart: () => Promise<boolean>;
 
@@ -218,6 +224,7 @@ const INITIAL_CUSTOMER: CustomerProfile = { id: '', fullName: '', email: '', pho
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalogReferenceIds, setCatalogReferenceIds] = useState<string[]>([]);
   const [categories, setCategories] = useState<StoreCategory[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
@@ -259,7 +266,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const pendingWishlistProductIdsRef = useRef(new Set<string>());
   const pendingShoppingActionRef = useRef<(() => Promise<boolean>) | null>(null);
 
-  const shoppingActionsRef = useRef({} as Pick<StoreContextType, 'addToCart' | 'buyNow' | 'toggleWishlist' | 'updateCartQuantity' | 'removeFromCart' | 'clearCart'>);
+  const shoppingActionsRef = useRef({} as Pick<StoreContextType, 'addToCart' | 'buyNow' | 'toggleWishlist' | 'updateCartQuantity' | 'adjustCartQuantity' | 'removeFromCart' | 'clearCart'>);
 
   const refreshCms = async () => {
     setCmsStatus('loading');
@@ -316,20 +323,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => commerceRepository.subscribeToCatalog(
     (nextProducts) => { setProducts(nextProducts); setCatalogStatus('ready'); },
-    (error) => { console.warn('Catalog listener failed.', error); setProducts([]); setCatalogStatus('error'); }
+    (error) => { console.warn('Catalog listener failed.', error); setProducts([]); setCatalogStatus('error'); },
+    setCatalogReferenceIds
   ), []);
   useEffect(() => { void commerceRepository.loadCoupons().then(setCoupons); }, []);
 
   const ownsShopping = authStatus === 'authenticated' && authSession?.uid === activePrivateUidRef.current;
   const cart = useMemo(() => ownsShopping ? refreshCartProducts(storedCart, products) : [], [ownsShopping, storedCart, products]);
-  const wishlist = ownsShopping ? normalizeWishlistProductIds(storedWishlist) : [];
+  const savedWishlistIds = ownsShopping ? normalizeWishlistProductIds(storedWishlist) : [];
+  const wishlistStatus = privateDataError || catalogStatus === 'error' ? 'error' : authStatus === 'loading' || (ownsShopping && !privateDataReady) || catalogStatus === 'loading' ? 'loading' : 'ready';
+  const wishlistProducts = wishlistStatus === 'ready' ? displayableWishlist(savedWishlistIds, products) : [];
+  const wishlist = wishlistProducts.map(product => product.id);
+  const wishlistMissingCount = wishlistStatus === 'ready' ? savedWishlistIds.filter(id => !catalogReferenceIds.includes(id)).length : 0;
+  const wishlistUnavailableCount = wishlistStatus === 'ready' ? savedWishlistIds.length - wishlist.length - wishlistMissingCount : 0;
   const cartIssue = catalogStatus !== 'ready' ? 'The catalog is unavailable. Please wait or refresh before checking out.' : cartCatalogIssue(cart, products);
 
   useEffect(() => {
     const loadVersion = ++privateLoadVersionRef.current;
 
     if (!firebaseUserId) {
-      // A signed-out visitor never reads or writes a browser-backed bag or
+      // A signed-out visitor never reads or writes a browser-backed cart or
       // wishlist. Both stay empty until Firebase Auth resolves a real UID.
       if (authStatus === 'loading') return;
       setCart([]);
@@ -354,7 +367,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!currentOwner()) return;
       readiness.failed = true;
       setCart([]); setWishlist([]); setPrivateDataReady(false); setPrivateDataError(true);
-      showToast('Unable to load your selections', 'Refresh to reconnect your shopping bag and wishlist.', 'error');
+      showToast('Unable to load your selections', 'Refresh to reconnect your shopping cart and wishlist.', 'error');
     });
     const sessionCustomer = authSession ? customerForSession(authSession) : INITIAL_CUSTOMER;
     void commerceRepository.loadCustomerData(uid, {
@@ -507,7 +520,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const canChangePrivateData = (continueAfterAuthentication?: () => Promise<boolean>) => {
     // Do not infer a guest state while Firebase is still resolving the session.
     if (authStatus === 'loading') {
-      showToast('Checking your account', 'Please wait a moment before updating your bag or wishlist.', 'info');
+      showToast('Checking your account', 'Please wait a moment before updating your cart or wishlist.', 'info');
       return false;
     }
     if (authStatus !== 'authenticated' || !firebaseUserId) {
@@ -522,7 +535,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return false;
     }
     if (privateDataReady && activePrivateUidRef.current === firebaseUserId) return true;
-    showToast('Your selections are loading', 'Please wait a moment before updating your bag or wishlist.', 'info');
+    showToast('Your selections are loading', 'Please wait a moment before updating your cart or wishlist.', 'info');
     return false;
   };
 
@@ -539,8 +552,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     } catch (error) {
       if (!stillOwnsPrivateData(uid, version)) return false;
-      console.error('Unable to save shopping bag.', error);
-      showToast('Unable to update shopping bag', 'Your shopping bag was not changed. Please try again.', 'error');
+      console.error('Unable to save shopping cart.', error);
+      showToast('Unable to update shopping cart', 'Your shopping cart was not changed. Please try again.', 'error');
       return false;
     }
   };
@@ -573,6 +586,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     giftPackaging: boolean = false,
     giftNote?: string
   ): Promise<boolean> => {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 25) { showToast('Check quantity', 'Choose between 1 and 25 per cart line.', 'error'); return false; }
     if (!canChangePrivateData(() => shoppingActionsRef.current.addToCart(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
     const currentProduct = products.find((item) => item.id === product.id);
     if (catalogStatus !== 'ready' || !currentProduct) {
@@ -593,18 +607,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     const lineKey = cartLineKey(newItem);
     const currentCart = normalizeCartItems(cart);
-    const alreadyInBag = () => showToast('Already in Bag', 'This item is already in your shopping bag.', 'info', { label: 'View Bag', onClick: () => setIsCartDrawerOpen(true) });
+    const alreadyInCart = () => showToast('Already in Cart', 'This item is already in your shopping cart.', 'info', { label: 'View Cart', onClick: () => setIsCartDrawerOpen(true) });
     if (currentCart.some((item) => cartLineKey(item) === lineKey)) {
-      alreadyInBag();
+      alreadyInCart();
       return false;
     }
     if (pendingCartLineKeysRef.current.has(lineKey)) {
-      showToast('Adding to Bag', 'Please wait while this item is saved.', 'info');
+      showToast('Adding to Cart', 'Please wait while this item is saved.', 'info');
       return false;
     }
 
     const issue = cartCatalogIssue([newItem, ...currentCart], products);
-    if (issue) { showToast('Check your bag', issue, 'error'); return false; }
+    if (issue) { showToast('Check your cart', issue, 'error'); return false; }
     const operationUid = firebaseUserId;
     pendingCartLineKeysRef.current.add(lineKey);
     try {
@@ -618,9 +632,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         inserted = true;
         return next;
       });
-      if (saved && !inserted) { alreadyInBag(); return false; }
+      if (saved && !inserted) { alreadyInCart(); return false; }
       if (saved) {
-        showToast('Added to Shopping Bag', `${product.title}${selectedSize ? ` (${selectedSize})` : ""} is now in your bag.`);
+        showToast('Added to Shopping Cart', `${product.title}${selectedSize ? ` (${selectedSize})` : ""} is now in your cart.`);
         setIsCartDrawerOpen(true);
       }
       return saved;
@@ -630,10 +644,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateCartQuantity = async (cartItemId: string, quantity: number): Promise<boolean> => {
+    if (!Number.isInteger(quantity) || quantity > 25) return false;
     if (!canChangePrivateData(() => shoppingActionsRef.current.updateCartQuantity(cartItemId, quantity))) return false;
     if (quantity <= 0) return removeFromCart(cartItemId);
     const currentCart = normalizeCartItems(cart);
     if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
+    if (quantity > currentCart.find(item => item.cartItemId === cartItemId)!.quantity && catalogStatus !== 'ready') { showToast('Catalog unavailable', 'Retry before increasing quantity.', 'error'); return false; }
     const updated = currentCart.map((item) => item.cartItemId === cartItemId ? { ...item, quantity: Math.max(1, Math.floor(quantity)) } : item);
     const issue = cartCatalogIssue(updated, products);
     const previous = currentCart.find((item) => item.cartItemId === cartItemId)!;
@@ -647,12 +663,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
+  const adjustCartQuantity = async (cartItemId: string, delta: number): Promise<boolean> => {
+    if (!Number.isInteger(delta) || Math.abs(delta) !== 1) return false;
+    if (!canChangePrivateData(() => shoppingActionsRef.current.adjustCartQuantity(cartItemId, delta))) return false;
+    return commitCart(items => {
+      const current = items.find(item => item.cartItemId === cartItemId);
+      if (!current) return items;
+      const quantity = current.quantity + delta;
+      if (quantity < 1) return items; // Removal is always an explicit action.
+      const next = refreshCartProducts(items, products).map(item => item.cartItemId === cartItemId ? { ...item, quantity } : item);
+      const issue = catalogStatus !== 'ready' ? 'The catalog is unavailable. Retry before increasing quantity.' : cartCatalogIssue(next, products);
+      if (delta > 0 && issue) throw new Error(issue);
+      return next;
+    });
+  };
+
   const removeFromCart = async (cartItemId: string): Promise<boolean> => {
     if (!canChangePrivateData(() => shoppingActionsRef.current.removeFromCart(cartItemId))) return false;
     const currentCart = normalizeCartItems(cart);
     if (!currentCart.some((item) => item.cartItemId === cartItemId)) return false;
     const removed = await commitCart((items) => items.filter((item) => item.cartItemId !== cartItemId));
-    if (removed) showToast('Item Removed', 'Product removed from shopping bag.', 'info');
+    if (removed) showToast('Item Removed', 'Product removed from shopping cart.', 'info');
     return removed;
   };
 
@@ -672,17 +703,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!canChangePrivateData(() => shoppingActionsRef.current.toggleWishlist(productId))) return false;
     if (pendingWishlistProductIdsRef.current.has(productId)) return false;
     const product = products.find((item) => item.id === productId);
-    if (!product) {
+    if (!product && !savedWishlistIds.includes(productId)) {
       showToast('Unavailable product', 'This item is no longer available to save.', 'error');
       return false;
     }
-    const currentWishlist = normalizeWishlistProductIds(wishlist);
+    const currentWishlist = normalizeWishlistProductIds(savedWishlistIds);
     const isSaved = currentWishlist.includes(productId);
     const operationUid = firebaseUserId;
     pendingWishlistProductIdsRef.current.add(productId);
     try {
-      const saved = await commitWishlist((ids) => ids.includes(productId) ? ids.filter((id) => id !== productId) : [...ids, productId]);
-      if (saved) showToast(isSaved ? 'Removed from Wishlist' : 'Saved to Wishlist', isSaved ? `${product.title} removed.` : `${product.title} added to your wishlist.`, isSaved ? 'info' : 'success');
+      const saved = await commitWishlist((ids) => isSaved ? ids.filter((id) => id !== productId) : [...ids, productId]);
+      if (saved) showToast(isSaved ? 'Removed from Wishlist' : 'Saved to Wishlist', isSaved ? `${product?.title || 'Saved item'} removed.` : `${product?.title || 'Saved item'} added to your wishlist.`, isSaved ? 'info' : 'success');
       return saved;
     } finally {
       if (activePrivateUidRef.current === operationUid) pendingWishlistProductIdsRef.current.delete(productId);
@@ -703,7 +734,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   ): Promise<boolean> => {
     if (!canChangePrivateData(() => shoppingActionsRef.current.buyNow(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote))) return false;
     const alreadyAdded = cart.some((item) => cartLineKey(item) === cartLineKey({ product, selectedColor, selectedSize, isCustomTailored }));
-    if (alreadyAdded) { setIsCartDrawerOpen(false); navigate('checkout'); return true; }
+    if (alreadyAdded) {
+      if (cartIssue) { showToast('Cart needs attention', cartIssue, 'error'); return false; }
+      setIsCartDrawerOpen(false); navigate('checkout'); return true;
+    }
     const added = await addToCart(product, selectedColor, selectedSize, quantity, isCustomTailored, customMeasurements, giftPackaging, giftNote);
     if (!added) return false;
     setIsCartDrawerOpen(false);
@@ -771,15 +805,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const newOrder = outcome.order;
         setOrders(prev => [preferPaymentOrder(prev.find(order => order.id === newOrder.id), newOrder), ...prev.filter(order => order.id !== newOrder.id)]);
         setLastPlacedOrder(newOrder);
-        if (confirmedPayment(newOrder)) {
-          const cleared = await clearCart();
-          if (cleared) {
-            for (let i = localStorage.length - 1; i >= 0; i--) {
-              const key = localStorage.key(i);
-              if (key?.startsWith(`ab-payment-intent:${uid}:`) && localStorage.getItem(key) === request.intentId) localStorage.removeItem(key);
-            }
-          }
-        }
+        // Automatic purchased-only Cart cleanup is deferred for separate approval.
+        // Never clear the current Cart or forget its stable payment intent here:
+        // a retry of unchanged checkout details must reuse the existing order.
         return outcome;
       } catch (e) {
         return { kind: 'error', order: activePrivateUidRef.current === firebaseUserId ? prepared?.order : undefined,
@@ -937,7 +965,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Review Submitted', 'Thank you. Your review has been received for moderation.');
   };
 
-  shoppingActionsRef.current = { addToCart, buyNow, toggleWishlist, updateCartQuantity, removeFromCart, clearCart };
+  shoppingActionsRef.current = { addToCart, buyNow, toggleWishlist, updateCartQuantity, adjustCartQuantity, removeFromCart, clearCart };
 
   // Navigation router
   const navigate = (view: AppView, productId?: string, trackingOrderId?: string) => {
@@ -983,6 +1011,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cartIssue,
         cart,
         wishlist,
+        wishlistProducts,
+        wishlistStatus,
+        wishlistUnavailableCount,
+        wishlistMissingCount,
         orders,
         coupons,
         customer,
@@ -1011,6 +1043,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addToCart,
         buyNow,
         updateCartQuantity,
+        adjustCartQuantity,
         removeFromCart,
         clearCart,
         toggleWishlist,

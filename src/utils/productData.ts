@@ -174,8 +174,8 @@ export const cartCatalogIssue = (items: CartItem[], products: Product[]): string
   }
   for (const item of items) {
     const product = products.find((candidate) => candidate.id === item.product.id && candidate.isActive !== false);
-    if (!product) return `${item.product.title} is no longer available. Remove it from your bag.`;
-    if (!Number.isInteger(item.quantity) || item.quantity < 1) return 'Please check the quantity in your bag.';
+    if (!product) return `${item.product.title} is no longer available. Remove it from your cart.`;
+    if (!Number.isInteger(item.quantity) || item.quantity < 1) return 'Choose a valid quantity for every item in your cart.';
     if ((product.colors.length ? !product.colors.some((color) => color.colorName === item.selectedColor) : Boolean(item.selectedColor)) ||
         (product.availableSizes.length ? !product.availableSizes.includes(item.selectedSize) : Boolean(item.selectedSize))) {
       return `Options for ${product.title} have changed. Remove it and select the available options again.`;
@@ -188,7 +188,7 @@ export const cartCatalogIssue = (items: CartItem[], products: Product[]): string
     const available = selectedVariantStock(product, item.selectedColor, item.selectedSize);
     if (quantity > available) {
       const option = variantSummary(item);
-      return `${product.title}${option ? ` (${option})` : ''}: ${available > 0 ? `only ${available} available` : 'out of stock'}. Please update your bag.`;
+      return `${product.title}${option ? ` (${option})` : ''}: ${available > 0 ? `only ${available} available` : 'out of stock'}. Please update your cart.`;
     }
   }
   return null;

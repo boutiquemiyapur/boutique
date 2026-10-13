@@ -55,8 +55,10 @@ await build({
           update: (...args) => { globalThis.catalogWrites.push(args); },
           delete: (...args) => { globalThis.catalogWrites.push(args); },
         });
-        export const onSnapshot = (_ref, next, error) => {
-          globalThis.emitCatalog = (docs) => next({ docs }); globalThis.failCatalog = error;
+        export const onSnapshot = (_ref, options, next, error) => {
+          if (typeof options === 'function') { error = next; next = options; }
+          globalThis.catalogListenerOptions = options;
+          globalThis.emitCatalog = (docs, metadata = { fromCache: false }) => next({ docs, metadata }); globalThis.failCatalog = error;
           return () => { globalThis.catalogUnsubscribed = true; };
         };
       `, loader: 'js' }));
@@ -129,6 +131,8 @@ test('unknown product IDs, inactive documents, empty catalog and read errors nev
 test('live repository listener replaces catalog on edits, deletion and failure, and unsubscribes', () => {
   let received; let failure;
   const unsubscribe = api.commerceRepository.subscribeToCatalog((value) => { received = value; }, (error) => { failure = error; });
+  assert.deepEqual(globalThis.catalogListenerOptions, { includeMetadataChanges: true });
+  globalThis.emitCatalog([], { fromCache: true }); assert.equal(received, undefined);
   globalThis.emitCatalog([document(product())]); assert.equal(received[0].fabric, 'Cotton');
   globalThis.emitCatalog([document(product({ fabric: 'Linen', availableSizes: ['M'] }))]); assert.equal(received[0].fabric, 'Linen');
   globalThis.emitCatalog([document(product({ fabric: '', availableSizes: [] }))]); assert.equal(received[0].fabric, '');

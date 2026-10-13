@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ProductImage } from '../common/ProductImage';
-import { Heart, ShoppingBag, Eye, Star, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Heart, ShoppingCart, Eye, Star, ShieldCheck, ArrowRight } from 'lucide-react';
 
 type TabType = 'all' | 'bestsellers' | 'new-arrivals' | 'bridal' | 'handloom';
 
@@ -191,7 +191,7 @@ export const FeaturedGrid: React.FC = () => {
                     </div>}
                   </div>
 
-                  {/* Pricing and Add to Bag */}
+                  {/* Pricing and Add to Cart */}
                   <div className="mt-4 pt-3 border-t border-[#E6D5B8]/60 flex items-center justify-between">
                     <div>
                       <div className="text-sm sm:text-base font-serif font-bold text-[#8B1E3F]">
@@ -209,10 +209,10 @@ export const FeaturedGrid: React.FC = () => {
                       disabled={product.stockCount <= 0}
                       onClick={() => handleAddToBag(product)}
                       className="p-2.5 bg-[#1A1715] hover:bg-[#8B1E3F] text-white rounded-lg transition-colors shadow-xs"
-                      title="Add to Shopping Bag"
-                      aria-label="Add to Bag"
+                      title="Add to Shopping Cart"
+                      aria-label="Add to Cart"
                     >
-                      <ShoppingBag className="w-4 h-4" />
+                      <ShoppingCart className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

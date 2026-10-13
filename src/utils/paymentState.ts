@@ -100,7 +100,7 @@ export function paymentPresentation(order: Order) {
 
 export function checkoutFeedback(outcome: PaymentOutcome) {
   if (outcome.kind === 'error') return { title: 'Payment could not be confirmed', message: outcome.message, type: 'error' as const, navigate: false };
-  if (outcome.kind === 'dismissed') return { title: 'Payment Incomplete', message: 'You closed checkout. Payment is not confirmed and may still arrive later. Your bag is preserved; check the order before paying again.', type: 'info' as const, navigate: false };
+  if (outcome.kind === 'dismissed') return { title: 'Payment Incomplete', message: 'You closed checkout. Payment is not confirmed and may still arrive later. Your cart is preserved; check the order before paying again.', type: 'info' as const, navigate: false };
   const view = paymentPresentation(outcome.order);
   return { title: view.label, message: view.message, type: view.success ? 'success' as const : 'info' as const, navigate: true };
 }

@@ -9,7 +9,7 @@ import { ProductCard } from '../common/ProductCard';
 import { whatsappChatUrl } from '../../utils/whatsapp';
 import {
   Heart,
-  ShoppingBag,
+  ShoppingCart,
   Scissors,
   Truck,
   ShieldCheck,
@@ -498,7 +498,7 @@ export const ProductDetailPage: React.FC = () => {
                   onClick={() => addToCart(product, selectedColor, selectedSize, quantity, isCustomTailoring, measurements)}
                   className="flex-1 bg-[#8B1E3F] hover:bg-[#721C24] text-white text-xs sm:text-sm font-semibold uppercase tracking-widest py-4 px-6 rounded-xl flex items-center justify-center gap-2 shadow-xl hover:shadow-2xl transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ShoppingBag className="w-4 h-4" /> {isSoldOut ? 'Sold Out' : 'Add to Shopping Bag'}
+                  <ShoppingCart className="w-4 h-4" /> {isSoldOut ? 'Sold Out' : 'Add to Shopping Cart'}
                 </button>
 
                 <button

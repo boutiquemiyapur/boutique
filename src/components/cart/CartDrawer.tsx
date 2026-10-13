@@ -1,11 +1,13 @@
+import { cartPurchaseIssue as cartCatalogIssue } from '../../utils/shoppingState';
+import { CartRetentionNotice, ShoppingConnectionNotice } from '../common/ShoppingConnectionNotice';
 import { PrivateLoading } from '../common/Skeleton';
 import { ProductImage } from '../common/ProductImage';
-import { variantSummary, productImages } from '../../utils/productData';
+import { selectedVariantStock, variantSummary, productImages } from '../../utils/productData';
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import {
   X,
-  ShoppingBag,
+  ShoppingCart,
   Plus,
   Minus,
   Trash2,
@@ -26,7 +28,9 @@ export const CartDrawer: React.FC = () => {
     isCustomerDataReady,
     privateDataError,
     cartIssue,
-    updateCartQuantity,
+    products,
+    catalogStatus,
+    adjustCartQuantity,
     removeFromCart,
     formatPrice,
     cartSubtotalINR,
@@ -73,16 +77,16 @@ export const CartDrawer: React.FC = () => {
         {/* Header */}
         <div className="p-5 border-b border-[#E6D5B8] flex items-center justify-between bg-white">
           <div className="flex items-center gap-2">
-            <ShoppingBag className="w-5 h-5 text-[#8B1E3F]" />
+            <ShoppingCart className="w-5 h-5 text-[#8B1E3F]" />
             <h2 className="text-lg font-serif font-bold text-[#1A1715]">
-              Your Shopping Bag ({cart.reduce((total, item) => total + item.quantity, 0)})
+              Your Shopping Cart ({cart.reduce((total, item) => total + item.quantity, 0)})
             </h2>
           </div>
           <button
             id="close-cart-drawer-btn"
             onClick={() => setIsCartDrawerOpen(false)}
             className="p-1 text-stone-500 hover:text-black rounded-full hover:bg-stone-100"
-            aria-label="Close Bag"
+            aria-label="Close Cart"
           >
             <X className="w-5 h-5" />
           </button>
@@ -90,10 +94,11 @@ export const CartDrawer: React.FC = () => {
 
         {/* Line Items List */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
+          <ShoppingConnectionNotice />
           {!isCustomerDataReady ? <PrivateLoading variant="cart" error={privateDataError} /> : cart.length === 0 ? (
             <div className="text-center py-16">
-              <ShoppingBag className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-              <h3 className="text-base font-serif font-semibold text-stone-700">Your Bag is Empty</h3>
+              <ShoppingCart className="w-12 h-12 text-stone-300 mx-auto mb-3" />
+              <h3 className="text-base font-serif font-semibold text-stone-700">Your Cart is Empty</h3>
               <p className="text-xs text-stone-500 mt-1 max-w-xs mx-auto">
                 Explore the current collection.
               </p>
@@ -151,6 +156,8 @@ export const CartDrawer: React.FC = () => {
                       {variantSummary(item)}
                     </div>
 
+                    <p className="mt-1 text-xs text-stone-500">{catalogStatus !== 'ready' ? 'Checking stock...' : cartCatalogIssue([item], products) || `In stock: ${selectedVariantStock(item.product, item.selectedColor, item.selectedSize)} available`}</p>
+                    {item.product.originalPriceINR != null && item.product.originalPriceINR > item.product.priceINR && <p className="mt-1 text-xs text-stone-500 line-through">MRP {formatPrice(item.product.originalPriceINR)} each</p>}
                     {item.isCustomTailored && (
                       <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-[#8B1E3F] bg-[#8B1E3F]/10 px-2 py-0.5 rounded-sm">
                         <Scissors className="w-2.5 h-2.5" /> Custom Made-to-Measure (+{formatPrice(item.tailoringFeeINR)})
@@ -162,7 +169,7 @@ export const CartDrawer: React.FC = () => {
                     <div className="flex items-center border border-[#E6D5B8] rounded-md bg-[#FAF7F2]">
                       <button
                         id={`cart-minus-qty-${item.cartItemId}`}
-                        onClick={() => updateCartQuantity(item.cartItemId, item.quantity - 1)}
+                        disabled={item.quantity <= 1} onClick={() => adjustCartQuantity(item.cartItemId, -1)}
                         className="p-1 text-stone-600 hover:text-black"
                         aria-label="Decrease quantity"
                       >
@@ -173,7 +180,7 @@ export const CartDrawer: React.FC = () => {
                       </span>
                       <button
                         id={`cart-plus-qty-${item.cartItemId}`}
-                        onClick={() => updateCartQuantity(item.cartItemId, item.quantity + 1)}
+                        disabled={item.quantity >= 25 || Boolean(cartIssue)} onClick={() => adjustCartQuantity(item.cartItemId, 1)}
                         className="p-1 text-stone-600 hover:text-black"
                         aria-label="Increase quantity"
                       >
@@ -198,9 +205,11 @@ export const CartDrawer: React.FC = () => {
 
         {cart.length > 0 && cartIssue && <p role="alert" className="px-4 py-3 text-xs text-red-700">{cartIssue}</p>}
 
+        {cart.length > 0 && <button className="px-5 py-3 text-sm underline" onClick={() => { setIsCartDrawerOpen(false); navigate('cart'); }}>View Cart</button>}
         {/* Footer & Checkout Area */}
         {cart.length > 0 && (
           <div className="p-5 border-t border-[#E6D5B8] bg-white space-y-3 shadow-lg">
+            <CartRetentionNotice />
             {/* Promo Code Input */}
             <form onSubmit={handleApplyCoupon} className="flex gap-2">
               <div className="relative flex-1">
@@ -256,7 +265,7 @@ export const CartDrawer: React.FC = () => {
               )}
               {cartCharges.map((charge) => <div key={charge.id} className="flex justify-between"><span>{charge.name}</span><span>{formatPrice(charge.amountINR)}</span></div>)}
               <div className="flex justify-between text-sm font-serif font-bold text-[#8B1E3F] pt-2 border-t border-stone-200">
-                <span>Grand Total</span>
+                <span>Selections Total</span>
                 <span>{formatPrice(cartTotalINR)}</span>
               </div>
             </div>

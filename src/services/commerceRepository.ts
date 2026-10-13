@@ -14,16 +14,12 @@ export interface CustomerDataSnapshot {
   legacyOrders?: Order[];
 }
 
-export const cartLineKey = (item: Pick<CartItem, 'product' | 'selectedColor' | 'selectedSize' | 'isCustomTailored'>) => JSON.stringify([
-  item.product.id || item.product.sku,
-  (item.selectedColor || '').trim().toLowerCase(),
-  (item.selectedSize || '').trim().toLowerCase(),
-  item.isCustomTailored ? 'tailored' : 'ready'
-]);
+export { cartLineKey } from '../utils/shoppingState';
+import { cartLineKey } from '../utils/shoppingState';
 
 export const normalizeCartItems = (items: CartItem[]) => {
   const normalized = new Map<string, CartItem>();
-  for (const item of items) {
+  for (const item of Array.isArray(items) ? items : []) {
     if (!item?.product?.id) continue;
     const quantity = Number.isFinite(item.quantity) && item.quantity > 0 ? Math.floor(item.quantity) : 1;
     const key = cartLineKey(item);
@@ -33,7 +29,7 @@ export const normalizeCartItems = (items: CartItem[]) => {
   return [...normalized.values()];
 };
 
-export const normalizeWishlistProductIds = (productIds: string[]) => [...new Set(productIds.filter((productId): productId is string => typeof productId === 'string' && productId.trim().length > 0))];
+export const normalizeWishlistProductIds = (productIds: unknown): string[] => Array.isArray(productIds) ? [...new Set(productIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map(id => id.trim()))] : [];
 
 const privateDoc = (name: 'carts' | 'wishlists' | 'users', uid: string) => doc(firestore!, name, uid);
 const toFirestore = <T extends object>(data: T) => ({ ...data, updatedAt: serverTimestamp() });
@@ -64,16 +60,16 @@ const mergeOrders = (...groups: Order[][]) => newestFirst(
 export const commerceRepository = {
   subscribeToShopping(uid: string, onCart: (items: CartItem[]) => void, onWishlist: (ids: string[]) => void, onError: (error: Error) => void) {
     if (!firestore) { onError(new Error('Shopping service is not configured.')); return () => undefined; }
-    const cartOff = onSnapshot(privateDoc('carts', uid), (snapshot) => {
-      if (!snapshot.metadata.hasPendingWrites) onCart(normalizeCartItems(snapshot.data()?.items || []));
+    const cartOff = onSnapshot(privateDoc('carts', uid), { includeMetadataChanges: true }, (snapshot) => {
+      if (!snapshot.metadata.hasPendingWrites && !snapshot.metadata.fromCache) onCart(normalizeCartItems(snapshot.data()?.items || []));
     }, onError);
-    const wishlistOff = onSnapshot(privateDoc('wishlists', uid), (snapshot) => {
-      if (!snapshot.metadata.hasPendingWrites) onWishlist(normalizeWishlistProductIds(snapshot.data()?.productIds || []));
+    const wishlistOff = onSnapshot(privateDoc('wishlists', uid), { includeMetadataChanges: true }, (snapshot) => {
+      if (!snapshot.metadata.hasPendingWrites && !snapshot.metadata.fromCache) onWishlist(normalizeWishlistProductIds(snapshot.data()?.productIds || []));
     }, onError);
     return () => { cartOff(); wishlistOff(); };
   },
   async mutateCart(uid: string, change: (items: CartItem[]) => CartItem[]) {
-    if (!firestore) throw new Error('Shopping bag service is not configured.');
+    if (!firestore) throw new Error('Shopping cart service is not configured.');
     return runTransaction(firestore, async (transaction) => {
       const ref = privateDoc('carts', uid);
       const snapshot = await transaction.get(ref);
@@ -98,9 +94,11 @@ export const commerceRepository = {
     return snapshot.docs.map((item) => productFromDocument(item.id, item.data()))
       .filter((item): item is Product => Boolean(item && item.isActive !== false));
   },
-  subscribeToCatalog(onProducts: (products: Product[]) => void, onError: (error: Error) => void) {
+  subscribeToCatalog(onProducts: (products: Product[]) => void, onError: (error: Error) => void, onReferences?: (ids: string[]) => void) {
     if (!firestore) { onError(new Error('Catalog service is not configured.')); return () => undefined; }
-    return onSnapshot(collection(firestore, 'products'), (snapshot) => {
+    return onSnapshot(collection(firestore, 'products'), { includeMetadataChanges: true }, (snapshot) => {
+      if (snapshot.metadata?.fromCache) return;
+      onReferences?.(snapshot.docs.map(item => item.id));
       onProducts(snapshot.docs.map((item) => productFromDocument(item.id, item.data()))
         .filter((item): item is Product => Boolean(item && item.isActive !== false)));
     }, onError);
@@ -173,7 +171,7 @@ export const commerceRepository = {
   async saveCart(uid: string, items: CartItem[]) {
     const normalizedItems = normalizeCartItems(items);
     const firestoreItems = normalizeForFirestore(normalizedItems) as CartItem[];
-    if (!firestore) throw new Error('Shopping bag service is not configured for this deployment.');
+    if (!firestore) throw new Error('Shopping cart service is not configured for this deployment.');
     await setDoc(privateDoc('carts', uid), toFirestore({ ownerId: uid, items: firestoreItems }), { merge: true });
   },
   async saveWishlist(uid: string, productIds: string[]) {

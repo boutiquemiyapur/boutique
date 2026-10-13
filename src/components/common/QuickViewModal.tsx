@@ -4,7 +4,7 @@ import { ProductOptions } from './ProductOptions';
 import { ProductImage } from './ProductImage';
 import { isVariantAvailable, productImages, stockMessage } from '../../utils/productData';
 import { SizeOption } from '../../types';
-import { X, Heart, ShoppingBag, Star, ShieldCheck, Scissors } from 'lucide-react';
+import { X, Heart, ShoppingCart, Star, ShieldCheck, Scissors } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
@@ -186,7 +186,7 @@ export const QuickViewModal: React.FC = () => {
               }}
               className="flex-1 bg-[#8B1E3F] hover:bg-[#721C24] text-white font-semibold text-xs uppercase tracking-wider py-3.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <ShoppingBag className="w-4 h-4" /> Add to Shopping Bag
+              <ShoppingCart className="w-4 h-4" /> Add to Shopping Cart
             </button>
             <button
               id="quickview-wishlist-toggle"

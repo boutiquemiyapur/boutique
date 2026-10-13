@@ -196,3 +196,20 @@ test('concurrent duplicate events and delayed capture after failure consume once
 test('raw-body stalled streams time out and remove listeners instead of hanging verification',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});const req=new PassThrough();const work=rawBody(req as any);const rejected=assert.rejects(work,/RAW_BODY_REQUIRED/);t.mock.timers.tick(15000);await rejected;assert.equal(req.listenerCount('data'),0);t.mock.timers.reset();
 });
+
+test('unchanged payment processing preserves Cart for capture, replay and older checkout requests', async () => {
+  const f = fixture();
+  const cart = { ownerId: 'uid', items: [{ cartItemId: 'later-selection', quantity: 3, product: { id: 'dress' } }] };
+  f.docs.set('carts/uid', structuredClone(cart));
+  const r = await f.service.create('uid', f.request);
+  assert.deepEqual(f.docs.get('carts/uid'), cart);
+  const checkout = f.docs.get(`checkoutRequests/${r.order.id}`);
+  assert.equal(checkout.cartLines, undefined); // Existing request schema is retained.
+  await f.service.syncPayment(r.order.id, 'pay_test1', { id: 'preserve-cart', hash: 'original' });
+  assert.deepEqual(f.docs.get('carts/uid'), cart);
+  cart.items[0].quantity = 5;
+  f.docs.set('carts/uid', structuredClone(cart));
+  await f.service.syncPayment(r.order.id, 'pay_test1', { id: 'preserve-cart', hash: 'original' });
+  await f.service.syncPayment(r.order.id, 'pay_test1');
+  assert.deepEqual(f.docs.get('carts/uid'), cart);
+});

@@ -9,35 +9,49 @@ import { pathToFileURL } from 'node:url';
 const outfile=resolve('node_modules/.cache/shopping-ux-tests.mjs');
 await build({stdin:{resolveDir:process.cwd(),contents:`
 export {StoreProvider} from './src/context/StoreContext';
+export {CheckoutPage} from './src/components/checkout/CheckoutPage';
 export {commerceRepository,cartLineKey,normalizeCartItems} from './src/services/commerceRepository';
+export {addCartSelections,cartPurchaseIssue as cartCatalogIssue} from './src/utils/shoppingState';
 export {ProductImage} from './src/components/common/ProductImage';
 export {positionNavigation,useNavigationScroll} from './src/hooks/useNavigationScroll';
 import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server';
 import {HomeSkeleton,ProductGridSkeleton,PrivateLoading} from './src/components/common/Skeleton';
 import {Header} from './src/components/layout/Header';
 export const header=()=>renderToStaticMarkup(React.createElement(Header));
+import {WishlistPage} from './src/components/common/WishlistPage';
+export const wishlistPage=()=>renderToStaticMarkup(React.createElement(WishlistPage));
+import {WishlistDrawer} from './src/components/common/WishlistDrawer';
+export const wishlistDrawer=()=>renderToStaticMarkup(React.createElement(WishlistDrawer));
+import {CartPage} from './src/components/cart/CartPage';
+export const cartPage=()=>renderToStaticMarkup(React.createElement(CartPage));
+import {CartRetentionNotice} from './src/components/common/ShoppingConnectionNotice';
+export const retentionNotice=()=>renderToStaticMarkup(React.createElement(CartRetentionNotice));
+import {CartDrawer} from './src/components/cart/CartDrawer';
+export const cartDrawer=()=>renderToStaticMarkup(React.createElement(CartDrawer));
 import {StorefrontHomePage} from './src/components/home/StorefrontHomePage';
 export const skeleton=()=>renderToStaticMarkup(React.createElement(HomeSkeleton));
 export const privateError=()=>renderToStaticMarkup(React.createElement(PrivateLoading,{error:true}));
 export const home=()=>renderToStaticMarkup(React.createElement(StorefrontHomePage));
 `},outfile,bundle:true,format:'esm',platform:'node',packages:'external',plugins:[{name:'shopping-boundaries',setup(b){
-b.onResolve({filter:/^react$/},args=> /StoreContext|ProductImage|useNavigationScroll/.test(args.importer)?{path:'hooks',namespace:'fixture'}:undefined);
-b.onResolve({filter:/context\/StoreContext$/},args=> /StorefrontHomePage|FeaturedGrid|HeroBanner|CustomTailoringBanner|Header/.test(args.importer)?{path:'context',namespace:'fixture'}:undefined);
+b.onResolve({filter:/^motion\/react$/},args=> /WishlistDrawer|CartDrawer/.test(args.importer)?{path:'motion',namespace:'fixture'}:undefined);
+b.onResolve({filter:/^react$/},args=> /StoreContext|ProductImage|useNavigationScroll|CheckoutPage/.test(args.importer)?{path:'hooks',namespace:'fixture'}:undefined);
+b.onResolve({filter:/context\/StoreContext$/},args=> /StorefrontHomePage|FeaturedGrid|HeroBanner|CustomTailoringBanner|Header|WishlistPage|WishlistDrawer|WishlistReferenceNotice|ProductCard|CartDrawer|CartPage|CheckoutPage/.test(args.importer)?{path:'context',namespace:'fixture'}:undefined);
 b.onResolve({filter:/firebase\/auth$/},()=>({path:'auth',namespace:'fixture'}));
 b.onResolve({filter:/firebase\/config$/},()=>({path:'config',namespace:'fixture'}));
 b.onResolve({filter:/services\/paymentClient$/},()=>({path:'payments',namespace:'fixture'}));
 b.onResolve({filter:/services\/cmsRepository$/},()=>({path:'cms',namespace:'fixture'}));
 b.onResolve({filter:/^firebase\/firestore$/},()=>({path:'db',namespace:'fixture'}));
 b.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({resolveDir:process.cwd(),contents:({
+motion:`import React from 'react'; export const motion={div:({initial,animate,exit,transition,...props})=>React.createElement('div',props)}; export const AnimatePresence=({children})=>children;`,
 hooks:`export const createContext=()=>({Provider:'provider'}); export const useState=(v)=>globalThis.hooks.state(v); export const useRef=(v)=>globalThis.hooks.ref(v); export const useEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useLayoutEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useMemo=(f)=>{globalThis.hooks.index++;return f()}; export const useContext=()=>{}; export default {createContext,useState,useRef,useEffect,useMemo,useContext};`,
 context:`export const useStore=()=>globalThis.viewStore;`,
 auth:`export const startAuthSession=(fn)=>{globalThis.authCallback=fn;return ()=>{}}; export const logoutFirebaseUser=async()=>{globalThis.authCallback(null)}; export const authErrorMessage=(e)=>e.message; export const signInWithEmail=async()=>{}; export const registerWithEmail=async()=>{}; export const requestPasswordReset=async()=>{};`,
-payments:`export {confirmedPayment} from './src/utils/paymentState'; export const stableCheckout=(uid,r)=>globalThis.paymentMock.stableCheckout(uid,r); export const checkoutBusinessRequest=(...args)=>globalThis.paymentMock.checkoutBusinessRequest(...args); export const paymentApi=(...args)=>globalThis.paymentMock.paymentApi(...args); export const openPayment=(...args)=>globalThis.paymentMock.openPayment(...args);`,
+payments:`export const retryOrder=()=>{throw Error("Unexpected payment retry in shopping fixture")}; export const paymentStageText={}; export {confirmedPayment} from './src/utils/paymentState'; export const stableCheckout=(uid,r)=>globalThis.paymentMock.stableCheckout(uid,r); export const checkoutBusinessRequest=(...args)=>globalThis.paymentMock.checkoutBusinessRequest(...args); export const paymentApi=(...args)=>globalThis.paymentMock.paymentApi(...args); export const openPayment=(...args)=>globalThis.paymentMock.openPayment(...args);`,
 config:`export const firestore={}; export const firebaseAuth={currentUser:null};`,
 cms:`export const DEFAULT_CMS={checkoutCharges:[],lowStockThreshold:3,banners:[],content:{},contact:{}}; export const cmsRepository={loadPublicCms:async()=>DEFAULT_CMS,subscribeToStoreSettings:()=>()=>{},subscribeToCategories:()=>()=>{},};`,
 db:`export const doc=(_, ...parts)=>({path:parts.join('/')}); export const collection=doc; export const collectionGroup=doc; export const query=(ref)=>ref; export const where=()=>{}; export const serverTimestamp=()=>null;
 export const getDoc=async(ref)=>globalThis.database.snapshot(ref.path); export const getDocs=async()=>({docs:[]});
-export const onSnapshot=(ref,fn,error)=>globalThis.database.listen(ref.path,fn,error);
+export const onSnapshot=(ref,options,fn,error)=>typeof options==='function'?globalThis.database.listen(ref.path,options,fn):globalThis.database.listen(ref.path,fn,error);
 export const runTransaction=(_,fn)=>globalThis.database.transaction(fn);
 export const setDoc=async(ref,data)=>globalThis.database.put(ref.path,data);
 export const deleteDoc=()=>{}; export const updateDoc=()=>{};`
@@ -49,7 +63,7 @@ function initialize(){
  const slots=[]; const cleanups=[]; let effects=[];
  globalThis.hooks={index:0,state(initial){const i=this.index++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return [slots[i],v=>{slots[i]=typeof v==='function'?v(slots[i]):v}];},ref(initial){const i=this.index++;return slots[i]??=( {current:initial});},effect(fn,deps){const i=this.index++;const prior=slots[i];if(!prior||!deps||deps.some((v,n)=>v!==prior[n])){slots[i]=deps;effects.push(()=>{cleanups[i]?.();cleanups[i]=fn();});}}};
  const records=new Map(); const listeners=new Map(); let tail=Promise.resolve();
- globalThis.database={records,listeners,fail:false,snapshot(path){return {data:()=>records.get(path),exists:()=>records.has(path),metadata:{hasPendingWrites:false},docs:path==='products'?[{id:'a',data:()=>({data:product('a')})},{id:'b',data:()=>({data:product('b')})}]:[]};},listen(path,fn,error){const entry={fn,error};const entries=listeners.get(path)||new Set();entries.add(entry);listeners.set(path,entries);queueMicrotask(()=>{if(entries.has(entry))fn(this.snapshot(path))});return ()=>entries.delete(entry);},put(path,data){if(this.fail)throw Error('fixture denied');records.set(path,{...records.get(path),...data});for(const entry of listeners.get(path)||[])entry.fn(this.snapshot(path));},transaction(fn){const execute=async()=>{if(this.fail)throw Error('fixture denied');const staged=[];const result=await fn({get:async ref=>this.snapshot(ref.path),set:(ref,data)=>staged.push([ref.path,data])});for(const [path,data] of staged)this.put(path,data);return result;};const pending=tail.then(execute);tail=pending.catch(()=>{});return pending;}};
+ globalThis.database={records,listeners,fail:false,snapshot(path){return {data:()=>records.get(path),exists:()=>records.has(path),metadata:{hasPendingWrites:false},docs:path==='products'?(this.catalogDocs||[{id:'a',data:()=>({data:product('a')})},{id:'b',data:()=>({data:product('b')})}]):[]};},listen(path,fn,error){const entry={fn,error};const entries=listeners.get(path)||new Set();entries.add(entry);listeners.set(path,entries);queueMicrotask(()=>{if(entries.has(entry)&&!(path==='products'&&this.holdCatalog))fn(this.snapshot(path))});return ()=>entries.delete(entry);},put(path,data){if(this.fail)throw Error('fixture denied');records.set(path,{...records.get(path),...data});for(const entry of listeners.get(path)||[])entry.fn(this.snapshot(path));},transaction(fn){const execute=async()=>{if(this.fail)throw Error('fixture denied');const staged=[];const result=await fn({get:async ref=>this.snapshot(ref.path),set:(ref,data)=>staged.push([ref.path,data])});for(const [path,data] of staged)this.put(path,data);return result;};const pending=tail.then(execute);tail=pending.catch(()=>{});return pending;}};
  globalThis.window={location:{pathname:'/'},history:{pushState(){},replaceState(){}},scrollTo(){}};
  globalThis.document={documentElement:{style:{}},querySelector:()=>null};
  let store;
@@ -103,10 +117,10 @@ test('home loading, ready-empty and error are distinct; skeletons respect reduce
  viewStore.catalogStatus='ready';viewStore.cms={banners:[],content:{},contact:{}};assert.match(api.home(),/No products are available/);assert.doesNotMatch(api.home(),/Loading the boutique/);
 });
 
-test('desktop and mobile header badges derive total quantity and unique saved products',()=>{
- globalThis.viewStore={authStatus:'authenticated',cart:[line('a',2),line('b',1)],wishlist:['a','a','b'],products:[],categories:[],navigate(){},setFilters(){},requireAuth(){}};
- const html=api.header();assert.equal((html.match(/Shopping bag, 3 items/g)||[]).length,2);assert.equal((html.match(/Wishlist, 2 saved products/g)||[]).length,2);
- viewStore.authStatus='unauthenticated';viewStore.cart=[];viewStore.wishlist=[];const guest=api.header();assert.match(guest,/Shopping bag, 0 items/);assert.doesNotMatch(guest,/bg-\[#17335c\]/);
+test('desktop and mobile header badges derive total quantity and authoritative saved products',()=>{
+ globalThis.viewStore={authStatus:'authenticated',cart:[line('a',2),line('b',1)],wishlist:['a','b'],products:[],categories:[],navigate(){},setFilters(){},requireAuth(){}};
+ const html=api.header();assert.equal((html.match(/Shopping cart, 3 items/g)||[]).length,2);assert.equal((html.match(/Wishlist, 2 saved products/g)||[]).length,2);
+ viewStore.authStatus='unauthenticated';viewStore.cart=[];viewStore.wishlist=[];const guest=api.header();assert.match(guest,/Shopping cart, 0 items/);assert.doesNotMatch(guest,/bg-\[#17335c\]/);
 });
 
 test('guest heart and Buy Now each open login independently; heart resumes once',async()=>{
@@ -118,7 +132,7 @@ test('direct Account A to B switch clears UI before B hydration and rejects stal
  authCallback({uid:'B',email:'B@example.com',isAdmin:false});s=h.render();assert.equal(s.isCustomerDataReady,false);assert.deepEqual(s.cart,[]);assert.deepEqual(s.wishlist,[]);assert.equal(await stale.addToCart(product('b'),'',''),false);s=await h.flush();assert.equal(s.authSession.uid,'B');assert.deepEqual(s.cart,[]);assert.deepEqual(s.wishlist,[]);h.cleanup();
 });
 test('pending local Firestore snapshots do not expose an unconfirmed wishlist count',async()=>{
- const h=initialize();let s=await h.session('A');const listener=[...database.listeners.get('wishlists/A')][0].fn;listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:true}});s=h.render();assert.deepEqual(s.wishlist,[]);h.cleanup();
+ const h=initialize();let s=await h.session('A');const listener=[...database.listeners.get('wishlists/A')][0].fn;listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:true}});s=h.render();assert.deepEqual(s.wishlist,[]);listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:false,fromCache:true}});s=h.render();assert.deepEqual(s.wishlist,[]);listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:false,fromCache:false}});s=await h.flush();assert.deepEqual(s.wishlist,['a']);h.cleanup();
 });
 
 const pendingPayment={id:'pay-integration',orderNumber:'AB-INTEGRATION',createdAt:new Date().toISOString(),shippingAddress:{fullName:'Fixture'},items:[],charges:[],timeline:[],paymentMethod:'razorpay',paymentProvider:'razorpay',paymentStatus:'PAYMENT_PENDING',totalINR:100};
@@ -132,9 +146,9 @@ test('real store dismissal preserves cart and newer delayed webhook capture with
 test('real store receives webhook confirmation after dismissal and does not clear the preserved bag',async()=>{
  const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();paymentFixture(async()=>({kind:'dismissed',order:pendingPayment}));await s.createOrder({},'standard','razorpay');s=await h.flush();assert.equal(s.currentOrder.paymentStatus,'PAYMENT_PENDING');emitPayment(capturedPayment);s=await h.flush();assert.equal(s.currentOrder.paymentStatus,'PAID');assert.equal(s.cart.length,1);h.cleanup();
 });
-test('real store clears cart only for captured server evidence; pending/error preserve it',async()=>{
+test('real store never clears cart in the browser, including confirmed server evidence',async()=>{
  for(const outcome of [{kind:'pending',order:pendingPayment},{kind:'error',order:pendingPayment,message:'failed'},{kind:'confirmed',order:capturedPayment}]){
- const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();paymentFixture(async()=>outcome);const result=await s.createOrder({},'standard','razorpay');assert.equal(result.kind,outcome.kind);s=await h.flush();assert.equal(s.cart.length,outcome.kind==='confirmed'?0:1);h.cleanup();}
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();paymentFixture(async()=>outcome);const result=await s.createOrder({},'standard','razorpay');assert.equal(result.kind,outcome.kind);s=await h.flush();assert.equal(s.cart.length,1);h.cleanup();}
 });
 
 test('profile save waits for persistence, reports no false success on failure, and ignores a stale account completion',async()=>{
@@ -149,27 +163,107 @@ test('profile save waits for persistence, reports no false success on failure, a
 });
 
 
-test('same-variant rapid additions do not increment; variants, quantity controls and View Bag stay distinct',async()=>{
+test('same-variant rapid additions do not increment; variants, quantity controls and View Cart stay distinct',async()=>{
  const h=initialize();let s=await h.session('A');
  const p={...product('a'),colors:['Red','Blue'],availableSizes:['XS','S']};
  database.put('products',{}); database.snapshot=((original)=>path=>path==='products'?{docs:[{id:'a',data:()=>({data:p})}]}:original(path))(database.snapshot.bind(database));
  for(const listener of database.listeners.get('products')||[]) listener.fn(database.snapshot('products'));s=await h.flush();
  const results=await Promise.all([s.addToCart(p,'Red','XS'),s.addToCart(p,'Red','XS'),s.addToCart(p,'Red','XS')]);
  assert.equal(results.filter(Boolean).length,1);s=await h.flush();assert.equal(s.cart.length,1);assert.equal(s.cart[0].quantity,1);
- assert.equal(await s.addToCart(p,'Red','XS'),false);s=h.render();const toast=s.toasts.find(t=>t.title==='Already in Bag');assert.ok(toast);assert.equal(toast.message,'This item is already in your shopping bag.');toast.action.onClick();assert.equal(h.render().isCartDrawerOpen,true);
+ assert.equal(await s.addToCart(p,'Red','XS'),false);s=h.render();const toast=s.toasts.find(t=>t.title==='Already in Cart');assert.ok(toast);assert.equal(toast.message,'This item is already in your shopping cart.');toast.action.onClick();assert.equal(h.render().isCartDrawerOpen,true);
  await s.addToCart(p,'Red','S');await s.addToCart(p,'Blue','XS');s=await h.flush();assert.equal(s.cart.length,3);
  await s.updateCartQuantity(s.cart.find(i=>i.selectedSize==='S').cartItemId,2);s=await h.flush();assert.equal(s.cart.find(i=>i.selectedSize==='S').quantity,2);
  assert.equal(await s.updateCartQuantity(s.cart[0].cartItemId,100),false);s=await h.flush();assert.equal(s.cart.reduce((n,i)=>n+i.quantity,0),4);h.cleanup();
 });
 
-test('stale tab adding an already committed line reports Already in Bag and preserves quantity',async()=>{
+test('stale tab adding an already committed line reports Already in Cart and preserves quantity',async()=>{
  const h=initialize();let s=await h.session('A');
  database.records.set('carts/A',{items:[line('a',3)]}); // Another tab committed before this tab listener delivered.
- assert.equal(await s.addToCart(product('a'),'',''),false);s=await h.flush();assert.equal(s.cart[0].quantity,3);assert.ok(s.toasts.some(t=>t.title==='Already in Bag'));assert.ok(!s.toasts.some(t=>t.title==='Added to Shopping Bag'));h.cleanup();
+ assert.equal(await s.addToCart(product('a'),'',''),false);s=await h.flush();assert.equal(s.cart[0].quantity,3);assert.ok(s.toasts.some(t=>t.title==='Already in Cart'));assert.ok(!s.toasts.some(t=>t.title==='Added to Shopping Cart'));h.cleanup();
 });
 
 test('canonical cart identity avoids delimiter collisions and normalization retains distinct variants',()=>{
  const a={...line('a'),selectedColor:'x::y',selectedSize:'z'};const b={...line('a'),selectedColor:'x',selectedSize:'y::z'};
  assert.notEqual(api.cartLineKey(a),api.cartLineKey(b));assert.equal(api.normalizeCartItems([a,b]).length,2);
  assert.equal(api.normalizeCartItems([a,{...a,cartItemId:'legacy',quantity:2}])[0].quantity,3);
+});
+
+test('wishlist header, drawer and page count only resolved products; hidden and missing IDs survive refresh',async()=>{
+ let h=initialize();database.records.set('wishlists/A',{productIds:['a',' a ','a','hidden','archived','missing',null]});
+ database.catalogDocs=[{id:'a',data:()=>({data:{...product('a'),stockCount:0}})},{id:'hidden',data:()=>({status:'inactive',data:product('hidden')})},{id:'archived',data:()=>({status:'archived',data:product('archived')})}];
+ let s=await h.session('A');assert.deepEqual(s.wishlist,['a']);assert.equal(s.wishlistProducts.length,1);assert.equal(s.wishlistUnavailableCount,2);assert.equal(s.wishlistMissingCount,1);
+ globalThis.viewStore={...s,isWishlistDrawerOpen:true};assert.match(api.header(),/Wishlist, 1 saved products/);assert.match(api.wishlistPage(),/1 piece saved/);const drawer=api.wishlistDrawer();assert.match(drawer,/Saved Wishlist \(1\)/);assert.match(drawer,/Out of stock/);assert.doesNotMatch(drawer,/Your Wishlist is Empty/);
+ const saved=structuredClone(database.records.get('wishlists/A'));h.cleanup();h=initialize();database.records.set('wishlists/A',saved);s=await h.session('A');assert.deepEqual(s.wishlist,['a']);assert.deepEqual(database.records.get('wishlists/A'),saved);h.cleanup();
+});
+
+test('private wishlist arriving before catalog shows loading, then resolves; catalog failure shows retry',async()=>{
+ const h=initialize();database.holdCatalog=true;database.records.set('wishlists/A',{productIds:['a','missing']});let s=await h.session('A');
+ assert.equal(s.wishlistStatus,'loading');assert.deepEqual(s.wishlist,[]);globalThis.viewStore={...s,isWishlistDrawerOpen:true};assert.match(api.wishlistDrawer(),/Loading your wishlist/);assert.doesNotMatch(api.wishlistDrawer(),/Your Wishlist is Empty/);
+ const listener=[...database.listeners.get('products')][0];listener.fn(database.snapshot('products'));s=await h.flush();assert.deepEqual(s.wishlist,['a']);
+ listener.error(Error('catalog disconnected'));s=h.render();assert.equal(s.wishlistStatus,'error');globalThis.viewStore={...s,isWishlistDrawerOpen:true};assert.match(api.wishlistPage(),/Retry/);assert.match(api.wishlistDrawer(),/Retry/);assert.doesNotMatch(api.wishlistDrawer(),/Your Wishlist is Empty/);h.cleanup();
+});
+
+test('rapid quantity clicks use transaction quantities; purchase limits, failures and stock are enforced',async()=>{
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();const id=s.cart[0].cartItemId;
+ await Promise.all([s.adjustCartQuantity(id,1),s.adjustCartQuantity(id,1),s.adjustCartQuantity(id,1)]);s=await h.flush();assert.equal(s.cart[0].quantity,4);
+ await s.updateCartQuantity(id,25);s=await h.flush();assert.equal(await s.adjustCartQuantity(id,1),false);assert.equal(await s.updateCartQuantity(id,NaN),false);s=await h.flush();assert.equal(s.cart[0].quantity,25);
+ database.fail=true;assert.equal(await s.adjustCartQuantity(id,-1),false);s=await h.flush();assert.equal(s.cart[0].quantity,25);database.fail=false;
+ await s.updateCartQuantity(id,1);s=await h.flush();await s.adjustCartQuantity(id,-1);s=await h.flush();assert.equal(s.cart[0].quantity,1);
+ database.catalogDocs=[{id:'a',data:()=>({data:{...product('a'),stockCount:1}})}];for(const listener of database.listeners.get('products'))listener.fn(database.snapshot('products'));s=await h.flush();assert.equal(await s.adjustCartQuantity(id,1),false);h.cleanup();
+});
+
+test('all unresolved wishlist references display zero; reactivation and account switch restore only the owning list',async()=>{
+ const h=initialize();database.records.set('wishlists/A',{productIds:['hidden','missing']});database.records.set('wishlists/B',{productIds:['b']});
+ database.catalogDocs=[{id:'hidden',data:()=>({status:'inactive',data:product('hidden')})},{id:'b',data:()=>({data:product('b')})}];
+ let s=await h.session('A');globalThis.viewStore={...s,isWishlistDrawerOpen:true};assert.equal(s.wishlist.length,0);assert.match(api.header(),/Wishlist, 0 saved products/);assert.match(api.wishlistDrawer(),/Saved Wishlist \(0\)/);assert.match(api.wishlistDrawer(),/Your Wishlist is Empty/);
+ database.catalogDocs[0]={id:'hidden',data:()=>({data:product('hidden')})};for(const listener of database.listeners.get('products'))listener.fn(database.snapshot('products'));s=await h.flush();assert.deepEqual(s.wishlist,['hidden']);
+ s=await h.session('B');assert.deepEqual(s.wishlist,['b']);assert.equal(s.isInWishlist('hidden'),false);s=await h.session('A');assert.deepEqual(s.wishlist,['hidden']);assert.deepEqual(database.records.get('wishlists/A').productIds,['hidden','missing']);h.cleanup();
+});
+
+test('cart drawer and header share quantity badges; aggregate variant stock and 30-line limits fail closed',async()=>{
+ const h=initialize();let s=await h.session('A');database.put('carts/A',{items:[line('a',2),line('b',1)]});s=await h.flush();globalThis.viewStore={...s,isCartDrawerOpen:true};assert.match(api.header(),/Shopping cart, 3 items/);assert.match(api.cartDrawer(),/Your Shopping Cart \(3\)/);
+ const p={...product('v'),colors:[{colorName:'Red',images:[]}],availableSizes:['S'],customStitchingAvailable:true,variantInventory:[{key:'red::s',colorName:'Red',size:'S',stock:2}]};
+ const ready={...line('v',2),product:p,selectedColor:'Red',selectedSize:'S'};const tailored={...ready,cartItemId:'tailored',isCustomTailored:true,quantity:1};assert.match(api.cartCatalogIssue([ready,tailored],[p]),/only 2 available/);
+ const many=Array.from({length:31},(_,n)=>line('p'+n));assert.match(api.cartCatalogIssue(many,many.map(item=>item.product)),/30 product variants/);assert.equal(api.cartCatalogIssue(many.slice(0,30),many.map(item=>item.product)),null);h.cleanup();
+});
+
+test('Buy again counts confirmed adds only and stops after account switching',async()=>{
+ const items=[line('a'),line('b'),line('c')];let calls=0;
+ assert.equal(await api.addCartSelections(items,async()=>++calls===2,()=>true),1);
+ assert.equal(calls,3);calls=0;let active=true;
+ assert.equal(await api.addCartSelections(items,async()=>{calls++;active=false;return true},()=>active),1);
+ assert.equal(calls,1);
+ assert.equal(await api.addCartSelections(items,async()=>false,()=>true),0);
+ await assert.rejects(api.addCartSelections(items,async()=>{throw Error('offline')},()=>true),/offline/);
+});
+test('Buy now blocks an existing Cart line when current stock becomes unavailable',async()=>{
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();
+ database.catalogDocs=[{id:'a',data:()=>({data:{...product('a'),stockCount:0}})}];database.put('products',{});s=await h.flush();
+ assert.match(s.cartIssue,/out of stock/);assert.equal(await s.buyNow(product('a'),'',''),false);
+ s=h.render();assert.notEqual(s.activeView,'checkout');assert.equal(s.cart.length,1);h.cleanup();
+});
+
+test('checkout blocks both submit control and form submission for an unavailable Cart',async()=>{
+ globalThis.hooks={index:0,state:initial=>[initial===1?3:initial,()=>{}],ref:initial=>({current:initial}),effect:()=>{}};
+ let created=0;const notices=[];
+ globalThis.viewStore={cart:[line('a')],cartIssue:'a: out of stock',customer:{savedAddresses:[]},authStatus:'authenticated',isCustomerDataReady:true,formatPrice:String,cartCharges:[],orders:[],createOrder:async()=>{created++},showToast:(...args)=>notices.push(args)};
+ const nodes=[];const walk=node=>{if(!node||typeof node!=='object')return;if(Array.isArray(node)){node.forEach(walk);return;}nodes.push(node);walk(node.props?.children)};
+ walk(api.CheckoutPage());const button=nodes.find(node=>node.props?.id==='checkout-place-order-submit-btn');assert.equal(button.props.disabled,true);
+ await nodes.find(node=>node.type==='form').props.onSubmit({preventDefault(){}});
+ assert.equal(created,0);assert.equal(notices[0][1],'a: out of stock');
+ viewStore.cartIssue=null;nodes.length=0;walk(api.CheckoutPage());assert.equal(nodes.find(node=>node.props?.id==='checkout-place-order-submit-btn').props.disabled,false);
+});
+
+test('retained paid selections are explained without inferring Cart payment status',async()=>{
+ const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','',2);s=await h.flush();
+ globalThis.viewStore={...s,isCartDrawerOpen:true,orders:[{id:'paid-order',paymentStatus:'PAID',items:[line('a',2)]}]};
+ for(const markup of [api.cartPage(),api.cartDrawer()]) {
+  assert.match(markup,/Your Cart shows saved selections, not payment status/);
+  assert.match(markup,/Purchased items may remain here after payment/);
+  assert.match(markup,/manually remove purchased items/);
+  assert.doesNotMatch(markup,/awaiting payment|payment pending/i);
+ }
+ assert.equal(h.render().cart[0].quantity,2);assert.equal(database.records.get('carts/A').items[0].quantity,2);
+ assert.match(api.retentionNotice(),/Check My Orders for payment status before paying again/);
+ await s.removeFromCart(s.cart[0].cartItemId);s=await h.flush();assert.deepEqual(s.cart,[]);h.cleanup();
 });

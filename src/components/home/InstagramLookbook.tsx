@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { Instagram, Eye, ShoppingBag } from 'lucide-react';
+import { Instagram, Eye, ShoppingCart } from 'lucide-react';
 
 interface LookbookPost {
   id: string;
@@ -81,7 +81,7 @@ export const InstagramLookbook: React.FC = () => {
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
               />
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white p-3 text-center">
-                <ShoppingBag className="w-5 h-5 text-[#DFBF77] mb-1" />
+                <ShoppingCart className="w-5 h-5 text-[#DFBF77] mb-1" />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Shop The Look</span>
                 <span className="text-[9px] text-[#DFBF77] mt-0.5">{post.tag}</span>
               </div>

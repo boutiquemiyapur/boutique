@@ -1,8 +1,10 @@
+import { ShoppingConnectionNotice } from './ShoppingConnectionNotice';
+import { WishlistReferenceNotice } from './WishlistReferenceNotice';
 import { PrivateLoading } from './Skeleton';
 import { ProductImage } from '../common/ProductImage';
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { X, Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
+import { X, Heart, ShoppingCart, Trash2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
@@ -11,9 +13,8 @@ export const WishlistDrawer: React.FC = () => {
     isWishlistDrawerOpen,
     setIsWishlistDrawerOpen,
     wishlist,
-    isCustomerDataReady,
-    privateDataError,
-    products,
+    wishlistProducts,
+    wishlistStatus,
     toggleWishlist,
     addToCart,
     setQuickViewProduct,
@@ -25,7 +26,7 @@ export const WishlistDrawer: React.FC = () => {
 
   if (!isWishlistDrawerOpen) return null;
 
-  const wishlistProducts = products.filter((p) => wishlist.includes(p.id));
+
 
   return (
     <div
@@ -62,7 +63,9 @@ export const WishlistDrawer: React.FC = () => {
 
         {/* Item list */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-4">
-          {!isCustomerDataReady ? <PrivateLoading variant="wishlist" error={privateDataError} /> : wishlistProducts.length === 0 ? (
+          <ShoppingConnectionNotice />
+          <WishlistReferenceNotice />
+          {wishlistStatus !== 'ready' ? <PrivateLoading variant="wishlist" error={wishlistStatus === 'error'} /> : wishlistProducts.length === 0 ? (
             <div className="text-center py-16">
               <Heart className="w-12 h-12 text-stone-300 mx-auto mb-3" />
               <h3 className="text-base font-serif font-semibold text-stone-700">Your Wishlist is Empty</h3>
@@ -110,6 +113,7 @@ export const WishlistDrawer: React.FC = () => {
                     >
                       {product.title}
                     </h4>
+                    <p className="mt-1 text-xs text-stone-500">{product.stockCount <= 0 ? 'Out of stock; saved for later' : 'In stock'}</p>
                     <div className="mt-1 font-serif text-sm font-bold text-[#8B1E3F]">
                       {formatPrice(product.priceINR)}
                     </div>
@@ -127,13 +131,11 @@ export const WishlistDrawer: React.FC = () => {
                           product,
                           product.colors[0]?.colorName || '',
                           product.availableSizes[0] || ''
-                        ).then((added) => {
-                          if (added) void toggleWishlist(product.id);
-                        });
+                        );
                       }}
                       className="flex-1 bg-[#1A1715] hover:bg-[#8B1E3F] text-white text-[11px] font-semibold uppercase tracking-wider py-1.5 px-2.5 rounded flex items-center justify-center gap-1 transition-colors"
                     >
-                      <ShoppingBag className="w-3 h-3" /> Move to Bag
+                      <ShoppingCart className="w-3 h-3" /> Add to Cart
                     </button>
                     <button
                       id={`remove-wishlist-btn-${product.id}`}

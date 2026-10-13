@@ -13,7 +13,7 @@ export const paymentStageText: Record<PaymentStage, string> = {
 const reportProgress = (notify: PaymentProgress | undefined, stage: PaymentStage) => { try { notify?.(stage); } catch { /* UI feedback cannot decide payment state. */ } };
 const messages: Record<string, string> = {
   PAYMENT_CONFIGURATION_MISSING: 'Online payment is not configured yet. Please contact the store.',
-  INVALID_OPTIONS_OR_STOCK: 'Your selected options or stock have changed. Review your bag.',
+  INVALID_OPTIONS_OR_STOCK: 'Your selected options or stock have changed. Review your cart.',
   INTENT_CONFLICT: 'This payment attempt belongs to different checkout details.',
   PROVIDER_CREATION_UNCERTAIN: 'Payment preparation is being checked. Retry this same checkout shortly.',
   PROVIDER_CREATION_REQUIRES_REVIEW: 'The store needs to review this payment attempt. No new payment was created.',
@@ -98,7 +98,7 @@ async function runCheckout(response: CheckoutResponse, notify?: PaymentProgress)
         },
         modal: { ondismiss: () => {
           if (!verifying) finish(failed
-            ? { kind: 'error', order: response.order, message: 'The payment attempt failed. Your bag is preserved. Check payment before retrying.' }
+            ? { kind: 'error', order: response.order, message: 'The payment attempt failed. Your cart is preserved. Check payment before retrying.' }
             : { kind: 'dismissed', order: response.order });
         } },
       });

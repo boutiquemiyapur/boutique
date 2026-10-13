@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Heart, ShoppingBag } from 'lucide-react';
+import { Eye, Heart, ShoppingCart } from 'lucide-react';
 import { ProductImage } from './ProductImage';
 import { stockMessage } from '../../utils/productData';
 import { Product } from '../../types';
@@ -10,7 +10,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
   const [showAlternate, setShowAlternate] = useState(false);
   const saved = isInWishlist(product.id);
   const isSoldOut = product.stockCount <= 0;
-  const handleAddToBag = () => {
+  const handleAddToCart = () => {
     if (!product.colors.length && !product.availableSizes.length) { void addToCart(product, '', ''); return; }
     if (authStatus !== 'authenticated') { navigate('product-detail', product.id); requireAuth('product-detail'); return; }
     setQuickViewProduct(product);
@@ -32,7 +32,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
       </button>
       <div className="absolute inset-x-3 bottom-3 flex translate-y-2 gap-2 opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 focus-within:translate-y-0 focus-within:opacity-100">
         <button onClick={() => setQuickViewProduct(product)} className="flex h-10 flex-1 items-center justify-center gap-1.5 bg-[#fffdf9] text-[11px] font-semibold uppercase tracking-wide text-[#2c2926]"><Eye className="h-3.5 w-3.5" />Quick view</button>
-        <button disabled={isSoldOut} onClick={handleAddToBag} className="grid h-10 w-10 place-items-center bg-[#2c2926] text-white disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Add ${product.title} to bag`}><ShoppingBag className="h-4 w-4" /></button>
+        <button disabled={isSoldOut} onClick={handleAddToCart} className="grid h-10 w-10 place-items-center bg-[#2c2926] text-white disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Add ${product.title} to cart`}><ShoppingCart className="h-4 w-4" /></button>
       </div>
     </div>
     <div className="px-1 pb-1 pt-4">

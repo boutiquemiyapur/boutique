@@ -1,3 +1,7 @@
+import { addCartSelections } from '../../utils/shoppingState';
+import { PrivateLoading } from '../common/Skeleton';
+import { WishlistReferenceNotice } from '../common/WishlistReferenceNotice';
+import { ShoppingConnectionNotice } from '../common/ShoppingConnectionNotice';
 import { OrderStatusBadge } from '../common/OrderStatusBadge';
 import { orderDisplayStatus, paymentPresentation } from '../../utils/paymentState';
 import { ButtonProgress } from '../common/Loading';
@@ -28,6 +32,7 @@ import {
 export const CustomerAccountPage: React.FC = () => {
   const {
     customer,
+    authSession,
     updateCustomerProfile,
     saveMeasurements,
     addSavedAddress,
@@ -37,7 +42,8 @@ export const CustomerAccountPage: React.FC = () => {
     addToCart,
     orders,
     wishlist,
-    products,
+    wishlistProducts,
+    wishlistStatus,
     toggleWishlist,
     formatPrice,
     navigate,
@@ -60,6 +66,8 @@ export const CustomerAccountPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const saveInFlight = useRef(false);
   const mounted = useRef(true);
+  const accountUid = useRef(authSession?.uid);
+  accountUid.current = authSession?.uid;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // Measurements fields
@@ -132,9 +140,15 @@ export const CustomerAccountPage: React.FC = () => {
     finally { setIsSaving(false); }
   };
   const buyAgain = async (order: Order) => {
-    setIsSaving(true);
-    try { for (const item of order.items) await addToCart(item.product, item.selectedColor, item.selectedSize, item.quantity, item.isCustomTailored, item.customMeasurements, item.giftPackaging, item.giftNote); showToast('Added to bag', 'The order items were added to your shopping bag.'); }
-    finally { setIsSaving(false); }
+    if (saveInFlight.current) return;
+    const uid = accountUid.current;
+    const active = () => mounted.current && Boolean(uid) && accountUid.current === uid;
+    saveInFlight.current = true; setIsSaving(true);
+    try {
+      const added = await addCartSelections(order.items, item => addToCart(item.product, item.selectedColor, item.selectedSize, item.quantity, item.isCustomTailored, item.customMeasurements, item.giftPackaging, item.giftNote), active);
+      if (active() && added > 0) showToast(added === order.items.length ? 'Added to cart' : 'Some items added', `${added} of ${order.items.length} order items added to your cart.`, added === order.items.length ? 'success' : 'info');
+    } catch { if (active()) showToast('Could not add order items', 'Some items may have been added. Check your cart before trying again.', 'error'); }
+    finally { saveInFlight.current = false; if (mounted.current) setIsSaving(false); }
   };
 
   return (
@@ -436,15 +450,15 @@ export const CustomerAccountPage: React.FC = () => {
         )}
 
         {activeTab === 'wishlist' && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {products.filter((product) => wishlist.includes(product.id)).map((product) => (
+          <><ShoppingConnectionNotice />{wishlistStatus !== 'ready' ? <PrivateLoading variant="wishlist" error={wishlistStatus === 'error'} /> : <><WishlistReferenceNotice /><p className="mb-4 text-sm text-stone-600">{wishlist.length} saved products</p><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {wishlistProducts.map((product) => (
               <article key={product.id} className="overflow-hidden rounded-2xl border border-[#E6D5B8] bg-white">
                 <button onClick={() => navigate('product-detail', product.id)} className="block w-full text-left"><ProductImage src={product.images[0]} alt={product.title} className="h-64 w-full object-cover" /></button>
                 <div className="flex items-start justify-between gap-3 p-4"><div><button onClick={() => navigate('product-detail', product.id)} className="font-serif text-lg text-stone-900">{product.title}</button><p className="mt-1 text-xs text-stone-500">{product.category}</p><p className="mt-2 font-semibold text-[#8B1E3F]">{formatPrice(product.priceINR)}</p></div><button onClick={() => toggleWishlist(product.id)} className="p-2 text-[#8B1E3F]" aria-label={`Remove ${product.title} from wishlist`}><Heart className="h-5 w-5 fill-current" /></button></div>
               </article>
             ))}
             {!wishlist.length && <div className="col-span-full border border-dashed border-[#D8C9BC] bg-white p-10 text-center text-sm text-stone-500"><Heart className="mx-auto mb-3 h-6 w-6" />Your saved styles will appear here.</div>}
-          </div>
+          </div></>}</>
         )}
 
         {activeTab === 'addresses' && (
