@@ -153,9 +153,9 @@ test('admin order progress waits for confirmed snapshots and delivers backend wo
   stop();
 });
 test('normalization trims and deduplicates without changing names or overwriting other properties', () => {
-  const p = product({ availableSizes: [' S ', '', 's', '42'], colors: [{ colorName: ' Green ', colorHex: '#008000', images: [' a ', ''] }, { colorName: 'green' }], customField: 'preserved', weightGrams: 0 });
+  const p = product({ availableSizes: [' S ', '', 's', '42'], colors: [{ colorName: ' Green ', colorHex: '#008000', images: [' a.jpg ', ''] }, { colorName: 'green' }], customField: 'preserved', weightGrams: 0 });
   assert.deepEqual(p.availableSizes, ['S', '42']); assert.equal(p.colors.length, 1);
-  assert.deepEqual(p.colors[0].images, ['a']); assert.equal(p.customField, 'preserved');
+  assert.deepEqual(p.colors[0].images, ['a.jpg']); assert.equal(p.customField, 'preserved');
   assert.ok(api.productSpecifications(p).some((row) => row.value === '0 grams'));
 });
 test('Admin editor starts empty and accepts category-independent optional fields', () => {
@@ -251,7 +251,7 @@ test('category slugs normalize and duplicate category names and routes are rejec
 });
 test('per-color images take priority and absent media uses a neutral placeholder', () => {
   const p = product({ images: ['main.jpg'], colors: [{ colorName: 'Blue', images: ['blue.jpg'] }] });
-  assert.deepEqual(api.productImages(p, 'Blue'), ['blue.jpg']); assert.deepEqual(api.productImages(p), ['main.jpg']);
+  assert.deepEqual(api.productImages(p, 'Blue'), ['blue.jpg', 'main.jpg']); assert.deepEqual(api.productImages(p), ['main.jpg']);
   setupStore(product()); assert.match(api.renderProduct(), /Image unavailable/);
 });
 

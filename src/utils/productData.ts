@@ -11,6 +11,24 @@ export const uniqueValues = (value: unknown): string[] => {
 };
 const nonnegative = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 
+/** Legacy single/newline URLs and upload objects are read without a database migration. */
+export const normalizeImageUrls = (value: unknown): string[] => {
+  const values = Array.isArray(value) ? value : [value];
+  const urls = values.flatMap(item => typeof item === 'string' ? item.split(/\r?\n/) : item && typeof item === 'object'
+    ? [item.secure_url || item.url || item.src] : []);
+  const seen = new Set<string>();
+  return urls.map(text).filter(url => {
+    if (!url || seen.has(url)) return false;
+    let valid = false;
+    try {
+      if (/^https?:\/\//i.test(url)) { const parsed = new URL(url); valid = Boolean(parsed.hostname) && !parsed.username && !parsed.password; }
+      else valid = !url.startsWith('//') && !/[\\:\s]/.test(url) && (/^\/(?!\/)/.test(url) || /\.(?:jpe?g|png|webp|avif|gif|svg)(?:[?#].*)?$/i.test(url));
+    } catch { return false; }
+    if (!valid) return false;
+    seen.add(url); return true; // URL paths are case-sensitive; do not lowercase them.
+  });
+};
+
 const normalizeVariantPart = (value: unknown) => text(value).toLocaleLowerCase('en-IN');
 export const variantKey = (colorName = '', size = '') => `${normalizeVariantPart(colorName)}::${normalizeVariantPart(size)}`;
 
@@ -78,8 +96,10 @@ export const normalizeProduct = (raw: Partial<Product>, id = raw.id || ''): Prod
   for (const value of Array.isArray(raw.colors) ? raw.colors : []) {
     const color: Partial<ProductVariant> = typeof value === 'string' ? { colorName: value } : value;
     const colorName = text(color?.colorName);
-    if (!colorName || colors.some((item) => item.colorName.toLowerCase() === colorName.toLowerCase())) continue;
-    colors.push({ ...color, colorName, colorHex: text(color.colorHex), images: uniqueValues(color.images) });
+    if (!colorName) continue;
+    const existing = colors.find(item => item.colorName.toLowerCase() === colorName.toLowerCase());
+    if (existing) { existing.images = normalizeImageUrls([...existing.images, ...normalizeImageUrls(color.images)]); continue; }
+    colors.push({ ...color, colorName, colorHex: text(color.colorHex), images: normalizeImageUrls(color.images) });
   }
   const rawInventory = normalizeVariantInventory(raw.variantInventory);
   const allowedInventoryKeys = new Set(variantCombinations({ colors, availableSizes: uniqueValues(raw.availableSizes) }).map((item) => item.key));
@@ -93,7 +113,7 @@ export const normalizeProduct = (raw: Partial<Product>, id = raw.id || ''): Prod
     weightGrams: typeof raw.weightGrams === 'number' && Number.isFinite(raw.weightGrams) && raw.weightGrams >= 0 ? raw.weightGrams : undefined,
     priceINR: nonnegative(raw.priceINR), stockCount: Math.floor(nonnegative(raw.stockCount)),
     rating: nonnegative(raw.rating), reviewCount: Math.floor(nonnegative(raw.reviewCount)),
-    images: uniqueValues(raw.images), colors, availableSizes: uniqueValues(raw.availableSizes), tags: uniqueValues(raw.tags),
+    images: normalizeImageUrls(raw.images), colors, availableSizes: uniqueValues(raw.availableSizes), tags: uniqueValues(raw.tags),
     isReadyToShip: raw.isReadyToShip === true,
     customStitchingAvailable: raw.customStitchingAvailable === true,
     customStitchingFeeINR: nonnegative(raw.customStitchingFeeINR),
@@ -154,8 +174,12 @@ export const productValidationError = (product: Product): string | null => {
 };
 
 export const productImages = (product: Product, color = '') => {
-  const variant = (product.colors || []).find((item) => item.colorName === color);
-  return variant?.images?.length ? variant.images : product.images || [];
+  const variant = (product.colors || []).find((item) => normalizeVariantPart(item.colorName) === normalizeVariantPart(color));
+  const general = normalizeImageUrls(product.images);
+  const selected = normalizeImageUrls(variant?.images);
+  if (selected.length) return normalizeImageUrls([...selected, ...general]);
+  // A chosen shade with no media must not display a different shade as its image.
+  return general.length || text(color) ? general : normalizeImageUrls(product.colors?.[0]?.images);
 };
 export const stockMessage = (product: Product, threshold: number) => product.stockCount <= 0
   ? 'Out of stock' : product.stockCount <= threshold

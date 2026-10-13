@@ -45,6 +45,8 @@ export const ProductDetailPage: React.FC = () => {
   const product = products.find((p) => p.id === selectedProductId && p.isActive !== false);
 
   const [activeImgIndex, setActiveImgIndex] = useState(0);
+  const [failedGalleryImages, setFailedGalleryImages] = useState<string[]>([]);
+  useEffect(() => { setFailedGalleryImages([]); }, [product?.id]);
   const [selectedColor, setSelectedColor] = useState(product?.colors[0]?.colorName || '');
   const [selectedSize, setSelectedSize] = useState<SizeOption>(product?.availableSizes[0] || '');
   const [quantity, setQuantity] = useState(1);
@@ -123,7 +125,8 @@ export const ProductDetailPage: React.FC = () => {
     );
   }
 
-  const gallery = productImages(product, selectedColor);
+  const gallery = productImages(product, selectedColor).filter(image => !failedGalleryImages.includes(image));
+  const imageFailed = (image: string) => { setFailedGalleryImages(current => current.includes(image) ? current : [...current, image]); setActiveImgIndex(0); };
   const isSaved = isInWishlist(product.id);
   const isSoldOut = !isVariantAvailable(product, selectedColor, selectedSize, quantity);
   const relatedProducts = products.filter((item) => item.id !== product.id && (item.category === product.category || (product.fabric && item.fabric === product.fabric))).slice(0, 4);
@@ -200,6 +203,7 @@ export const ProductDetailPage: React.FC = () => {
             <div className="relative aspect-3/4 rounded-2xl overflow-hidden bg-stone-100 border border-[#E6D5B8] shadow-md group">
               <ProductImage
                 src={gallery[activeImgIndex] || gallery[0]}
+                onError={() => imageFailed(gallery[activeImgIndex] || gallery[0])}
                 alt={product.title}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
@@ -248,14 +252,16 @@ export const ProductDetailPage: React.FC = () => {
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {gallery.map((img, idx) => (
                   <button
-                    key={idx}
+                    key={img}
                     id={`pdp-thumb-${idx}`}
+                    aria-label={`View product image ${idx + 1}`}
+                    aria-pressed={activeImgIndex === idx}
                     onClick={() => setActiveImgIndex(idx)}
                     className={`w-20 sm:w-24 aspect-3/4 rounded-xl overflow-hidden border-2 shrink-0 transition-all ${
                       activeImgIndex === idx ? 'border-[#8B1E3F] shadow-md scale-102' : 'border-stone-200 opacity-70 hover:opacity-100'
                     }`}
                   >
-                    <ProductImage src={img} alt="" className="w-full h-full object-cover" />
+                    <ProductImage src={img} alt="" onError={() => imageFailed(img)} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
