@@ -127,3 +127,15 @@ test('an outstanding owned attempt survives a Cart-generation change caused by a
  const newPurchase=await api.prepareCartCheckout('user',request,'other-completed-order',[{...existing,orderStatus:'Cancelled'}]);
  assert.notEqual(newPurchase.intentId,existing.checkoutIntentId);
 });
+
+ test('M3: synchronized device history reuses an outstanding intent; stale history remains independent',async()=>{
+ const existing={...order,checkoutIntentId:'cross-device-pending-intent'};
+ const business=api.checkoutBusinessRequest(existing.items,existing.shippingAddress,null);
+ assert.equal((await api.prepareCartCheckout('cross-device-user',business,'generation-a',[existing])).intentId,existing.checkoutIntentId);
+ assert.equal((await api.prepareCartCheckout('cross-device-user',business,'generation-b',[existing])).intentId,existing.checkoutIntentId);
+ const stale=await api.prepareCartCheckout('cross-device-user',business,'generation-a',[]);
+ assert.notEqual(stale.intentId,existing.checkoutIntentId);
+ const repeat=await api.prepareCartCheckout('cross-device-user',business,'completed-generation',[{...existing,paymentStatus:'PAID'}]);
+ assert.notEqual(repeat.intentId,existing.checkoutIntentId);
+ assert.notEqual(repeat.intentId,stale.intentId);
+});

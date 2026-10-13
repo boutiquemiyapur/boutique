@@ -3,7 +3,7 @@ import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { PaymentError, requireCondition } from './errors.js';
-import { digest } from './validation.js';
+export { jsonBody, rateLimit } from './validation.js';
 import { validateServerFirebase } from './environment.js';
 export type Request = IncomingMessage & { body?: unknown };
 export type Response = { status: (code: number) => Response; json: (value: unknown) => unknown; setHeader: (name: string, value: string) => unknown };
@@ -27,13 +27,6 @@ export async function authenticate(req: Request, admin = false) {
   catch { throw new PaymentError('AUTH_INVALID', 401); }
   requireCondition(!admin || decoded.admin === true, 'ADMIN_REQUIRED', 403);
   return decoded.uid;
-}
-export function jsonBody(req: Request) {
-  requireCondition(String(req.headers['content-type'] || '').startsWith('application/json'), 'CONTENT_TYPE_REQUIRED', 415);
-  try {
-    const encoded = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    requireCondition(encoded && Buffer.byteLength(encoded) <= 32_768, 'REQUEST_TOO_LARGE', 413); return JSON.parse(encoded);
-  } catch (e) { if (e instanceof PaymentError) throw e; throw new PaymentError('INVALID_JSON'); }
 }
 export async function rawBody(req: Request) {
   // Vercel Node helpers expose body as a lazy JSON getter and restore the wire
@@ -60,15 +53,6 @@ export async function rawBody(req: Request) {
     const aborted = error;
     const timer = setTimeout(error, 15_000);
     req.on('data', data); req.on('end', end); req.on('error', error); req.on('aborted', aborted);
-  });
-}
-export async function rateLimit(db: Firestore, uid: string, action: string, now = Date.now()) {
-  const ref = db.collection('paymentRateLimits').doc(digest(`${uid}:${action}`));
-  await db.runTransaction(async tx => {
-    const old = (await tx.get(ref)).data(); const windowStart = Math.floor(now / 60_000) * 60_000;
-    const count = old?.windowStart === windowStart ? old.count + 1 : 1;
-    requireCondition(count <= (action === 'create' ? 10 : 30), 'RATE_LIMITED', 429);
-    tx.set(ref, { windowStart, count, expiresAt: new Date(windowStart + 120_000) });
   });
 }
 export function failure(res: Response, error: unknown) {

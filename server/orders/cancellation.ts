@@ -8,6 +8,7 @@ import { digest } from '../payments/validation.js';
 import type { PaymentProvider, ProviderRefund } from '../payments/provider.js';
 import { PaymentService } from '../payments/service.js';
 import { restoration, type Reservation } from './inventory.js';
+import { validateRefundEvidence } from '../payments/refundEvidence.js';
 
 type Quote = { captured: boolean; amountPaise: number; paymentId?: string };
 export class CancellationService {
@@ -57,10 +58,7 @@ export class CancellationService {
     return { captured: true, paymentId: payment.id, amountPaise: payment.amount - refunded };
   }
   validateRefunds(refunds: ProviderRefund[], paymentId: string, total: number) {
-    const ids = new Set<string>();
-    requireCondition(refunds.every(r => /^rfnd_[a-zA-Z0-9]+$/.test(r.id) && !ids.has(r.id) && !!ids.add(r.id)
-      && (!r.currency || r.currency === 'INR') && r.payment_id === paymentId && Number.isSafeInteger(r.amount) && r.amount > 0 && r.amount <= total
-      && ['created', 'pending', 'processed', 'failed'].includes(r.status)), 'REFUND_EVIDENCE_INVALID', 409);
+    validateRefundEvidence(refunds, paymentId, total);
   }
   async review(adminUid: string, id: string, approve: boolean, reason: string) {
     requireCondition(approve || reason.trim().length >= 2, 'DECISION_REASON_REQUIRED');
@@ -72,7 +70,13 @@ export class CancellationService {
       requireCondition(current.cancellationRequest, 'CANCELLATION_REQUEST_MISSING', 409);
       if (current.cancellationRequest.status !== 'REQUESTED') { requireCondition(current.cancellationRequest.status === (approve ? 'APPROVED' : 'REJECTED'), 'CANCELLATION_DECISION_CONFLICT', 409); return current; }
       requireCondition(!approve || this.eligible(current), 'CANCELLATION_INELIGIBLE', 409);
-      requireCondition(!approve || !quote.captured || (current.razorpayPaymentId === quote.paymentId && Number(current.amountPaise) - Number(current.refundedAmountPaise || 0) === quote.amountPaise), 'REFUND_QUOTE_CHANGED', 409);
+      // Provider inspection happens outside the transaction. Revalidate BOTH
+      // paid and unpaid quotes against its current snapshot before restoring
+      // stock or recording a refund decision. A newly authorized/captured
+      // payment must be inspected again, never approved as NOT_REQUIRED.
+      requireCondition(!approve || (quote.captured
+        ? confirmedPayment(current) && current.razorpayPaymentId === quote.paymentId && Number(current.amountPaise) - Number(current.refundedAmountPaise || 0) === quote.amountPaise
+        : historicalCod(current) || (!['AUTHORIZED', 'PAID', 'REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(current.paymentStatus) && !current.paidAt && !current.paymentVerifiedAt && !current.razorpayPaymentId)), 'REFUND_QUOTE_CHANGED', 409);
       const rr = this.ref('inventoryReservations', id); const reservation = approve ? (await tx.get(rr)).data() as Reservation | undefined : undefined;
       let inventory: 'RESTORED' | 'RELEASED' | 'MANUAL_REVIEW' = 'MANUAL_REVIEW';
       if (reservation) requireCondition(reservation.orderId === id && reservation.customerId === record.customerId, 'RESERVATION_INVENTORY_CHANGED', 409);
@@ -110,6 +114,7 @@ export class CancellationService {
     const record = await this.record(id); const current = record.data as Order;
     requireCondition(current.orderStatus === 'Cancelled' && current.cancellationRequest?.status === 'APPROVED' && current.refund?.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
     if (['PROCESSED', 'FAILED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(current.refund.state)) return current;
+    if (!this.validRefundTimes(current.refund)) { await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_TIMESTAMPS_INVALID' }); return (await this.record(id)).data as Order; }
     await this.syncRefund(id);
     const after = (await this.record(id)).data as Order;
     if (after.refund?.id || after.refund?.state === 'MANUAL_REVIEW') return after;
@@ -118,6 +123,12 @@ export class CancellationService {
     const claimed = await this.db.runTransaction(async tx => {
       const ref = this.ref('orders', id); const order = (await tx.get(ref)).data()!.data as Order; const refund = order.refund!;
       requireCondition(order.cancellationRequest?.status === 'APPROVED' && order.orderStatus === 'Cancelled' && refund.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
+      if (!this.validRefundTimes(refund) || this.now() - Date.parse(refund.approvedAt!) > 86_400_000) {
+        const at = new Date(this.now()).toISOString();
+        tx.update(ref, { 'data.refund.state': 'MANUAL_REVIEW', 'data.refund.error': 'REFUND_TIMESTAMPS_INVALID', 'data.refund.updatedAt': at, updatedAt: new Date(this.now()) });
+        tx.set(this.ref('cancellationAudits', `${id}-invalid-refund-time`), { orderId: id, action: 'REFUND_MANUAL_REVIEW', at, approvedBy: refund.approvedBy });
+        return null;
+      }
       if (refund.id || (refund.state === 'INITIATING' && this.now() - Date.parse(refund.updatedAt) < 60_000)) return null;
       requireCondition(['APPROVED', 'AWAITING_ENABLEMENT', 'UNKNOWN', 'INITIATING'].includes(refund.state) && quote.captured && quote.paymentId === refund.paymentId && quote.amountPaise === refund.amountPaise && quote.amountPaise > 0, 'REFUND_QUOTE_CHANGED', 409);
       const at = new Date(this.now()).toISOString();
@@ -150,10 +161,14 @@ export class CancellationService {
     });
   }
   async recoverRefund(id: string) {
-    await this.syncRefund(id);
     const order = (await this.record(id)).data as Order;
     if (this.executeRefunds && order.cancellationRequest?.status === 'APPROVED' && ['APPROVED', 'INITIATING', 'UNKNOWN'].includes(order.refund?.state || '')) return this.execute(id);
-    return order;
+    await this.syncRefund(id);
+    return (await this.record(id)).data as Order;
+  }
+  validRefundTimes(refund: NonNullable<Order['refund']>) {
+    const valid = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
+    return valid(refund.approvedAt) && valid(refund.updatedAt) && Date.parse(refund.approvedAt!) <= Date.parse(refund.updatedAt) && Date.parse(refund.updatedAt) <= this.now();
   }
   async retryApprovedRefund(adminUid: string, id: string) {
     requireCondition(this.executeRefunds, 'LIVE_REFUNDS_DISABLED', 409);

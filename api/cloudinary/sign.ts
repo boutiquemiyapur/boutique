@@ -1,3 +1,5 @@
+import { PaymentError } from '../../server/payments/errors.js';
+import { object, only, jsonBody, rateLimit } from '../../server/payments/validation.js';
 import { createHash } from 'node:crypto';
 import { validateServerFirebase } from '../../server/payments/environment.js';
 
@@ -18,6 +20,7 @@ export default async function handler(request: { method?: string; headers: Recor
   if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed.' });
   const authorization = request.headers.authorization;
   const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  if (token.length >= 8192) return response.status(401).json({ error: 'Authentication is required.' });
   if (!token) return response.status(401).json({ error: 'Authentication is required.' });
   let stage = 'firebase-sdk-load';
   try {
@@ -40,15 +43,13 @@ export default async function handler(request: { method?: string; headers: Recor
       app = initializeApp({ projectId: expectedProject, credential: cert({ projectId, clientEmail, privateKey }) });
     }
     stage = 'firebase-token-verification';
-    const decoded = await getAuth(app).verifyIdToken(token);
+    const decoded = await getAuth(app).verifyIdToken(token, true);
     if (decoded.admin !== true) return response.status(403).json({ error: 'Administrator access is required.' });
-    let body: unknown;
-    try {
-      body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
-    } catch {
-      return response.status(400).json({ error: 'Invalid upload request.' });
-    }
+    const body = object(jsonBody(request)); only(body, ['folder', 'recordId']);
     if (!body || typeof body !== 'object' || !('folder' in body) || typeof body.folder !== 'string' || !allowedFolders.has(body.folder) || !('recordId' in body) || typeof body.recordId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(body.recordId)) return response.status(400).json({ error: 'Invalid upload request.' });
+    stage = 'request-rate-limit';
+    const { getFirestore } = await import('firebase-admin/firestore');
+    await rateLimit(getFirestore(app), decoded.uid, 'cloudinary-sign');
     stage = 'cloudinary-configuration';
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
     const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
@@ -64,6 +65,7 @@ export default async function handler(request: { method?: string; headers: Recor
     const signature = createHash('sha1').update(`folder=${folder}&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`).digest('hex');
     return response.status(200).json({ cloudName, apiKey, timestamp, folder, publicId, signature });
   } catch (error) {
+    if (error instanceof PaymentError) return response.status(error.status).json({ error: error.code });
     const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && safeErrorCodes.has(error.code) ? error.code : 'unexpected-error';
     console.error('Cloudinary signature request failed.', { stage, code });
     if (stage === 'firebase-token-verification' && invalidTokenCodes.has(code)) return response.status(401).json({ error: 'Could not authorize this upload. Please sign in again.' });

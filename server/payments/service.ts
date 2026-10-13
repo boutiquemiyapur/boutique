@@ -2,11 +2,13 @@ import { purchasedSnapshot, subtractPurchased, type PurchasedLine } from './cart
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Order, PaymentState } from '../../src/types/index.js';
 import { sanitizeFirestoreData } from '../../src/utils/firestoreData.js';
-import { withDeductedStock, productFromDocument, hasVariantInventory, variantKey } from '../../src/utils/productData.js';
+import { withDeductedStock, hasVariantInventory } from '../../src/utils/productData.js';
 import { trustedCheckout } from './checkout.js';
 import { PaymentError, requireCondition } from './errors.js';
 import { checkoutId, fingerprint, digest, type CheckoutRequest } from './validation.js';
 import { validSignature, type PaymentProvider, type ProviderOrder, type ProviderPayment } from './provider.js';
+import { validateRefundEvidence } from './refundEvidence.js';
+import { restoration } from '../orders/inventory.js';
 
 const PAID = ['PAID', 'REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED'];
 type ReservedLine = { productId: string; color: string; size: string; quantity: number; variantInventory: boolean };
@@ -141,7 +143,7 @@ export class PaymentService {
       }
       next.paymentStatus = state;
       tx.update(ref, { data: sanitizeFirestoreData(next), paymentStatus: state, updatedAt: new Date(this.now()) });
-      if (eventRef) tx.set(eventRef, { hash: event!.hash, orderId: id, paymentId: payment.id, processedAt: new Date(this.now()) });
+      if (eventRef) tx.set(eventRef, { hash: event!.hash, orderId: id, paymentId: payment.id, refundObserverStatus: 'PENDING', processedAt: new Date(this.now()) });
       return next;
     });
   }
@@ -149,7 +151,7 @@ export class PaymentService {
     const payment = await this.provider.payment(paymentId);
     requireCondition(payment.id === paymentId, 'PAYMENT_EVIDENCE_MISMATCH', 409);
     const refunds = payment.captured ? await this.provider.refunds(paymentId) : [];
-    requireCondition(refunds.every(r => r.payment_id === paymentId && Number.isSafeInteger(r.amount) && r.amount >= 0), 'REFUND_EVIDENCE_INVALID', 409);
+    validateRefundEvidence(refunds, paymentId, payment.amount);
     const processed = refunds.filter(r => r.status === 'processed').reduce((sum, r) => sum + r.amount, 0);
     const order = await this.apply(id, { ...payment, amount_refunded: Math.max(payment.amount_refunded, processed) }, event, refunds.some(r => ['pending', 'created'].includes(r.status)));
     return this.recoverCart(id, order);
@@ -189,22 +191,9 @@ export class PaymentService {
       const or = this.ref('orders', id); const order = (await tx.get(or)).data()!.data as Order;
       const rr = this.ref('inventoryReservations', id); const reservation = (await tx.get(rr)).data() as Reservation;
       if (reservation.state !== 'RESERVED' || reservation.expiresAt > this.now() || PAID.includes(order.paymentStatus)) return false;
-      const ids = [...new Set(reservation.items.map(l => l.productId))];
-      const products = await tx.getAll(...ids.map(p => this.ref('products', p)));
-      const updates = products.map(s => {
-        // Archived products must still receive their reserved stock back.
-        const raw = s.data(); requireCondition(raw, 'RESERVATION_INVENTORY_CHANGED', 409);
-        const p = productFromDocument(s.id, { ...raw, status: 'active' }); requireCondition(p, 'RESERVATION_INVENTORY_CHANGED', 409);
-        const lines = reservation.items.filter(l => l.productId === p.id);
-        requireCondition(hasVariantInventory(p) === lines[0].variantInventory, 'RESERVATION_INVENTORY_CHANGED', 409);
-        if (hasVariantInventory(p)) {
-          for (const l of lines) requireCondition(p.variantInventory!.some(v => v.key === variantKey(l.color, l.size)), 'RESERVATION_INVENTORY_CHANGED', 409);
-          p.variantInventory = p.variantInventory!.map(v => ({ ...v, stock: v.stock + lines.filter(l => variantKey(l.color, l.size) === v.key).reduce((sum, l) => sum + l.quantity, 0) }));
-          p.stockCount = p.variantInventory.reduce((sum, v) => sum + v.stock, 0);
-        } else p.stockCount += lines.reduce((sum, l) => sum + l.quantity, 0);
-        return { s, p };
-      });
-      for (const { s, p } of updates) tx.update(s.ref, { data: sanitizeFirestoreData(p), inventoryVersion: (s.data()!.inventoryVersion || 0) + 1, updatedAt: new Date(this.now()) });
+      requireCondition(reservation.orderId === id && reservation.customerId === (await tx.get(or)).data()!.customerId, 'RESERVATION_INVENTORY_CHANGED', 409);
+      const updates = await restoration(this.db, tx, reservation, this.now());
+      for (const u of updates) tx.update(u.ref, u.data);
       tx.update(rr, { state: 'RELEASED', releasedAt: this.now() });
       tx.set(this.ref('inventoryMovements', `${id}-release-${(reservation as Reservation & { generation?: number }).generation || 1}`), { orderId: id, type: 'RELEASE', items: reservation.items, createdAt: new Date(this.now()) });
       tx.update(or, { 'data.paymentStatus': 'EXPIRED', paymentStatus: 'EXPIRED', updatedAt: new Date(this.now()) }); return true;

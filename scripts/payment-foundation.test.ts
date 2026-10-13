@@ -147,9 +147,9 @@ test('provider uncertainty never triggers another external order creation', asyn
 });
 test('refund pending and processed refunds synchronize without browser authority', async () => {
   const f = fixture(); const r = await f.service.create('uid', f.request);
-  f.provider.refunds = async () => [{ id: 'rfnd_fixture', payment_id: 'pay_test1', amount: 100, status: 'pending' }];
+  f.provider.refunds = async () => [{ id: 'rfnd_fixture', payment_id: 'pay_test1', amount: 100, status: 'pending', currency: 'INR' }];
   assert.equal((await f.service.syncPayment(r.order.id, 'pay_test1')).paymentStatus, 'REFUND_PENDING');
-  f.provider.refunds = async () => [{ id: 'rfnd_fixture', payment_id: 'pay_test1', amount: 100, status: 'processed' }];
+  f.provider.refunds = async () => [{ id: 'rfnd_fixture', payment_id: 'pay_test1', amount: 100, status: 'processed', currency: 'INR' }];
   assert.equal((await f.service.syncPayment(r.order.id, 'pay_test1')).refundedAmountPaise, 100);
   assert.equal((await f.service.syncPayment(r.order.id, 'pay_test1')).paymentStatus, 'PARTIALLY_REFUNDED');
 });

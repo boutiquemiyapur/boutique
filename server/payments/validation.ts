@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CustomMeasurements, ShippingAddress } from '../../src/types/index.js';
-import { requireCondition } from './errors.js';
+import type { Firestore } from 'firebase-admin/firestore';
+import { PaymentError, requireCondition } from './errors.js';
 
 export type CheckoutLine = { productId: string; selectedColor: string; selectedSize: string; quantity: number; isCustomTailored: boolean; customMeasurements?: CustomMeasurements; giftPackaging: boolean; giftNote?: string };
 export type CheckoutRequest = { intentId: string; items: CheckoutLine[]; shippingAddress: ShippingAddress; couponCode: string | null };
@@ -56,4 +57,21 @@ export function paise(v: unknown): number {
   requireCondition(typeof v === 'number' && Number.isFinite(v) && v >= 0, 'INVALID_FINANCIAL_RECORD', 409);
   const p = Math.round(v * 100);
   requireCondition(Number.isSafeInteger(p) && p <= 100_000_000 && Math.abs(v * 100 - p) < 0.000001, 'INVALID_FINANCIAL_RECORD', 409); return p;
+}
+
+export function jsonBody(req: { headers: Record<string, string | string[] | undefined>; body?: unknown }) {
+  requireCondition(String(req.headers['content-type'] || '').startsWith('application/json'), 'CONTENT_TYPE_REQUIRED', 415);
+  try {
+    const encoded = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    requireCondition(encoded && Buffer.byteLength(encoded) <= 32_768, 'REQUEST_TOO_LARGE', 413); return JSON.parse(encoded);
+  } catch (e) { if (e instanceof PaymentError) throw e; throw new PaymentError('INVALID_JSON'); }
+}
+export async function rateLimit(db: Firestore, uid: string, action: string, now = Date.now()) {
+  const ref = db.collection('paymentRateLimits').doc(digest(`${uid}:${action}`));
+  await db.runTransaction(async tx => {
+    const old = (await tx.get(ref)).data(); const windowStart = Math.floor(now / 60_000) * 60_000;
+    const count = old?.windowStart === windowStart ? old.count + 1 : 1;
+    requireCondition(count <= (action === 'create' ? 10 : 30), 'RATE_LIMITED', 429);
+    tx.set(ref, { windowStart, count, expiresAt: new Date(windowStart + 120_000) });
+  });
 }

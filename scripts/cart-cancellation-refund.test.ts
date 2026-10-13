@@ -123,7 +123,7 @@ test('refund processed/failed events use provider evidence, not request acceptan
   }
 });
 test('partial prior refund subtracts only authoritative remaining amount', async () => {
-  const { f, id, service } = await checkout(); f.refunds.push({ id: 'rfnd_prior', payment_id: 'pay_test1', amount: 49900, status: 'processed' });
+  const { f, id, service } = await checkout(); f.refunds.push({ id: 'rfnd_prior', payment_id: 'pay_test1', amount: 49900, status: 'processed', currency: 'INR' });
   await service.request('uid', id, 'Other'); const approved = await service.review('admin', id, true, 'Approved');
   assert.equal(approved.refund!.amountPaise, 100000); assert.equal(f.refunds[1].amount, 100000);
 });
@@ -132,7 +132,7 @@ test('forged payment/amount or pending external refunds prevent approval and sto
     const { f, id, service } = await checkout(); await service.request('uid', id, 'Other');
     if (kind === 'payment') f.evidence({ order_id: 'order_wrong' });
     if (kind === 'amount') f.evidence({ amount: 1 });
-    if (kind === 'pending') f.refunds.push({ id: 'rfnd_external', payment_id: 'pay_test1', amount: 100, status: 'pending' });
+    if (kind === 'pending') f.refunds.push({ id: 'rfnd_external', payment_id: 'pay_test1', amount: 100, status: 'pending', currency: 'INR' });
     await assert.rejects(service.review('admin', id, true, 'Approved')); assert.equal(f.refundCalls, 0); assert.equal(f.docs.get('products/dress').data.stockCount, 4);
   }
 });
@@ -167,7 +167,7 @@ test('unknown pre-response failure retries the immutable key/body and interrupte
   assert.equal(calls.length, 2); assert.deepEqual(calls[0], calls[1]); assert.equal(f.refundCalls, 1);
   const interrupted = await checkout(); const disabled = new CancellationService(interrupted.f.db, interrupted.f.provider, false, () => 1_800_000_000_000);
   await disabled.request('uid', interrupted.id, 'Other'); await disabled.review('admin', interrupted.id, true, 'Approved');
-  const refund = interrupted.f.docs.get(`orders/${interrupted.id}`).data.refund; refund.state = 'INITIATING'; refund.updatedAt = new Date(1_800_000_000_000 - 120_000).toISOString();
+  const refund = interrupted.f.docs.get(`orders/${interrupted.id}`).data.refund; refund.state = 'INITIATING'; refund.approvedAt = new Date(1_800_000_000_000 - 180_000).toISOString(); refund.updatedAt = new Date(1_800_000_000_000 - 120_000).toISOString();
   await interrupted.service.recoverRefund(interrupted.id); assert.equal(interrupted.f.refundCalls, 1);
 });
 test('expired ambiguous refund retry enters manual review rather than generating another refund', async () => {
@@ -195,7 +195,7 @@ test('stale request/payment responses cannot erase a reviewed cancellation or pr
 test('invalid provider refund response cannot mark a refund processed or alter paid evidence', async () => {
   for (const kind of ['amount', 'payment']) {
     const { f, id, service } = await checkout(); await service.request('uid', id, 'Other');
-    f.provider.createRefund = async () => ({ id: 'rfnd_wrong', payment_id: kind === 'payment' ? 'pay_wrong' : 'pay_test1', amount: kind === 'amount' ? 1 : 149900, status: 'processed' });
+    f.provider.createRefund = async () => ({ id: 'rfnd_wrong', payment_id: kind === 'payment' ? 'pay_wrong' : 'pay_test1', amount: kind === 'amount' ? 1 : 149900, status: 'processed', currency: 'INR' });
     const result = await service.review('admin', id, true, 'Approved');
     assert.equal(result.refund!.state, 'UNKNOWN'); assert.equal(result.refund!.id, undefined); assert.equal(result.paymentStatus, 'PAID');
   }

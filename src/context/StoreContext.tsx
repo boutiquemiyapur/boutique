@@ -810,7 +810,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const newOrder = outcome.order;
         setOrders(prev => [preferPaymentOrder(prev.find(order => order.id === newOrder.id), newOrder), ...prev.filter(order => order.id !== newOrder.id)]);
         setLastPlacedOrder(newOrder);
-        // Automatic purchased-only Cart cleanup is deferred for separate approval.
+        // Trusted backend capture performs purchased-only Cart cleanup.
         // Never clear the current Cart or forget its stable payment intent here:
         // a retry of unchanged checkout details must reuse the existing order.
         return outcome;

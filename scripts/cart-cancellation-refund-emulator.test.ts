@@ -27,4 +27,56 @@ assert.equal((await db.doc(`orders/${id}`).get()).data()!.data.refund.state, 'AW
 assert.equal((await db.doc(`inventoryReservations/${id}`).get()).data()!.state, 'RESTORED');
 assert.equal((await db.doc('products/dress').get()).data()!.data.stockCount, 5); assert.equal(f.refundCalls, 0);
 console.log('Real Firestore Cart cleanup, duplicate capture/reconciliation, ownership, fulfilment holds, admin approval and exactly-once inventory restoration passed.');
+// Deterministic provider-quote/Firestore-commit interleaving; no LIVE calls.
+for (const status of ['captured', 'authorized']) {
+  const raceFixture = fixture(5); raceFixture.evidence({ status: 'created', captured: false });
+  await db.doc('products/dress').set(raceFixture.docs.get('products/dress'));
+  const racePayments = new PaymentService(db, raceFixture.provider);
+  const race = await racePayments.create(`quote-race-${status}`, raceFixture.request);
+  const cancellation = new CancellationService(db, raceFixture.provider, false);
+  await cancellation.request(`quote-race-${status}`, race.order.id, 'Other');
+  const inspect = cancellation.quote.bind(cancellation);
+  cancellation.quote = async id => {
+    const stale = await inspect(id);
+    raceFixture.evidence({ status, captured: status === 'captured' });
+    await racePayments.syncPayment(id, 'pay_test1'); return stale;
+  };
+  await assert.rejects(cancellation.review('admin', race.order.id, true, 'Approved'), /REFUND_QUOTE_CHANGED/);
+  const retained = (await db.doc(`orders/${race.order.id}`).get()).data()!.data;
+  assert.equal(retained.cancellationRequest.status, 'REQUESTED'); assert.equal(retained.refund, undefined);
+  assert.equal((await db.doc('products/dress').get()).data()!.data.stockCount, 4);
+  assert.equal(raceFixture.refundCalls, 0);
+}
+console.log('Real Firestore stale uncaptured quotes reject concurrent capture/authorization without stock or refund approval writes.');
+
+// M1: invalid trusted-provider refund rows cannot change durable paid state.
+const refundFixture=fixture(5);
+await db.doc('products/dress').set(refundFixture.docs.get('products/dress'));
+const refundPayments=new PaymentService(db,refundFixture.provider);
+const paid=await refundPayments.create('refund-evidence-user',refundFixture.request);
+await refundPayments.syncPayment(paid.order.id,'pay_test1');
+const trusted=(await db.doc(`orders/${paid.order.id}`).get()).data()!;
+const duplicate={id:'rfnd_duplicate',payment_id:'pay_test1',amount:100,status:'processed',currency:'INR'};
+refundFixture.refunds.push(duplicate,{...duplicate});
+await assert.rejects(refundPayments.syncPayment(paid.order.id,'pay_test1'),/REFUND_EVIDENCE_INVALID/);
+assert.deepEqual((await db.doc(`orders/${paid.order.id}`).get()).data(),trusted);
+refundFixture.refunds.length=0;
+const timestampCancellation=new CancellationService(db,refundFixture.provider,false);
+await timestampCancellation.request('refund-evidence-user',paid.order.id,'Other');
+await timestampCancellation.review('admin',paid.order.id,true,'Approved');
+await db.doc(`orders/${paid.order.id}`).update({'data.refund.state':'UNKNOWN','data.refund.approvedAt':'invalid-date'});
+await new CancellationService(db,refundFixture.provider,true).recoverRefund(paid.order.id);
+assert.equal(refundFixture.refundCalls,0);
+assert.equal((await db.doc(`orders/${paid.order.id}`).get()).data()!.data.refund.state,'MANUAL_REVIEW');
+// M2: malformed expiry inventory leaves reservation and stock untouched.
+const expiryFixture=fixture(5);expiryFixture.evidence({status:'created',captured:false});
+await db.doc('products/dress').set(expiryFixture.docs.get('products/dress'));
+const expiryPayments=new PaymentService(db,expiryFixture.provider,()=>1_800_000_000_000);
+const expiring=await expiryPayments.create('invalid-expiry-user',expiryFixture.request);
+const product=(await db.doc('products/dress').get()).data()!;
+product.data.variantInventory[0].key='invalid';await db.doc('products/dress').set(product);
+await assert.rejects(new PaymentService(db,expiryFixture.provider,()=>1_800_001_000_000).release(expiring.order.id),/RESERVATION_INVENTORY_CHANGED/);
+assert.deepEqual((await db.doc('products/dress').get()).data(),product);
+assert.equal((await db.doc(`inventoryReservations/${expiring.order.id}`).get()).data()!.state,'RESERVED');
+console.log('Real Firestore M1 invalid refund evidence, M2 raw expiry inventory and M5 malformed refund timestamps fail closed.');
 await db.terminate();

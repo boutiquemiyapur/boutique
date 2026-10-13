@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHmac} from 'node:crypto';
+import {createHmac,createHash} from 'node:crypto';
 import {PassThrough} from 'node:stream';
 import {build} from 'esbuild';
 import {resolve} from 'node:path';
@@ -13,16 +13,17 @@ await build({entryPoints:['api/payments/webhook.ts'],outfile:out,bundle:true,pla
  b.onResolve({filter:/payments\/provider\.js$/},()=>({path:'provider',namespace:'fixture'}));
  b.onResolve({filter:/payments\/service\.js$/},()=>({path:'service',namespace:'fixture'}));
  b.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({resolveDir:process.cwd(),contents:{
- cancellation:"export class CancellationService { async syncRefund(){ globalThis.refundObserverCalls++; } }",
+ cancellation:"export class CancellationService { async syncRefund(){ globalThis.refundObserverCalls++; if(globalThis.refundObserverFailure) throw Error('fixture observer failure'); } }",
  http:"export {rawBody,prepare,failure} from './server/payments/http'; export const database=()=>globalThis.webhookDb;",
  env:"export const validatePaymentEnvironment=()=>{};",
  provider:"export {validSignature} from './server/payments/provider'; export const razorpayProvider=()=>globalThis.webhookProvider;",
- service:"export class PaymentService {async attach(id,order){globalThis.webhookCalls.push(['attach',id,order.id]);} async syncPayment(id,paymentId,event){globalThis.webhookCalls.push(['sync',id,paymentId]);globalThis.webhookDocs.set(event.id,event);}}"
+ service:"export class PaymentService {async attach(id,order){globalThis.webhookCalls.push(['attach',id,order.id]);} async syncPayment(id,paymentId,event){globalThis.webhookCalls.push(['sync',id,paymentId]);globalThis.webhookDocs.set(globalThis.eventHash(event.id),{...event,orderId:id,refundObserverStatus:'PENDING'});}}"
  }[path]}));
 }}]});
 const {default:handler}=await import(pathToFileURL(out).href);
 const secret='fixture-only-webhook-secret';
-function reset(){globalThis.refundObserverCalls=0;globalThis.webhookCalls=[];globalThis.webhookDocs=new Map();globalThis.webhookDb={collection:()=>({doc:()=>({get:async()=>({exists:false})})}),runTransaction:async fn=>fn({get:async()=>({exists:false}),set:()=>{}})};globalThis.webhookProvider={payment:async id=>{webhookCalls.push(['provider',id]);return {id,order_id:'order_fixture'};},order:async()=>({id:'order_fixture',notes:{checkoutId:'pay_internal'}})};}
+function reset(){globalThis.eventHash=id=>createHash('sha256').update(id).digest('hex');globalThis.refundObserverFailure=false;globalThis.refundCompletionFailure=false;globalThis.refundObserverCalls=0;globalThis.webhookCalls=[];globalThis.webhookDocs=new Map();globalThis.webhookDb={collection:()=>({doc:id=>({get:async()=>({exists:webhookDocs.has(id),data:()=>webhookDocs.get(id)}),update:async patch=>{if(refundCompletionFailure)throw Error('fixture completion failure');Object.assign(webhookDocs.get(id),patch);}})}),runTransaction:async fn=>fn({get:async ref=>ref.get(),set:()=>{}})};globalThis.webhookProvider={payment:async id=>{webhookCalls.push(['provider',id]);return {id,order_id:'order_fixture'};},order:async()=>({id:'order_fixture',notes:{checkoutId:'pay_internal'}})};}
+
 async function invoke(raw,mode='lazy',signature=createHmac('sha256',secret).update(raw).digest('hex')){
  const req=new PassThrough();req.method='POST';req.headers={'content-type':'application/json','x-razorpay-signature':signature};
  if(mode==='lazy')Object.defineProperty(req,'body',{get(){throw Error('Lazy body getter executed');}});
@@ -42,4 +43,28 @@ test('signature mismatch, parsed body and signed malformed payloads never call p
 test('duplicate identical webhook acknowledges without provider calls; conflicting delivery stays rejected',async()=>{
  const raw=Buffer.from('{ "event": "payment.captured", "payload": {} }');const {createHash}=await import('node:crypto');const hash=createHash('sha256').update(raw).digest('hex');
  for(const [stored,status] of [[hash,200],['different',409]]){reset();webhookDb.collection=()=>({doc:()=>({get:async()=>({exists:true,data:()=>({hash:stored})})})});assert.equal((await invoke(raw)).status,status);assert.equal(webhookCalls.length,0);}
+});
+test('M4: pending refund observer survives failure and completes on signed retry without reapplying payment',async()=>{
+ reset();const raw=Buffer.from(JSON.stringify({event:'refund.processed',payload:{refund:{entity:{payment_id:'pay_fixture'}}}}));
+ globalThis.refundObserverFailure=true;assert.equal((await invoke(raw)).status,503);assert.equal(refundObserverCalls,1);
+ const stored=webhookDocs.get(eventHash(eventHash(raw)));assert.equal(stored.refundObserverStatus,'PENDING');
+ globalThis.refundObserverFailure=false;assert.equal((await invoke(raw)).status,200);assert.equal(refundObserverCalls,2);
+ assert.equal(stored.refundObserverStatus,'DONE');assert.equal(webhookCalls.filter(call=>call[0]==='sync').length,1);
+ assert.equal((await invoke(raw)).status,200);assert.equal(refundObserverCalls,2);
+});
+
+ test('M4: legacy mapped events without an observer marker recover safely',async()=>{
+ reset();const raw=Buffer.from(JSON.stringify({event:'refund.failed',payload:{refund:{entity:{payment_id:'pay_fixture'}}}}));
+ const hash=eventHash(raw);const key=eventHash(hash);webhookDocs.set(key,{hash,orderId:'pay_internal'});
+ assert.equal((await invoke(raw)).status,200);assert.equal(refundObserverCalls,1);assert.equal(webhookDocs.get(key).refundObserverStatus,'DONE');
+ assert.equal(webhookCalls.length,0);
+});
+
+test('M4: completion-write failure keeps observer pending for a safe later delivery',async()=>{
+ reset();const raw=Buffer.from(JSON.stringify({event:'refund.created',payload:{refund:{entity:{payment_id:'pay_fixture'}}}}));
+ refundCompletionFailure=true;assert.equal((await invoke(raw)).status,503);
+ const stored=webhookDocs.get(eventHash(eventHash(raw)));assert.equal(stored.refundObserverStatus,'PENDING');
+ refundCompletionFailure=false;assert.equal((await invoke(raw)).status,200);
+ assert.equal(stored.refundObserverStatus,'DONE');assert.equal(refundObserverCalls,2);
+ assert.equal(webhookCalls.filter(call=>call[0]==='sync').length,1);
 });

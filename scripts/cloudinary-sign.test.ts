@@ -7,6 +7,8 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { buildSync } from 'esbuild';
 import { deleteApp, getApps } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { fixture as paymentFixture } from './payment-fixture.js';
 import { getAuth } from 'firebase-admin/auth';
 import handler from '../api/cloudinary/sign';
 
@@ -32,7 +34,7 @@ const fixture = {
 async function invoke(body: unknown = { folder: 'banners', recordId: 'banner-1-desktop' }, token = 'test-token', method = 'POST') {
   let status = 0;
   let data: any;
-  await handler({ method, headers: token ? { authorization: `Bearer ${token}` } : {}, body }, {
+  await handler({ method, headers: token ? { authorization: `Bearer ${token}`, 'content-type': 'application/json' } : {}, body }, {
     status(code) { status = code; return { json(value) { data = value; } }; },
   });
   return { status, data };
@@ -95,12 +97,22 @@ test('authorization, configuration, signature and shared upload contract', async
     assert.equal((await invoke()).status, 401);
   });
 
-  let decoded: { admin?: unknown } = { admin: true };
+  let decoded: { admin?: unknown; uid?: string } = { admin: true, uid: 'signer-admin' };
   let tokenError: Error | undefined;
+  let simulateRevoked = false;
   const auth = getAuth(getApps()[0]);
-  mock.method(auth, 'verifyIdToken', async () => {
+  const local = paymentFixture();
+  mock.method(getFirestore(getApps()[0]), 'runTransaction', local.db.runTransaction.bind(local.db));
+  mock.method(auth, 'verifyIdToken', async (_token: string, checkRevoked?: boolean) => {
+    if (simulateRevoked && checkRevoked) throw Object.assign(new Error('fixture revoked'), { code: 'auth/id-token-revoked' });
     if (tokenError) throw tokenError;
     return decoded;
+  });
+
+  await t.test('M6: revoked unexpired admin token is rejected before signing', async () => {
+    simulateRevoked = true;
+    try { assert.equal((await invoke()).status, 401); }
+    finally { simulateRevoked = false; }
   });
 
   await t.test('Production upload authorization works without Test pins or Razorpay credentials', async () => {
@@ -116,7 +128,7 @@ test('authorization, configuration, signature and shared upload contract', async
       decoded = { admin };
       assert.equal((await invoke()).status, 403);
     }
-    decoded = { admin: true };
+    decoded = { admin: true, uid: 'signer-admin' };
     tokenError = Object.assign(new Error('sensitive-token-never-log'), { code: 'auth/id-token-expired' });
     assert.equal((await invoke()).status, 401);
     tokenError = Object.assign(new Error('sensitive-token-never-log'), { code: 'auth/internal-error' });
@@ -193,6 +205,14 @@ test('authorization, configuration, signature and shared upload contract', async
       assert.equal(result.publicId, `${signed.folder}/${signed.publicId}`);
       assert.deepEqual(progress, [50]);
     }
+  });
+
+  await t.test('M6: oversized and unexpected requests fail before signing; per-admin rate limit is durable', async () => {
+    assert.equal((await invoke({folder:'products',recordId:'dress',extra:'x'})).status,400);
+    assert.equal((await invoke(JSON.stringify({padding:'x'.repeat(32769)}))).status,413);
+    local.docs.clear();
+    for (let i=0;i<30;i++) assert.equal((await invoke()).status,200);
+    assert.equal((await invoke()).status,429);
   });
 
   await t.test('logs never contain secrets, private keys, tokens or raw SDK messages', () => {

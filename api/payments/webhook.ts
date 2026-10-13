@@ -17,8 +17,18 @@ export default async function handler(req: Request, res: Response) {
     const body = object(parsed) as Record<string, any>;
     const eventName = text(body.event, 80); const hash = digest(raw);
     const event = { id: typeof req.headers['x-razorpay-event-id'] === 'string' ? text(req.headers['x-razorpay-event-id'], 120) : hash, hash };
-    const db = database(); const prior = await db.collection('paymentEvents').doc(digest(event.id)).get();
-    if (prior.exists) { requireCondition(prior.data()?.hash === hash, 'EVENT_CONFLICT', 409); return res.status(200).json({ received: true }); }
+    const db = database(); const eventRef = db.collection('paymentEvents').doc(digest(event.id)); const prior = await eventRef.get();
+    const observe = async (id: string, provider = razorpayProvider()) => {
+      // The financial transaction durably marks this observer PENDING. Only
+      // mark DONE after success; failure remains retryable on signed delivery.
+      await new CancellationService(db, provider).syncRefund(id);
+      await eventRef.update({ refundObserverStatus: 'DONE', refundObservedAt: new Date() });
+    };
+    if (prior.exists) {
+      requireCondition(prior.data()?.hash === hash, 'EVENT_CONFLICT', 409);
+      if (!prior.data()?.ignored && prior.data()?.orderId && prior.data()?.refundObserverStatus !== 'DONE') await observe(identifier(prior.data()!.orderId));
+      return res.status(200).json({ received: true });
+    }
     const ignore = async () => {
       await db.runTransaction(async tx => {
         const ref = db.collection('paymentEvents').doc(digest(event.id)); const previous = await tx.get(ref);
@@ -39,7 +49,7 @@ export default async function handler(req: Request, res: Response) {
     const id = identifier(providerOrder.notes.checkoutId);
     const service = new PaymentService(db, provider); await service.attach(id, providerOrder);
     await service.syncPayment(id, paymentId, event);
-    await new CancellationService(db, provider).syncRefund(id);
+    await observe(id, provider);
     return res.status(200).json({ received: true });
   } catch (e) { return failure(res, e); }
 }
