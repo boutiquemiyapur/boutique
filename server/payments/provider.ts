@@ -41,7 +41,7 @@ export function razorpayProvider(env = process.env): PaymentProvider {
   }
   return {
     keyId,
-    createOrder: (amount, receipt, checkoutId) => api('orders', { amount, currency: 'INR', receipt, partial_payment: false, notes: { checkoutId } }),
+    createOrder: (amount, receipt, checkoutId) => api('orders', { amount, currency: 'INR', receipt, partial_payment: false, notes: { checkoutId }, checkout_config_id: 'config_TnT66HkFpG4oK4' }),
     // Receipt is not treated as provider idempotency. Search a bounded creation window.
     findOrders: async (receipt, since) => (await list<ProviderOrder>(`orders?from=${Math.floor(since / 1000) - 60}&to=${Math.floor(since / 1000) + 180}`)).filter(o => o.receipt === receipt),
     payment: id => api(`payments/${encodeURIComponent(id)}`),

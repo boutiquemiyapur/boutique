@@ -29,3 +29,9 @@ test('emergency-disabled adapter rejects before any database or provider transpo
  globalThis.manualProviderFixture={get db(){throw Error('must not read');}};
  const p=await provider(true);assert.throws(()=>p.createRefund('pay_fixture',100,'abr-fixture-key-12345'),/LIVE_REFUNDS_DISABLED/);assert.equal(calls,0);
 });
+test('actual provider binds saved payment configuration without changing trusted order creation fields',async t=>{
+ const calls=[];
+ t.mock.method(globalThis,'fetch',async(url,request)=>{calls.push({url,method:request.method,body:JSON.parse(request.body)});return {ok:true,json:async()=>({id:'order_fixture',amount:141000,currency:'INR',receipt:'receipt-fixture',notes:{checkoutId:'business-fixture'}})};});
+ const p=await provider();await p.createOrder(141000,'receipt-fixture','business-fixture');
+ assert.deepEqual(calls,[{url:'https://api.razorpay.com/v1/orders',method:'POST',body:{amount:141000,currency:'INR',receipt:'receipt-fixture',partial_payment:false,notes:{checkoutId:'business-fixture'},checkout_config_id:'config_TnT66HkFpG4oK4'}}]);
+});

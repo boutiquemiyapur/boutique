@@ -41,9 +41,9 @@ function hooks(){const slots=[];let index=0;let effects=[];globalThis.uiHooks={s
 function find(tree,predicate){if(!tree||typeof tree!=='object')return null;if(predicate(tree))return tree;return [tree.props?.children].flat(Infinity).map(c=>find(c,predicate)).find(Boolean)||null;}
 function store(currentOrder=order){globalThis.paymentStore={currentOrder,formatPrice:String,navigate(){},orders:[currentOrder].filter(Boolean),selectedTrackingOrderId:currentOrder?.id};}
 
-test('every checkout amount hides card/debit EMI and cardless EMI while preserving non-EMI defaults and trusted checkout fields',async()=>{
+test('checkout retains the server-issued order and does not override its saved payment configuration at either amount',async()=>{
  for(const amount of [6100,141000]){checkout();globalThis.fetch=()=>{throw Error('Display verification must not call payment API');};const promise=api.openPayment({...response,checkout:{...response.checkout,amount}});await tick();
-  assert.deepEqual(options.config,{display:{hide:[{method:'emi'},{method:'cardless_emi'}],preferences:{show_default_blocks:true}}});assert.equal(options.amount,amount);assert.equal(options.order_id,response.checkout.orderId);assert.equal(options.key,response.checkout.keyId);assert.equal(options.currency,'INR');assert.equal(options.method,undefined);
+  assert.equal(options.config,undefined);assert.equal(options.amount,amount);assert.equal(options.order_id,response.checkout.orderId);assert.equal(options.key,response.checkout.keyId);assert.equal(options.currency,'INR');assert.equal(options.method,undefined);
   options.modal.ondismiss();assert.equal((await promise).kind,'dismissed');
  }
 });

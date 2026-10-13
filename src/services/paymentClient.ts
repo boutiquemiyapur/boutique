@@ -99,8 +99,7 @@ async function runCheckout(response: CheckoutResponse, notify?: PaymentProgress)
       let settled = false; let verifying = false; let failed = false;
       const finish = (outcome: PaymentOutcome) => { if (!settled) { settled = true; resolve(outcome); } };
       const instance = new window.Razorpay!({ key: c.keyId, order_id: c.orderId, amount: c.amount, currency: c.currency, name: 'AB Collection',
-        // Supported Checkout display configuration; preserve all non-EMI defaults.
-        config: { display: { hide: [{ method: 'emi' }, { method: 'cardless_emi' }], preferences: { show_default_blocks: true } } },
+        // Saved payment display configuration is bound to the server-issued order.
         prefill: { name: response.order.shippingAddress.fullName, email: response.order.shippingAddress.email, contact: response.order.shippingAddress.phone },
         handler: async (result: PaymentResult) => {
           if (settled || verifying) return;
