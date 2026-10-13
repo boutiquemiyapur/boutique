@@ -82,7 +82,7 @@ test('customer requests have ownership checks, immutable reason and no refund or
   await assert.rejects(service.request('uid', id, 'forged'), /INVALID_CANCELLATION_REASON/);
   await service.request('uid', id, 'Other'); await service.request('uid', id, 'Ordered by mistake');
   assert.equal(f.docs.get(`orders/${id}`).data.cancellationRequest.reason, 'Other'); assert.equal(f.refundCalls, 0); assert.equal(f.docs.get('products/dress').data.stockCount, 4);
-  await assert.rejects(service.execute(id), /ADMIN_APPROVAL_REQUIRED/); await assert.rejects(fulfilOrder(f.db, 'admin', id, 'Processing'), /CANCELLATION_APPROVAL_REQUIRED/);
+  await assert.rejects(service.prepareRefundReview('admin', id), /ADMIN_APPROVAL_REQUIRED/); await assert.rejects(fulfilOrder(f.db, 'admin', id, 'Processing'), /CANCELLATION_APPROVAL_REQUIRED/);
 });
 test('only Order Placed/Confirmed allow requests; advanced and refunded orders reject', async () => {
   for (const status of ['Processing', 'Artisan Tailoring', 'Quality Inspection', 'Ready for Dispatch', 'Dispatched', 'Delivered', 'Cancelled']) {
@@ -108,11 +108,11 @@ test('approval restores inventory once; only individual confirmation initiates r
   await service.review('admin', id, true, 'Replay'); assert.equal(f.docs.get('products/dress').data.stockCount, 5);
   await assert.rejects(fulfilOrder(f.db, 'admin', id, 'Delivered'), /CANCELLATION_APPROVAL_REQUIRED/);
 });
-test('LIVE refund execution stays disabled while approvals record a durable hold', async () => {
-  assert.equal(LIVE_REFUND_EXECUTION_ENABLED, false);
-  const { f, id } = await checkout(); const service = new CancellationService(f.db, f.provider, false);
+test('server emergency disable still blocks execution while approvals record a durable hold', async () => {
+  assert.equal(LIVE_REFUND_EXECUTION_ENABLED, true);
+  const { f, id } = await checkout(); const service = new CancellationService(f.db, f.provider, false, () => 1_800_000_000_000);
   await service.request('uid', id, 'Other'); const order = await service.review('admin', id, true, 'Approved');
-  assert.equal(order.refund!.state, 'AWAITING_ENABLEMENT'); assert.equal(f.refundCalls, 0); await assert.rejects(service.execute(id), /LIVE_REFUNDS_DISABLED/);
+  assert.equal(order.refund!.state, 'AWAITING_ENABLEMENT'); assert.equal(f.refundCalls, 0); await assert.rejects(service.confirmReviewedRefund('admin',id,'synthetic-review',true), /LIVE_REFUNDS_DISABLED/);
 });
 test('uncaptured cancellation releases reservation once and late capture holds review without cleanup/refund', async () => {
   const { f, id, service } = await checkout(false); await service.request('uid', id, 'Other'); await service.review('admin', id, true, 'Approved');
@@ -176,12 +176,14 @@ test('unknown pre-response failure retries the immutable key/body and interrupte
   const { f, id, service } = await checkout(); await service.request('uid', id, 'Other');
   const original = f.provider.createRefund!; const calls: unknown[] = []; let fail = true;
   f.provider.createRefund = async (...args) => { calls.push(args); if (fail) { fail = false; throw Error('before response'); } return original(...args); };
-  await approveAndConfirm(service, id); await service.recoverRefund(id);
+  await approveAndConfirm(service, id); await service.recoverRefund(id); assert.equal(calls.length,1);
+  await approveAndConfirm(service,id);
   assert.equal(calls.length, 2); assert.deepEqual(calls[0], calls[1]); assert.equal(f.refundCalls, 1);
   const interrupted = await checkout(); const disabled = new CancellationService(interrupted.f.db, interrupted.f.provider, false, () => 1_800_000_000_000);
   await disabled.request('uid', interrupted.id, 'Other'); await disabled.review('admin', interrupted.id, true, 'Approved');
   const refund = interrupted.f.docs.get(`orders/${interrupted.id}`).data.refund; refund.state = 'INITIATING'; refund.approvedAt = new Date(1_800_000_000_000 - 180_000).toISOString(); refund.updatedAt = new Date(1_800_000_000_000 - 120_000).toISOString();
-  authorizeFixture(interrupted.f, interrupted.id); await interrupted.service.recoverRefund(interrupted.id); assert.equal(interrupted.f.refundCalls, 1);
+  authorizeFixture(interrupted.f, interrupted.id); await interrupted.service.recoverRefund(interrupted.id); assert.equal(interrupted.f.refundCalls, 0);
+  await approveAndConfirm(interrupted.service,interrupted.id);assert.equal(interrupted.f.refundCalls,1);
 });
 test('expired ambiguous refund retry enters manual review rather than generating another refund', async () => {
   const { f, id } = await checkout(); const disabled = new CancellationService(f.db, f.provider, false, () => 1_800_000_000_000);

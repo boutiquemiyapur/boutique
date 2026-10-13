@@ -83,7 +83,7 @@ console.log('Real Firestore M1 invalid refund evidence, M2 raw expiry inventory 
 // Future-ON behavior uses an injected gate and synthetic provider only.
 await db.doc('refundSettings/control').delete();
 const settings = new RefundSettingsService(db, true);
-const lockedSettings = new RefundSettingsService(db);
+const lockedSettings = new RefundSettingsService(db, false);
 assert.equal((await lockedSettings.read()).effectiveEnabled, false);
 await assert.rejects(lockedSettings.set('admin', true, 0, true), /LIVE_REFUNDS_DISABLED/);
 const changes = await Promise.allSettled([settings.set('one',true,0,true),settings.set('two',false,0,false)]);
@@ -100,6 +100,10 @@ const managedCancellation=new CancellationService(db,managedFixture.provider,tru
 await managedCancellation.request('refund-management-user',managed.order.id,'Other');
 await managedCancellation.review('admin',managed.order.id,true,'Approved');
 await managedCancellation.recoverRefund(managed.order.id);assert.equal(managedFixture.refundCalls,0);
+const held=(await db.doc(`orders/${managed.order.id}`).get()).data()!.data.refund;
+await db.doc(`orders/${managed.order.id}`).update({'data.refund.state':'UNKNOWN','data.refund.executionAuthorization':{adminUid:'admin',reviewId:'old-confirmation',confirmedAt:held.approvedAt,settingsRevision:enabledRevision,paymentId:held.paymentId,amountPaise:held.amountPaise,idempotencyKey:held.idempotencyKey,approvedAt:held.approvedAt}});
+await Promise.all([managedCancellation.recoverRefund(managed.order.id),managedCancellation.recoverRefund(managed.order.id)]);
+assert.equal(managedFixture.refundCalls,0);
 const reviewOne=await managedCancellation.prepareRefundReview('one',managed.order.id);
 const reviewTwo=await managedCancellation.prepareRefundReview('two',managed.order.id);
 assert.equal(reviewOne.canExecute,true);assert.equal(managedFixture.refundCalls,0);
@@ -111,5 +115,5 @@ await settings.set('admin',false,enabledRevision,false);managedFixture.refunds[0
 await managedCancellation.recoverRefund(managed.order.id);await managedPayments.syncPayment(managed.order.id,'pay_test1');
 assert.equal((await db.doc(`orders/${managed.order.id}`).get()).data()!.data.refund.state,'PROCESSED');
 assert.equal(managedFixture.refundCalls,1);
-console.log('Real Firestore dual gates, concurrent settings revisions, legacy approval hold, individual confirmations racing cron, one refund/stock restoration and OFF status synchronization passed.');
+console.log('Real Firestore dual gates, concurrent settings revisions, legacy and confirmed UNKNOWN holds, manual confirmations racing status-only cron, one refund/stock restoration and OFF status synchronization passed.');
 await db.terminate();

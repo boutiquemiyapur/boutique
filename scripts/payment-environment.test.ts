@@ -31,11 +31,11 @@ function isolatedBuildEnv(env: Record<string, string>) {
   return { ...inherited, ...env, CRON_SECRET: 'fixture-only-cron-secret' };
 }
 
-test('refund provider rejects execution before any transport call while LIVE refunds are disabled', t => {
+test('refund provider rejects a below-minimum request before database or transport access', t => {
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async () => { calls++; throw Error('Unexpected transport'); });
   const provider = razorpayProvider(fixture('production'));
-  assert.throws(() => provider.createRefund!('pay_fixture', 100, 'abr-fixture-key-12345'), /LIVE_REFUNDS_DISABLED/);
+  assert.throws(() => provider.createRefund!('pay_fixture', 1, 'abr-fixture-key-12345'), /INVALID_REFUND_REQUEST/);
   assert.equal(calls, 0);
 });
 

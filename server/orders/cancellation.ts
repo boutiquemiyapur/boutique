@@ -112,14 +112,14 @@ export class CancellationService {
     });
     return order; // Approval never initiates money movement; individual confirmation is separate.
   }
-  async execute(id: string) {
+  private async execute(id: string, adminUid: string, reviewId: string) {
     requireCondition(this.executeRefunds && this.provider.createRefund, 'LIVE_REFUNDS_DISABLED', 409);
     const policy = new RefundSettingsService(this.db, this.executeRefunds, this.now); policy.requireEnabled(await policy.read());
     const record = await this.record(id); const current = record.data as Order;
     requireCondition(current.orderStatus === 'Cancelled' && current.cancellationRequest?.status === 'APPROVED' && current.refund?.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
     if (['PROCESSED', 'FAILED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(current.refund.state)) return current;
     if (!this.validRefundTimes(current.refund)) { await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_TIMESTAMPS_INVALID' }); return (await this.record(id)).data as Order; }
-    requireCondition(this.authorizedRefund(current.refund), 'REFUND_CONFIRMATION_REQUIRED', 409);
+    requireCondition(this.authorizedRefund(current.refund) && current.refund.executionAuthorization!.adminUid === adminUid && current.refund.executionAuthorization!.reviewId === reviewId, 'REFUND_CONFIRMATION_REQUIRED', 409);
     await this.syncRefund(id);
     const after = (await this.record(id)).data as Order;
     if (after.refund?.id || after.refund?.state === 'MANUAL_REVIEW') return after;
@@ -128,7 +128,7 @@ export class CancellationService {
     const claimed = await this.db.runTransaction(async tx => {
       const ref = this.ref('orders', id); const order = (await tx.get(ref)).data()!.data as Order; const refund = order.refund!;
       const settings = policy.snapshot((await tx.get(policy.ref())).data()); policy.requireEnabled(settings);
-      requireCondition(this.authorizedRefund(refund) && refund.executionAuthorization!.settingsRevision === settings.revision, 'REFUND_SETTINGS_CHANGED', 409);
+      requireCondition(this.authorizedRefund(refund) && refund.executionAuthorization!.adminUid === adminUid && refund.executionAuthorization!.reviewId === reviewId && refund.executionAuthorization!.settingsRevision === settings.revision, 'REFUND_SETTINGS_CHANGED', 409);
       requireCondition(order.cancellationRequest?.status === 'APPROVED' && order.orderStatus === 'Cancelled' && refund.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
       if (!this.validRefundTimes(refund) || this.now() - Date.parse(refund.approvedAt!) > 86_400_000) {
         const at = new Date(this.now()).toISOString();
@@ -171,16 +171,14 @@ export class CancellationService {
     });
   }
   async recoverRefund(id: string) {
+    // Status-only, even with both gates ON and a prior individual confirmation.
+    // A lost/unknown attempt needs a NEW manual admin review before any send.
     const order = (await this.record(id)).data as Order;
     if (order.cancellationRequest?.status === 'APPROVED' && order.refund && !order.refund.id && ['AWAITING_ENABLEMENT', 'APPROVED', 'INITIATING', 'UNKNOWN'].includes(order.refund.state)
       && (!this.validRefundTimes(order.refund) || this.now() - Date.parse(order.refund.approvedAt!) > 86_400_000)) {
       await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_APPROVAL_REVIEW_REQUIRED' });
       await this.syncRefund(id); // Discover an existing provider refund; never initiate another.
       return (await this.record(id)).data as Order;
-    }
-    if (this.executeRefunds && order.cancellationRequest?.status === 'APPROVED' && ['AWAITING_ENABLEMENT', 'APPROVED', 'INITIATING', 'UNKNOWN'].includes(order.refund?.state || '') && this.authorizedRefund(order.refund!)) {
-      const settings = await new RefundSettingsService(this.db, this.executeRefunds, this.now).read();
-      if (settings.effectiveEnabled && settings.revision === order.refund!.executionAuthorization!.settingsRevision) return this.execute(id);
     }
     await this.syncRefund(id);
     return (await this.record(id)).data as Order;
@@ -200,12 +198,10 @@ export class CancellationService {
     await this.db.runTransaction(async tx => tx.set(this.ref('cancellationAudits', `${id}-${randomUUID()}`), { orderId: id, action, by: adminUid, at: new Date(this.now()).toISOString() }));
   }
   async retryApprovedRefund(adminUid: string, id: string) {
-    // Old UI/clients cannot silently authorize a first refund or renew approval.
+    // Legacy retry requests cannot send money using an old confirmation.
     requireCondition(this.executeRefunds, 'LIVE_REFUNDS_DISABLED', 409);
     await this.auditAction(adminUid, id, 'REFUND_RETRY_REQUESTED');
-    const order = (await this.record(id)).data as Order;
-    requireCondition(order.refund && this.authorizedRefund(order.refund), 'REFUND_CONFIRMATION_REQUIRED', 409);
-    return this.execute(id);
+    requireCondition(false, 'REFUND_CONFIRMATION_REQUIRED', 409);
   }
   async prepareRefundReview(adminUid: string, id: string): Promise<ApprovedRefundReview> {
     await this.auditAction(adminUid, id, 'REFUND_REVIEWED');
@@ -242,13 +238,13 @@ export class CancellationService {
     requireCondition(saved?.adminUid === adminUid && saved?.orderId === id && Number.isSafeInteger(saved?.expiresAt) && saved.expiresAt > this.now(), 'REFUND_REVIEW_EXPIRED_OR_INVALID', 409);
     if (saved.consumed) return this.recoverRefund(id);
     const quote = await this.quote(id);
-    await this.db.runTransaction(async tx => {
+    const authorized = await this.db.runTransaction(async tx => {
       const rr = this.ref('refundReviews', reviewId); const review = (await tx.get(rr)).data();
       const ref = this.ref('orders', id); const order = (await tx.get(ref)).data()!.data as Order; const refund = order.refund;
       const settings = policy.snapshot((await tx.get(policy.ref())).data()); policy.requireEnabled(settings);
       const attempt = await tx.get(this.ref('paymentAttempts', id));
       requireCondition(review?.adminUid === adminUid && review?.orderId === id && review.expiresAt > this.now(), 'REFUND_REVIEW_EXPIRED_OR_INVALID', 409);
-      if (review.consumed) return;
+      if (review.consumed) return false;
       requireCondition(order.orderStatus === 'Cancelled' && order.cancellationRequest?.status === 'APPROVED' && refund?.approvedBy && this.validRefundTimes(refund) && this.now() - Date.parse(refund.approvedAt!) <= 86_400_000, 'REFUND_APPROVAL_REVIEW_REQUIRED', 409);
       requireCondition(!refund.id && !['PROCESSED', 'FAILED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(refund.state) && settings.revision === review.settingsRevision && quote.captured && quote.paymentId === review.paymentId && quote.amountPaise === review.amountPaise && refund.paymentId === review.paymentId && refund.amountPaise === review.amountPaise && refund.approvedAt === review.approvedAt && refund.idempotencyKey === review.idempotencyKey, 'REFUND_QUOTE_CHANGED', 409);
       const at = new Date(this.now()).toISOString();
@@ -256,8 +252,9 @@ export class CancellationService {
       tx.update(rr, { consumed: true, consumedAt: at });
       if (attempt.exists) tx.update(attempt.ref, { nextCheckAt: this.now() + 60_000 });
       tx.set(this.ref('cancellationAudits', `${id}-confirmed-${reviewId}`), { orderId: id, action: 'REFUND_EXECUTION_CONFIRMED', by: adminUid, at, amountPaise: review.amountPaise, paymentId: review.paymentId });
+      return true;
     });
-    return this.execute(id);
+    return authorized ? this.execute(id, adminUid, reviewId) : this.recoverRefund(id);
   }
   async syncRefund(id: string) {
     const order = (await this.record(id)).data as Order;

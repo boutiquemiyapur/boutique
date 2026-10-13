@@ -1,21 +1,21 @@
 # AB Collections payment security audit and stabilization
 
-Updated 2026-10-13. Current Admin Refund Management delta baseline: `3c48bff13d28004b99b71d2a4429e2d9bc562d6d` (Cancel and refund). The prior stabilization and hosted inspections below used `1deb57cc1a8907f870d11d985bb314868bec2c05`; their 20-file/203-test/rules-parity statements are historical evidence, not the current manifest. The new implementation section below and its 30-file handoff supersede those manifest and rules-deployment conclusions. This remains the authoritative findings disposition.
+Updated 2026-10-13. Current manual-only release delta baseline: `e4c0e7828feaf13f055adcf8dc5313329ef79f32`. The prior 20-file stabilization and 30-file admin-management deltas are now baseline/historical evidence. The latest manual-only section below and the 16-file ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md manifest supersede their code-gate, automatic recovery, manifest and test-count conclusions. This remains the authoritative findings disposition.
 
 ## Recommendation
 
-**Local Admin Refund Management implementation: GO with LIVE refunds disabled. Production release: NO-GO until the compromised CRON_SECRET incident is closed and the matching application/rules release is separately approved. Prior webhook/scheduler evidence is owner-verified; the new code/rules have not been deployed. LIVE refund enablement: NO-GO and outside this release.**
+**Local manual-only implementation: GO for review. Production deployment/LIVE activation: NO-GO pending E1 cron incident closure, a new decision on the residual gRPC advisory for LIVE refunds, hosted release verification and explicit approval. The local code gate is prepared true; the admin setting defaults OFF and Production was not activated. Prior hosted evidence is historical, not verification of this new release.**
 
-H1 and M1/M2/M4/M5/M6 are fixed locally. M3 preserves legitimate independent purchases and documents the cross-device limit. The owner explicitly accepted the residual Firebase/gRPC advisory on 2026-10-13 **for a release with LIVE refunds disabled**. No unsafe override or Firebase downgrade was introduced. This does not establish that hosted financial behavior or the dependency tree is fully verified.
+H1 and M1/M2/M4/M5/M6 remain fixed locally. M3 preserves legitimate independent purchases and documents the cross-device limit. The owner explicitly accepted the residual Firebase/gRPC advisory on 2026-10-13 **for a release with LIVE refunds disabled only**. That acceptance does not cover LIVE activation of this prepared gate. No unsafe override or Firebase downgrade was introduced. Hosted financial behavior and all transitive reachability are not fully verified.
 
-LIVE_REFUND_EXECUTION_ENABLED remains false in server/orders/refundPolicy.ts:2. Cancellation approval can still cancel orders and restore ledger-backed stock; captured refunds remain AWAITING_ENABLEMENT. The store must distinguish approval from money refunded. No LIVE payment/refund, Production record modification, credential/configuration change, staging, commit, push or deployment occurred.
+The local `LIVE_REFUND_EXECUTION_ENABLED` gate is now prepared true in server/orders/refundPolicy.ts:4, with false retained as the server emergency disable. The persisted private admin toggle must also be ON, and every send requires a fresh explicit admin review/confirmation. Production gate/settings were not changed or newly inspected. Cancellation approval still holds refunds and restores trustworthy ledger-backed stock once. Reconciliation/webhooks observe status only, even with old confirmations and both gates ON. No LIVE payment/refund, Production record modification, credential/configuration change, staging, commit, push or deployment occurred.
 
 Remaining release requirements:
 
 1. Prior deployed rules matched the earlier reviewed source. The current local rules additionally deny refundSettings/history/refundReviews explicitly; prior implicit deny already protected these new namespaces. Publish/reverify the reviewed rules as coordinated, separately approved release work. Vercel does not deploy Firebase rules. Current deployed parity was not rechecked in this implementation task.
 2. Owner verified the LIVE webhook and cron-job.org configuration/history. The exposed cron bearer token is compromised: coordinate its replacement in Vercel Production and cron-job.org, activate a new deployment and confirm normal scheduled recovery. This requires separate approval; no rotation occurred during this review. Do not invoke reconciliation as a read-only probe.
 3. Preserve the observed npm install/build path. Do not assume unchanged bun.lock has the dependency patches. No hosted setting was changed.
-4. Review the current 30-file manifest in ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md and obtain separate commit/push/deploy approval. The existing INR 1 order and hosted settlement behavior were not inspected or tested. Older held approvals can require manual review, not a renewed timestamp or new idempotency key.
+4. Review the current 16-file manifest in ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md and obtain separate commit/push/deploy/activation approval. Verify the existing private admin setting absent/OFF before deploying the prepared true gate; no saved Production value is assumed. The actual INR 1 order and hosted settlement behavior were not inspected or tested. Old approvals can require manual review, not a renewed timestamp or new key. A new dependency risk decision is required for LIVE activation.
 
 ## Scope and evidence boundaries
 
@@ -87,7 +87,7 @@ Proof: scripts/cloudinary-sign.test.ts:112 rejects revoked unexpired admin token
 
 package-lock.json carries proxy-addr 2.0.8 instead of 2.0.7. Original package severity is CRITICAL; no reachable app-level IP authorization bypass was demonstrated because this code has no Express trust-proxy server or IP-based payment authentication. Dedicated audit regression rejects arbitrary IPv4 attackers for the malformed mapped-IPv6 trust subnet and retains valid subnet behavior. [Maintainer advisory](https://github.com/jshttp/proxy-addr/security/advisories/GHSA-jqcg-44mw-7w3h).
 
-### D2 - HIGH package advisories - PARTLY PATCHED / RESIDUAL ACCEPTED
+### D2 - HIGH package advisories - PARTLY PATCHED / ACCEPTED FOR DISABLED REFUNDS ONLY
 
 Compatible patches retained from the initial audit: brace-expansion 2.1.4 -> 2.1.7, nested google-gax grpc-js 1.14.4 -> 1.14.6, source-map-js 1.2.1 -> 1.2.2. Root grpc-js remains 1.9.16 under Firestore's ~1.9.0 pin. No override, force fix or Firebase downgrade was introduced.
 
@@ -311,7 +311,7 @@ The current manifest still matches exactly 20 files against 1deb57c, with no mis
 
 Read-only evidence artifacts under node_modules/.cache: finalgate-webhook-history-safe.json, finalgate-webhook-history-alternative-safe.json, finalgate-webhook-log-shapes-safe.json, finalgate-webhook-request-summary-safe.json, finalgate-webhook-deployment-correlation-safe.json, finalgate-deployment-protection-safe.json and finalgate-old-deployment-access-safe.json. Raw log messages, signatures, secret values and customer payloads were discarded rather than copied into the report.
 
-## Admin Refund Management — current implementation verification
+## Prior Admin Refund Management verification — superseded by manual-only release below
 
 2026-10-13, against local HEAD `3c48bff13d28004b99b71d2a4429e2d9bc562d6d`. The previous stabilization is now in that baseline. **The current delta is exactly 30 files**, including this audit and the implementation handoff; it is not the historical 20-file delta. The complete file-by-file manifest, database schema, release sequence and rollback requirements are in [ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md](ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md).
 
@@ -364,6 +364,57 @@ Prior owner LIVE webhook/cron evidence and recovered October 10 delivery assessm
 OFF blocks new backend authorization/recovery sends and is rechecked at claim/pre-transport/provider boundaries. It cannot retract an already submitted request; a concurrent toggle after the last settings read cannot atomically cancel an external request. Preserve status synchronization and treat in-flight/unknown outcomes as reconciliation work, never a new refund identity. This operational boundary remains even after future enablement.
 
 **Final disposition: GO for the local implementation with both refund gates OFF; NO-GO for Production release pending E1 closure and separately approved coordinated deployment; NO-GO for LIVE refund enablement.** No staging, commit, push, deployment, Production records/credentials/configuration changes, LIVE transactions or credential rotation were performed.
+
+## Final admin-only manual LIVE refund workflow — current release evidence
+
+2026-10-13. Current local HEAD is `e4c0e7828feaf13f055adcf8dc5313329ef79f32`; the implementation change is uncommitted. The existing UI/backend was retained rather than rebuilt. The complete **16-file current manifest**, schema compatibility and approval/release/rollback procedure are in [ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md](ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md).
+
+### Manual initiation invariant
+
+`server/orders/cancellation.ts` now has one private initiation function, called only after `confirmReviewedRefund` consumes a fresh five-minute review inside the authenticated admin action. Its entry and transaction bind the currently confirming admin/review to the stored authorization. Previously consumed reviews return status observation, not a send. The legacy `retryRefund` route remains admin-authenticated but always rejects financial execution with REFUND_CONFIRMATION_REQUIRED; a new review and explicit confirmation are required instead.
+
+`recoverRefund` cannot call the initiation function. This holds for AWAITING_ENABLEMENT, APPROVED, INITIATING, UNKNOWN, old confirmations and enabled settings, including expired leases. It can synchronize provider outcomes or mark malformed/expired approvals for manual review only. `api/payments/reconcile.ts` no longer imports the execution gate and explicitly constructs an execution-disabled status observer. Webhooks retain existing signed status synchronization/durable observer processing and cannot initiate a refund. Cancellation requests/approval and settings ON/OFF also do not initiate funds.
+
+A lost process before transport or UNKNOWN provider response no longer triggers financial retries in scheduled recovery. Observation first attempts to discover an existing refund through the immutable provider receipt/key. If no reference is found and original eligibility/24-hour expiry remain valid, only a fresh explicit admin confirmation may retry with the SAME key, amount, payment and body. Never create a new refund identity, renew timestamps or bypass manual-review/failed/existing-refund states. Already submitted refunds remain tracked, including while OFF. Pending payment confirmation, trusted Cart cleanup and stock workflows are unchanged.
+
+### Prepared gate and authorization
+
+`server/orders/refundPolicy.ts` prepares `LIVE_REFUND_EXECUTION_ENABLED=true` locally for the requested admin-controlled release. No Production activation or deployment occurred. Missing `refundSettings/control` still means OFF. Both server gates are enforced by the service and actual provider adapter. The same code gate can be set false in a separately approved emergency rebuild/deployment; normal admin OFF prevents subsequent initiation without routine source edits. Neither stop recalls an in-flight/submitted external request.
+
+Both admin endpoints retain `verifyIdToken(token, true)`, exact admin claims, strict input schemas, transactional request limits, private Firestore state and audit history. Customer/direct unauthorized requests cannot set the toggle, create reviews or execute/retry refunds. No new variable, credentials, integration or database is introduced. Before deploying the prepared true gate, verify the actual existing admin setting absent/OFF through approved read-only access; if ON, obtain specific approval to disable it. This task did not inspect or modify its hosted value.
+
+### Final test results
+
+| Check | Result |
+| --- | --- |
+| Complete payment/environment/cancellation/refund/client/presentation/webhook/security/Cloudinary/shopping/catalog/inventory/order/provider suites | **232/232**, 0 failed/cancelled/skipped; exit 0 |
+| Existing refund-management command with new adapter tests | **29/29**, included in total |
+| Existing Firestore emulator runner | **90 authorization checks** plus all functional suites; exit 0 |
+| TypeScript | Pass |
+| Local Production-mode build | Pass |
+| Diff/index/manifest review | Exactly 16 files, no missing/extra files, empty staging area |
+
+`scripts/refund-management-api.test.mjs` tests real settings ON/OFF and admin execution handlers with synthetic Firebase SDK/provider boundaries, including revocation checking, roles, schemas, limits and consumed-review replay. It also executes the actual cron handler and signed webhook handler with a confirmed UNKNOWN attempt and settings ON: **zero refund initiations**, then discovers/records an externally represented processed refund and replays its event without financial or stock duplication.
+
+`scripts/refund-management.test.ts` checks status-only observation across legacy/confirmed states and expired leases with both gates ON, rejection of old retry permits, no automatic resume after process loss, consumed review no-resend, and a new explicit manual confirmation using the original key. Existing expiry, balance/capture/history, sub-minimum amount, settings revisions and simultaneous-admin guards remain covered. `scripts/cart-cancellation-refund.test.ts` now requires explicit confirmation for unknown/interrupted manual retries. The initiation-time M5 regression still corrupts metadata after the final provider quote and proves transaction-level manual review.
+
+`scripts/cart-cancellation-refund-emulator.test.ts` proves a confirmed UNKNOWN record produces no financial initiation during concurrent status observation with both gates ON, followed by simultaneous manual confirmations racing the status observer producing one mock provider refund and one inventory restoration. Existing 90 rules checks are retained. UI tests cover the existing functional toggle, confirmation dialogs, exact trusted amount/order, double clicks and truthful status messages; source labels now say Refund Now and explain no automatic retries.
+
+`scripts/manual-refund-provider.test.mjs` bundles the actual provider adapter with in-memory database and intercepted fetch only. It proves absent/OFF settings deny transport, ON retains exact amount/speed/receipt and X-Refund-Idempotency, subsequent OFF denies transport, and an emergency-false adapter rejects BEFORE even reading settings. No request reaches Razorpay. Existing signed-wire-byte, refund observer, payment verification, Cart, inventory and authorization regressions all pass.
+
+Logs/evidence: ignored `node_modules/.cache/manual-refund-full.log`, `manual-refund-new.log`, `manual-refund-emulator.log`, `manual-refund-types.log`, `manual-refund-build.log`, `manual-refund-audit.json`. Optional emulator notification/expected denial diagnostics are not failures. Local Firebase-disabled and large-bundle warnings remain. These are local synthetic/emulator checks, not hosted financial/visual/runtime verification.
+
+### Dependency and Production disposition
+
+Read-only `npm ls` confirms Firebase 12.18.0 → Firestore 4.17.1 → grpc-js 1.9.16; the firebase-admin 14.3.0 → google-cloud/firestore 8.7.1 → google-gax 5.0.8 chain uses grpc-js 1.14.6. A registry audit refresh still reports **0 critical / 4 high / 9 moderate** affected-package entries. Exact inherited HIGH certificate/getAuthContext advisory: [GHSA-m9gg-hp2v-232j](https://github.com/advisories/GHSA-m9gg-hp2v-232j), affected <1.13.6; the same old package has a LOW server-error disclosure advisory [GHSA-f596-whhp-79r4](https://github.com/advisories/GHSA-f596-whhp-79r4), affected <1.13.6. No app gRPC server/getAuthContext authorization is used, which limits demonstrated reachability without proving all transitive safety. No dependency/lockfile/override/downgrade was changed or newly upgraded in this scoped workflow task.
+
+The earlier owner's acceptance was explicitly limited to disabled refunds. **D2 therefore needs a new owner risk decision or a supported tested upstream fix before this LIVE activation can be approved.** Do not silently extend acceptance because initiation is now manual-only. The registry fetch initially failed in the sandbox and succeeded after authorized read-only retry; no dependency installation occurred.
+
+**E1 remains HIGH / OPEN / RELEASE BLOCKER:** the compromised cron token incident is not resolved by removing financial initiation from the scheduler. Its token still authorizes privileged payment/Cart/inventory maintenance. Rotation, safe old-deployment access and normal scheduled execution evidence remain separately approved work; no rotation took place here.
+
+Firestore rules/schema are unchanged relative to this admin-management baseline; the reviewed restrictive rules must nevertheless be deployed/reverified alongside the full matching application if not already hosted. Existing historical rules parity did not cover a newly observed current release. Preserve the existing npm/package-lock.json build path and publish the complete matching backend/UI, not selected files. The actual INR 1 order, browser/mobile behavior, hosted Node 24 execution and LIVE refund/settlement remain unverified. Inspect ordinary existing webhook/scheduled outcomes after approval without replay/manual triggering or generating a new transaction.
+
+**Current disposition: GO for the local manual-only implementation review; NO-GO for Production deployment/LIVE activation until E1 closure, the D2 LIVE risk decision, hosted release verification and explicit user approval.** Keep the admin setting OFF during any approved application deployment; activating ON and executing an actual refund are separate scopes. Rollback/emergency release must use current safe credentials and code gate false; do not restore old automatic-initiation code with gate true or a compromised-secret deployment. No staging, commit, push, deployment, Production record/configuration/credential change or LIVE financial operation was performed.
 
 ## Provider references
 

@@ -122,16 +122,16 @@ test('M5: invalid or future approval/retry timestamps require manual review with
   }
 });
 
-test('LIVE refund gate remains disabled throughout the audit', () => assert.equal(LIVE_REFUND_EXECUTION_ENABLED, false));
+test('local release gate is prepared for admin control', () => assert.equal(LIVE_REFUND_EXECUTION_ENABLED, true));
 
 test('M5: timestamp corruption after provider inspection is rechecked in the initiation transaction', async () => {
   const {f,id,service}=await order(true);await service.request('uid',id,'Other');await service.review('admin',id,true,'Approved');
   f.docs.set('refundSettings/control',{enabled:true,revision:1,updatedBy:'admin',updatedAt:new Date(1_800_000_000_000).toISOString()});
   const r=f.docs.get(`orders/${id}`).data.refund; r.executionAuthorization={adminUid:'admin',reviewId:'fixture',confirmedAt:r.approvedAt,settingsRevision:1,paymentId:r.paymentId,amountPaise:r.amountPaise,idempotencyKey:r.idempotencyKey,approvedAt:r.approvedAt};
   const enabled=new CancellationService(f.db,f.provider,true,()=>1_800_000_000_000);
-  const inspect=enabled.quote.bind(enabled);
-  enabled.quote=async id=>{const quote=await inspect(id);f.docs.get(`orders/${id}`).data.refund.updatedAt='invalid-date';return quote;};
-  await enabled.execute(id);assert.equal(f.refundCalls,0);assert.equal(f.docs.get(`orders/${id}`).data.refund.state,'MANUAL_REVIEW');
+  const review=await enabled.prepareRefundReview('admin',id); const inspect=enabled.quote.bind(enabled);let count=0;
+  enabled.quote=async id=>{const quote=await inspect(id);if(++count===2)f.docs.get(`orders/${id}`).data.refund.updatedAt='invalid-date';return quote;};
+  await enabled.confirmReviewedRefund('admin',id,review.reviewId!,true);assert.equal(f.refundCalls,0);assert.equal(f.docs.get(`orders/${id}`).data.refund.state,'MANUAL_REVIEW');
 });
 
 test('patched proxy trust rejects an arbitrary IPv4 attacker for a malformed mapped IPv6 subnet', () => {

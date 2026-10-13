@@ -23,9 +23,10 @@ async function approved() {
   await service.review('admin', order.id, true, 'Approved');
   return { f, service, settings, id: order.id, advance(n: number) { clock += n; } };
 }
-test('both gates default OFF; actual code gate rejects ON even with a stored enabled setting', async () => {
-  const f = fixture(); const locked = new RefundSettingsService(f.db);
-  assert.equal(LIVE_REFUND_EXECUTION_ENABLED, false);
+test('prepared gate permits admin control; emergency gate rejects ON and settings default OFF', async () => {
+  const f = fixture(); const locked = new RefundSettingsService(f.db, false);
+  assert.equal(LIVE_REFUND_EXECUTION_ENABLED, true);
+  assert.equal((await new RefundSettingsService(f.db).read()).adminEnabled,false);
   assert.deepEqual(await locked.read(), {codeEnabled:false,adminEnabled:false,effectiveEnabled:false,revision:0,updatedAt:null,updatedBy:null});
   await assert.rejects(locked.set('admin',true,0,true), /LIVE_REFUNDS_DISABLED/);
   assert.equal(f.docs.has('refundSettings/control'), false);
@@ -105,21 +106,23 @@ test('provider amount/capture/history changes after review abort execution', asy
     await assert.rejects(service.confirmReviewedRefund('admin',id,review.reviewId!,true));assert.equal(f.refundCalls,0);
   }
 });
-test('confirmed attempt lost before transport is durable; scheduler resumes only its immutable authorized refund', async () => {
+test('confirmed attempt lost before transport is observed only; fresh admin confirmation is required', async () => {
   const {f,service,settings,id}=await approved();await settings.set('admin',true,0,true);
-  const review=await service.prepareRefundReview('admin',id);const execute=service.execute.bind(service);
-  service.execute=async()=>{throw Error('synthetic process lost before transport');};
+  const review=await service.prepareRefundReview('admin',id);const quote=service.quote.bind(service);let count=0;
+  service.quote=async id=>{if(++count===2)throw Error('synthetic process lost before transport');return quote(id);};
   await assert.rejects(service.confirmReviewedRefund('admin',id,review.reviewId!,true));assert.equal(f.refundCalls,0);
   assert.equal(f.docs.get(`paymentAttempts/${id}`).nextCheckAt,start+60000);
-  service.execute=execute;await service.recoverRefund(id);assert.equal(f.refundCalls,1);
+  service.quote=quote;await service.recoverRefund(id);assert.equal(f.refundCalls,0);
+  await service.confirmReviewedRefund('admin',id,review.reviewId!,true);assert.equal(f.refundCalls,0);
+  const fresh=await service.prepareRefundReview('admin',id);await service.confirmReviewedRefund('admin',id,fresh.reviewId!,true);assert.equal(f.refundCalls,1);
   const approval=f.docs.get(`orders/${id}`).data.refund;
-  assert.equal(approval.executionAuthorization.reviewId,review.reviewId);
+  assert.equal(approval.executionAuthorization.reviewId,fresh.reviewId);
 });
 test('turning OFF then ON does not revive a confirmed but unsent authorization', async () => {
   const {f,service,settings,id}=await approved();await settings.set('admin',true,0,true);
-  const review=await service.prepareRefundReview('admin',id);const execute=service.execute.bind(service);
-  service.execute=async()=>{throw Error('synthetic process lost');};
-  await assert.rejects(service.confirmReviewedRefund('admin',id,review.reviewId!,true));service.execute=execute;
+  const review=await service.prepareRefundReview('admin',id);const quote=service.quote.bind(service);let count=0;
+  service.quote=async id=>{if(++count===2)throw Error('synthetic process lost');return quote(id);};
+  await assert.rejects(service.confirmReviewedRefund('admin',id,review.reviewId!,true));service.quote=quote;
   await settings.set('admin',false,1,false);await settings.set('admin',true,2,true);
   await service.recoverRefund(id);assert.equal(f.refundCalls,0);
   const fresh=await service.prepareRefundReview('admin',id);await service.confirmReviewedRefund('admin',id,fresh.reviewId!,true);assert.equal(f.refundCalls,1);
@@ -131,4 +134,15 @@ test('OFF blocks recovery sends but existing provider outcomes still synchronize
   await settings.set('admin',false,1,false);f.refunds[0].status='processed';
   await service.recoverRefund(id);await f.service.syncPayment(id,'pay_test1');
   assert.equal(f.docs.get(`orders/${id}`).data.refund.state,'PROCESSED');assert.equal(f.docs.get(`orders/${id}`).data.paymentStatus,'REFUNDED');assert.equal(f.refundCalls,1);
+});
+test('background observation never submits funds for any legacy/confirmed unsent or ambiguous state with both gates ON', async () => {
+  for(const state of ['AWAITING_ENABLEMENT','APPROVED','INITIATING','UNKNOWN']) {
+    const {f,service,settings,id}=await approved();await settings.set('admin',true,0,true);
+    const r=f.docs.get(`orders/${id}`).data.refund;r.state=state;
+    r.updatedAt=new Date(start-120000).toISOString();r.approvedAt=r.updatedAt;
+    r.executionAuthorization={adminUid:'admin',reviewId:'legacy-confirmation',confirmedAt:new Date(start-120000).toISOString(),settingsRevision:1,paymentId:r.paymentId,amountPaise:r.amountPaise,idempotencyKey:r.idempotencyKey,approvedAt:r.approvedAt};
+    await Promise.all([service.recoverRefund(id),service.recoverRefund(id),service.syncRefund(id)]);
+    assert.equal(f.refundCalls,0);assert.equal(f.docs.get('products/dress').data.stockCount,5);
+    await assert.rejects(service.retryApprovedRefund('admin',id),/REFUND_CONFIRMATION_REQUIRED/);assert.equal(f.refundCalls,0);
+  }
 });

@@ -21,7 +21,7 @@ test('real cancellation endpoint enforces authentication, ownership, admin appro
  assert.equal((await invoke('Bearer admin',{orderId,action:'approve',amount:1})).status,400);
  assert.equal((await invoke('Bearer uid',{orderId,action:'request',reason:'Other'})).status,200);
  const approved=await invoke('Bearer admin',{orderId,action:'approve',reason:'Approved'});assert.equal(approved.status,200);assert.equal(approved.result.order.refund.state,'AWAITING_ENABLEMENT');assert.equal(cancelFixture.refundCalls,0);
- assert.equal((await invoke('Bearer admin',{orderId,action:'retryRefund'})).result.code,'LIVE_REFUNDS_DISABLED');
- assert.equal((await invoke('Bearer admin',{orderId,action:'executeRefund',reviewId:'12345678-1234-1234-1234-123456789012',confirmed:true})).result.code,'LIVE_REFUNDS_DISABLED');
+ assert.equal((await invoke('Bearer admin',{orderId,action:'retryRefund'})).result.code,'REFUND_CONFIRMATION_REQUIRED');
+ assert.equal((await invoke('Bearer admin',{orderId,action:'executeRefund',reviewId:'12345678-1234-1234-1234-123456789012',confirmed:true})).result.code,'ADMIN_REFUNDS_DISABLED');
  const review=await invoke('Bearer admin',{orderId,action:'reviewRefund'});assert.equal(review.status,200);assert.equal(review.result.review.canExecute,false);assert.equal(cancelFixture.refundCalls,0);
 });
