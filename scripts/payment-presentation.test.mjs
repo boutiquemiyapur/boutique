@@ -119,6 +119,6 @@ test('customer cancellation controls use the approved early-stage policy for cap
 test('cancellation/refund presentation distinguishes admin review, pending, unknown and processed money',()=>{
  const request={status:'REQUESTED',reason:'Other',audit:[]};assert.match(api.cancellation({...paid,cancellationRequest:request}),/awaiting admin review/);
  const approved={...paid,orderStatus:'Cancelled',cancellationRequest:{...request,status:'APPROVED'}};
- for(const [state,text] of [['PENDING','does not mean the money'],['UNKNOWN','status unknown'],['PROCESSED','Bank credit timing'],['FAILED','Refund failed'],['AWAITING_ENABLEMENT','currently disabled']])assert.match(api.cancellation({...approved,refund:{state,amountPaise:135000}}),new RegExp(text));
+ for(const [state,text] of [['PENDING','does not mean the money'],['UNKNOWN','status unknown'],['PROCESSED','Bank credit timing'],['FAILED','Refund failed'],['AWAITING_ENABLEMENT','individual store review and confirmation']])assert.match(api.cancellation({...approved,refund:{state,amountPaise:135000}}),new RegExp(text));
  assert.equal(api.fulfilmentEligible(approved),false);assert.equal(api.orderDisplayStatus(approved),'Cancelled');
 });

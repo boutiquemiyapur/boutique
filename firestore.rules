@@ -96,6 +96,10 @@ service cloud.firestore {
     match /inventoryMovements/{id} { allow read, write: if false; }
     match /cancellationAudits/{id} { allow read, write: if false; }
     match /paymentRateLimits/{id} { allow read, write: if false; }
+    // Refund controls, confirmations and their history are trusted API only.
+    // They must never live in the public/browser-admin-writable settings store.
+    match /refundSettings/{path=**} { allow read, write: if false; }
+    match /refundReviews/{id} { allow read, write: if false; }
 
     match /users/{userId} {
       allow read: if owns(userId) || isAdmin();

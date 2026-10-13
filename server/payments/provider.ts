@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PaymentError, requireCondition } from './errors.js';
+import { database } from './http.js';
+import { RefundSettingsService } from '../orders/refundSettings.js';
 import { LIVE_REFUND_EXECUTION_ENABLED } from '../orders/refundPolicy.js';
 import { validatePaymentEnvironment } from './environment.js';
 export type ProviderOrder = { id: string; amount: number; currency: string; receipt: string; notes?: { checkoutId?: string } };
@@ -48,8 +50,11 @@ export function razorpayProvider(env = process.env): PaymentProvider {
     refunds: id => list(`payments/${encodeURIComponent(id)}/refunds`),
     createRefund: (id, amount, key) => {
       requireCondition(LIVE_REFUND_EXECUTION_ENABLED, 'LIVE_REFUNDS_DISABLED', 409);
-      requireCondition(/^pay_[a-zA-Z0-9]+$/.test(id) && Number.isSafeInteger(amount) && amount > 0 && /^[a-zA-Z0-9_-]{10,64}$/.test(key), 'INVALID_REFUND_REQUEST');
-      return api(`payments/${encodeURIComponent(id)}/refund`, { amount, speed: 'normal', receipt: key }, { 'X-Refund-Idempotency': key });
+      requireCondition(/^pay_[a-zA-Z0-9]+$/.test(id) && Number.isSafeInteger(amount) && amount >= 100 && /^[a-zA-Z0-9_-]{10,64}$/.test(key), 'INVALID_REFUND_REQUEST');
+      return (async () => {
+        const policy = new RefundSettingsService(database()); policy.requireEnabled(await policy.read());
+        return api(`payments/${encodeURIComponent(id)}/refund`, { amount, speed: 'normal', receipt: key }, { 'X-Refund-Idempotency': key });
+      })();
     },
   };
 }

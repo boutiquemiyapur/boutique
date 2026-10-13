@@ -7,10 +7,11 @@ import type { Firestore } from 'firebase-admin/firestore';
 export function fixture(stock = 2) {
   const docs = new Map<string, any>(); let tail = Promise.resolve(); const context = new AsyncLocalStorage<boolean>();
   const clone = (v: any) => v === undefined ? v : structuredClone(v);
-  const ref = (path: string): any => ({ path, id: path.split('/').at(-1), collection: (name: string) => ({ doc: (id: string) => ref(`${path}/${name}/${id}`) }), get: async () => snap(path), update: async (v: any) => update(path, v) });
+  const collection = (path: string): any => ({ doc: (id: string) => ref(`${path}/${id}`), orderBy: (field: string, direction: string) => ({ limit: (limit: number) => ({ get: async () => ({ docs: [...docs.keys()].filter(k => k.startsWith(path + '/') && k.split('/').length === path.split('/').length + 1).sort((a, b) => String(docs.get(a)[field]).localeCompare(String(docs.get(b)[field])) * (direction === 'desc' ? -1 : 1)).slice(0, limit).map(snap) }) }) }) });
+  const ref = (path: string): any => ({ path, id: path.split('/').at(-1), collection: (name: string) => collection(`${path}/${name}`), get: async () => snap(path), update: async (v: any) => update(path, v) });
   const snap = (path: string): any => ({ id: path.split('/').at(-1), ref: ref(path), exists: docs.has(path), data: () => clone(docs.get(path)) });
   const update = (path: string, data: any) => { const out = clone(docs.get(path)); assert.ok(out); for (const [k, v] of Object.entries(data)) { const keys = k.split('.'); let target = out; for (const part of keys.slice(0, -1)) target = target[part]; target[keys.at(-1)!] = clone(v); } docs.set(path, out); };
-  const db = { collection: (name: string) => ({ doc: (id: string) => ref(`${name}/${id}`) }), runTransaction: async (fn: any) => {
+  const db = { collection, runTransaction: async (fn: any) => {
     const previous = tail; let unlock!: () => void; tail = new Promise<void>(r => { unlock = r; }); await previous;
     const writes: (() => void)[] = []; let writing = false;
     try { const result = await context.run(true, () => fn({ get: async (r: any) => { assert.equal(writing, false); return snap(r.path); }, getAll: async (...refs: any[]) => { assert.equal(writing, false); return refs.map(r => snap(r.path)); }, set: (r: any, v: any) => { writing = true; writes.push(() => docs.set(r.path, clone(v))); }, update: (r: any, v: any) => { if (failCartWrites && r.path.startsWith('carts/')) throw Error('fixture cart failure'); writing = true; writes.push(() => update(r.path, v)); } })); writes.forEach(w => w()); return result; } finally { unlock(); }

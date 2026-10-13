@@ -16,9 +16,12 @@ test('real cancellation endpoint enforces authentication, ownership, admin appro
  globalThis.cancelFixture=fixture();const created=await cancelFixture.service.create('uid',cancelFixture.request);await cancelFixture.service.syncPayment(created.order.id,'pay_test1');const orderId=created.order.id;
  for(const auth of [undefined,'Bearer expired'])assert.equal((await invoke(auth,{orderId,action:'request',reason:'Other'})).status,401);
  assert.equal((await invoke('Bearer other',{orderId,action:'request',reason:'Other'})).status,404);
- for(const action of ['approve','reject','quote','retryRefund'])assert.equal((await invoke('Bearer uid',{orderId,action,reason:'Other'})).status,403);
+ for(const action of ['approve','reject','quote','retryRefund','reviewRefund'])assert.equal((await invoke('Bearer uid',{orderId,action,reason:'Other'})).status,403);
+ assert.equal((await invoke('Bearer uid',{orderId,action:'executeRefund',reviewId:'12345678-1234-1234-1234-123456789012',confirmed:true})).status,403);
  assert.equal((await invoke('Bearer admin',{orderId,action:'approve',amount:1})).status,400);
  assert.equal((await invoke('Bearer uid',{orderId,action:'request',reason:'Other'})).status,200);
  const approved=await invoke('Bearer admin',{orderId,action:'approve',reason:'Approved'});assert.equal(approved.status,200);assert.equal(approved.result.order.refund.state,'AWAITING_ENABLEMENT');assert.equal(cancelFixture.refundCalls,0);
  assert.equal((await invoke('Bearer admin',{orderId,action:'retryRefund'})).result.code,'LIVE_REFUNDS_DISABLED');
+ assert.equal((await invoke('Bearer admin',{orderId,action:'executeRefund',reviewId:'12345678-1234-1234-1234-123456789012',confirmed:true})).result.code,'LIVE_REFUNDS_DISABLED');
+ const review=await invoke('Bearer admin',{orderId,action:'reviewRefund'});assert.equal(review.status,200);assert.equal(review.result.review.canExecute,false);assert.equal(cancelFixture.refundCalls,0);
 });

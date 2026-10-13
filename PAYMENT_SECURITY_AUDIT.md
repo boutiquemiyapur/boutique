@@ -1,10 +1,10 @@
 # AB Collections payment security audit and stabilization
 
-Updated 2026-10-13. Baseline: `1deb57cc1a8907f870d11d985bb314868bec2c05` (Cancel and refund). This report is the authoritative current disposition of the initial audit findings; earlier characterization outcomes are superseded by the regression results below.
+Updated 2026-10-13. Current Admin Refund Management delta baseline: `3c48bff13d28004b99b71d2a4429e2d9bc562d6d` (Cancel and refund). The prior stabilization and hosted inspections below used `1deb57cc1a8907f870d11d985bb314868bec2c05`; their 20-file/203-test/rules-parity statements are historical evidence, not the current manifest. The new implementation section below and its 30-file handoff supersede those manifest and rules-deployment conclusions. This remains the authoritative findings disposition.
 
 ## Recommendation
 
-**Local security stabilization: GO with LIVE refunds disabled. Production release: NO-GO until the compromised CRON_SECRET is rotated, the replacement deployment is active, and scheduled recovery is confirmed. Webhook/scheduler configuration evidence is now owner-verified; deployed Firestore rules and manifest parity are verified. LIVE refund enablement: NO-GO and outside this release.**
+**Local Admin Refund Management implementation: GO with LIVE refunds disabled. Production release: NO-GO until the compromised CRON_SECRET incident is closed and the matching application/rules release is separately approved. Prior webhook/scheduler evidence is owner-verified; the new code/rules have not been deployed. LIVE refund enablement: NO-GO and outside this release.**
 
 H1 and M1/M2/M4/M5/M6 are fixed locally. M3 preserves legitimate independent purchases and documents the cross-device limit. The owner explicitly accepted the residual Firebase/gRPC advisory on 2026-10-13 **for a release with LIVE refunds disabled**. No unsafe override or Firebase downgrade was introduced. This does not establish that hosted financial behavior or the dependency tree is fully verified.
 
@@ -12,10 +12,10 @@ LIVE_REFUND_EXECUTION_ENABLED remains false in server/orders/refundPolicy.ts:2. 
 
 Remaining release requirements:
 
-1. Deployed Firestore rules were retrieved read-only on 2026-10-13 and match the reviewed local source. No rules deployment is required for this manifest. Vercel does not deploy Firebase rules; recheck parity before any later approved release.
+1. Prior deployed rules matched the earlier reviewed source. The current local rules additionally deny refundSettings/history/refundReviews explicitly; prior implicit deny already protected these new namespaces. Publish/reverify the reviewed rules as coordinated, separately approved release work. Vercel does not deploy Firebase rules. Current deployed parity was not rechecked in this implementation task.
 2. Owner verified the LIVE webhook and cron-job.org configuration/history. The exposed cron bearer token is compromised: coordinate its replacement in Vercel Production and cron-job.org, activate a new deployment and confirm normal scheduled recovery. This requires separate approval; no rotation occurred during this review. Do not invoke reconciliation as a read-only probe.
 3. Preserve the observed npm install/build path. Do not assume unchanged bun.lock has the dependency patches. No hosted setting was changed.
-4. Review this manifest and obtain separate commit/push/deploy approval. The existing INR 1 order and hosted settlement behavior were not inspected or tested. Older held approvals can require manual review, not a renewed timestamp or new idempotency key.
+4. Review the current 30-file manifest in ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md and obtain separate commit/push/deploy approval. The existing INR 1 order and hosted settlement behavior were not inspected or tested. Older held approvals can require manual review, not a renewed timestamp or new idempotency key.
 
 ## Scope and evidence boundaries
 
@@ -310,6 +310,60 @@ The current manifest still matches exactly 20 files against 1deb57c, with no mis
 **Final NO-GO: rotate the compromised cron token and verify the replacement deployment plus normal scheduled execution before approving the release.** Webhook/job configuration evidence is now accepted as owner-verified. Historical 400 deliveries were recovered; exact attribution remains unverified, with no currently demonstrated webhook defect. Once incident closure is evidenced, the code is eligible for GO for the scoped release with LIVE refunds disabled, subject to separate commit/push/deploy approval. No credentials/configuration/records/transactions were changed by this review.
 
 Read-only evidence artifacts under node_modules/.cache: finalgate-webhook-history-safe.json, finalgate-webhook-history-alternative-safe.json, finalgate-webhook-log-shapes-safe.json, finalgate-webhook-request-summary-safe.json, finalgate-webhook-deployment-correlation-safe.json, finalgate-deployment-protection-safe.json and finalgate-old-deployment-access-safe.json. Raw log messages, signatures, secret values and customer payloads were discarded rather than copied into the report.
+
+## Admin Refund Management — current implementation verification
+
+2026-10-13, against local HEAD `3c48bff13d28004b99b71d2a4429e2d9bc562d6d`. The previous stabilization is now in that baseline. **The current delta is exactly 30 files**, including this audit and the implementation handoff; it is not the historical 20-file delta. The complete file-by-file manifest, database schema, release sequence and rollback requirements are in [ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md](ADMIN_REFUND_MANAGEMENT_IMPLEMENTATION.md).
+
+### Changes and safety disposition
+
+Admin Settings now includes Payment & Refund Settings, an audited OFF-by-default switch and explicit ON confirmation. `server/orders/refundPolicy.ts` remains unchanged, with `LIVE_REFUND_EXECUTION_ENABLED=false`. The admin setting cannot bypass it. Both the cancellation service and actual provider adapter require both gates. Settings ON and Refund execution are visibly locked pending security approval; authorized OFF remains possible for a pre-existing saved ON setting. Existing account/admin components, gateway, credentials and database are reused.
+
+`server/orders/refundSettings.ts` validates stored boolean/revision/actor/canonical non-future timestamp metadata, performs expected-revision transactional updates and writes private history. `api/admin/refund-settings.ts` reuses revocation-checked admin auth, no-store responses, strict schemas and 30/minute per-UID request limits. `api/orders/cancellation.ts` adds authenticated `reviewRefund` and `executeRefund`; customer roles, unconfirmed requests and extra client-selected financial fields are rejected.
+
+`server/orders/cancellation.ts` separates cancellation approval from execution: approval always holds the captured refundable amount without submitting funds. `prepareRefundReview` obtains trusted provider payment/history, enforces the original 24-hour approval limit and creates a five-minute review bound to admin, order, payment, amount, key, original approval and settings revision. `confirmReviewedRefund` rechecks evidence and these bindings transactionally, consumes the review, records an individual execution authorization and schedules an existing payment attempt for prompt recovery. The actual initiation retains its immutable key/body, 60-second lease, provider validation, durable lifecycle auditing and exactly-once ledger restoration. A remaining amount below Razorpay's documented INR 1 minimum is held for manual review, without rounding or a transport attempt. [Provider requirements](https://raw.githubusercontent.com/razorpay/markdown-docs/master/api/refunds/normal-refunds-idempotent.md).
+
+Reconciliation initiates/retries only attempts with a coherent individual authorization and the currently enabled settings revision. Unmarked historical approvals cannot start when the switch is enabled. An OFF/ON cycle cannot revive an old permit. Existing provider refunds continue to synchronize while OFF. Review, confirmation, retries and setting changes leave audit evidence. The old retry endpoint cannot authorize a first refund or reset an approval timestamp after late capture. Expired, malformed or otherwise uncertain approvals remain manual review; receipt/key discovery can still recover a submitted refund without another financial request.
+
+The frontend confirms trusted order/payment/amount, blocks repeated local clicks, rejects account switching and wrong-order responses, and reports processing/processed/failed/manual/unknown distinctly. Concurrent order panels share only their in-flight UID-scoped settings read. No financial permission/credential is persisted in local storage. New dialogs include keyboard focus/cancel behavior and responsive styles. Mock-hook tests establish control behavior, not actual browser viewport/accessibility verification.
+
+### Final local results
+
+| Check | Result |
+| --- | --- |
+| Complete payment, environment, cancellation/refund, client/presentation, webhook, payment-security, Cloudinary, shopping, catalog, inventory, order and new refund-management tests | **227/227**, 0 failed/cancelled/skipped, exit 0 |
+| New `npm.cmd run test:refund-management` subset | **24/24**; included in the total above |
+| `npm.cmd run test:payment-emulator` | **90 authorization checks** plus all three functional runner suites; exit 0 |
+| `npm.cmd run lint` | Pass, exit 0 |
+| `npm.cmd run build` | Local Production-mode build pass, exit 0 |
+| `git diff --check` | Pass; only existing LF/CRLF conversion notices |
+| Manifest/index/HEAD | 30 exact files against 3c48bff; no staged changes or new commit |
+
+Evidence: ignored `node_modules/.cache/refund-management-final.log`, `refund-management-new.log`, `refund-management-emulator.log`, `refund-management-types.log`, `refund-management-build.log`. Emulator denial diagnostics and its absent optional VSCode notification endpoint did not fail the suite. Local Firebase-disabled and bundle-size build warnings remain. Production/Preview validator build tests use synthetic configurations and create only local bundles; no hosted Preview infrastructure was created.
+
+### Tests proving the safeguards
+
+- `scripts/refund-management.test.ts`: default OFF and code lock; confirmation/revision/history; malformed persisted settings; old approvals remain held after ON; review binding and explicit confirmation; simultaneous admins/recovery produce one refund; five-minute review expiry; OFF/ON invalidation; original 24-hour expiry; changed amount/capture/external pending refund; lost process before transport with durable scheduled authorization; OFF status synchronization; sub-minimum balances require manual review.
+- `scripts/refund-management-api.test.mjs`: actual endpoint/shared authentication calls `verifyIdToken(..., true)`; expired/revoked/customer access rejected; real schemas, forced code lock, private history response and transactional request limits.
+- `scripts/refund-management-ui.test.mjs`: settings and per-order execution locked; enable dialog requires confirmation; reviewing/cancelling does not execute; trusted dialog amount/payment/order; single-flight duplicate clicks; truthful pending/processed/failed/manual/unknown responses.
+- `scripts/refund-management-client.test.mjs`: only concurrent settings reads are shared; later refresh fetches again; UID changes before token/after response and wrong-order responses rejected.
+- `scripts/cart-cancellation-refund-emulator.test.ts`: real Firestore revision races, legacy hold, individually confirmed admins racing scheduled-recovery logic, one mock provider refund, inventory restored once and status synchronization after OFF. All provider responses are synthetic.
+- `scripts/payment-rules.test.mjs`: existing 60 owner/financial-write checks plus 30 new settings/history/review seed/read/write/delete checks; browser customers and admins cannot read or change private controls.
+- Existing lifecycle/security/payment/client/webhook suites were retained, adapted only where explicit confirmation or truthful held-state copy changed, and rerun. Existing malformed-timestamp initiation regression seeds a trusted authorization so it still exercises the initiation transaction rather than merely failing an earlier gate. Signed refund events and durable observer recovery remain covered by the existing webhook suite.
+
+### Remaining risks and release requirements
+
+**E1 remains HIGH / OPEN / Production release blocker.** The exposed cron bearer token has not been rotated, reconfigured or tested here. Follow the separately approved coordinated procedure above, preserving the official webhook/customer access and protecting old deployments. No incident closure is inferred from local implementation tests.
+
+The inherited Firebase/gRPC HIGH advisory and its exact pinned range/residual impact remain documented above. **The owner's temporary acceptance applies only while LIVE refunds remain disabled.** Neither lockfile, SDK version, override nor hosted installer was changed in this task; registry/audit results above are retained dated evidence, not a newly refreshed advisory audit. Existing observed npm/package-lock.json build behavior must remain the release path; no Bun or Production configuration change was made. Reassess the advisory before any future LIVE-refund security approval.
+
+New private collections and optional authorization fields are backwards readable; old orders are not migrated. Prior deployed rules implicitly deny the new collections, but the new explicit restrictive rules must be published/reverified as coordinated approved release work. Admin SDK settings/execution APIs must ship with the matching UI and service/provider policy. Releasing only the UI or reverting to an older backend can remove the individual-confirmation guarantees. Leave the emergency code gate false throughout this release. A future code-gate release must occur separately with the persisted admin setting OFF; ON still never initiates a batch.
+
+Prior owner LIVE webhook/cron evidence and recovered October 10 delivery assessment remain valid historical evidence; no new Dashboard/runtime verification occurred here. Signature scheme, webhook URL/events and credentials are unchanged. After an approved release inspect ordinary signed delivery outcomes and automatic scheduled reconciliation, without replay, manual triggers or new transactions. Hosted Node 24 behavior is not established by local Node 22 tests. The actual INR 1 order, hosted refund execution/settlement and browser/mobile rendering remain unverified. Expired old approvals must not be renewed to force a refund.
+
+OFF blocks new backend authorization/recovery sends and is rechecked at claim/pre-transport/provider boundaries. It cannot retract an already submitted request; a concurrent toggle after the last settings read cannot atomically cancel an external request. Preserve status synchronization and treat in-flight/unknown outcomes as reconciliation work, never a new refund identity. This operational boundary remains even after future enablement.
+
+**Final disposition: GO for the local implementation with both refund gates OFF; NO-GO for Production release pending E1 closure and separately approved coordinated deployment; NO-GO for LIVE refund enablement.** No staging, commit, push, deployment, Production records/credentials/configuration changes, LIVE transactions or credential rotation were performed.
 
 ## Provider references
 

@@ -9,11 +9,21 @@ import { preferPaymentOrder } from '../src/utils/paymentState.js';
 
 const cartLine = (id = 'original', quantity = 2, color = 'Red', size = 'S') => ({ cartItemId: id, product: { id: 'dress' }, selectedColor: color, selectedSize: size, isCustomTailored: false, quantity });
 async function checkout(captured = true) {
-  const f = fixture(5); f.docs.set('carts/uid', { ownerId: 'uid', items: [cartLine(), { ...cartLine('other'), product: { id: 'other' } }] });
+  const f = fixture(5); f.docs.set('refundSettings/control', {enabled:true, revision:1, updatedBy:'admin', updatedAt:new Date(1_800_000_000_000).toISOString()}); f.docs.set('carts/uid', { ownerId: 'uid', items: [cartLine(), { ...cartLine('other'), product: { id: 'other' } }] });
   f.evidence({ status: captured ? 'captured' : 'created', captured });
   const r = await f.service.create('uid', f.request);
   if (captured) await f.service.syncPayment(r.order.id, 'pay_test1');
   return { f, id: r.order.id, service: new CancellationService(f.db, f.provider, true, () => 1_800_000_000_000) };
+}
+async function approveAndConfirm(service: CancellationService, id: string, admin = 'admin') {
+  await service.review(admin, id, true, 'Approved');
+  const review = await service.prepareRefundReview(admin, id);
+  assert.equal(review.canExecute, true, review.reason);
+  return service.confirmReviewedRefund(admin, id, review.reviewId!, true);
+}
+function authorizeFixture(f: ReturnType<typeof fixture>, id: string) {
+  const r = f.docs.get(`orders/${id}`).data.refund;
+  r.executionAuthorization = {adminUid:'admin', reviewId:'synthetic-confirmation', confirmedAt:new Date(1_800_000_000_000).toISOString(), settingsRevision:1, paymentId:r.paymentId, amountPaise:r.amountPaise, idempotencyKey:r.idempotencyKey, approvedAt:r.approvedAt};
 }
 test('trusted capture subtracts purchased quantity only, preserves variants and increased quantities, and replays once', async () => {
   const f = fixture(5); f.docs.set('carts/uid', { ownerId: 'uid', items: [cartLine(), cartLine('blue', 1, 'Blue')] });
@@ -86,9 +96,12 @@ test('admin rejection preserves paid order/stock and unlocks normal fulfilment',
   await fulfilOrder(f.db, 'admin', id, 'Processing'); assert.equal(f.refundCalls, 0); assert.equal(f.docs.get('products/dress').data.stockCount, 4);
   await assert.rejects(service.review('admin', id, true, ''), /DECISION_CONFLICT/);
 });
-test('approval restores consumed inventory exactly once and initiates one pending refund', async () => {
+test('approval restores inventory once; only individual confirmation initiates refund', async () => {
   const { f, id, service } = await checkout(); await service.request('uid', id, 'Other');
   await Promise.all([service.review('admin-one', id, true, 'Approved'), service.review('admin-two', id, true, 'Approved')]);
+  assert.equal(f.refundCalls, 0);
+  const reviewed = await service.prepareRefundReview('admin-one', id);
+  await service.confirmReviewedRefund('admin-one', id, reviewed.reviewId!, true);
   const order = f.docs.get(`orders/${id}`).data;
   assert.equal(order.orderStatus, 'Cancelled'); assert.equal(order.refund.state, 'PENDING'); assert.equal(order.refund.amountPaise, 149900);
   assert.equal(f.refundCalls, 1); assert.equal(f.docs.get('products/dress').data.stockCount, 5); assert.equal(f.docs.get(`inventoryReservations/${id}`).state, 'RESTORED');
@@ -107,16 +120,16 @@ test('uncaptured cancellation releases reservation once and late capture holds r
   f.evidence({ captured: true, status: 'captured' }); const late = await f.service.syncPayment(id, 'pay_test1');
   assert.equal(late.paymentStatus, 'PAID'); assert.equal(late.paymentReviewRequired, true); assert.equal(f.docs.get('carts/uid').items[0].quantity, 2);
   await assert.rejects(f.service.create('uid', f.request), /ORDER_CANCELLED/);
-  await service.retryApprovedRefund('admin', id); assert.equal(f.refundCalls, 1);
+  await assert.rejects(service.retryApprovedRefund('admin', id), /REFUND_CONFIRMATION_REQUIRED/); assert.equal(f.refundCalls, 0);
 });
 test('unknown refund response recovers existing provider reference without issuing another request', async () => {
   const { f, id, service } = await checkout(); await service.request('uid', id, 'Other'); f.refundTimeout = true;
-  const order = await service.review('admin', id, true, 'Approved'); assert.equal(order.refund!.state, 'UNKNOWN');
+  const order = await approveAndConfirm(service, id); assert.equal(order.refund!.state, 'UNKNOWN');
   f.refundTimeout = false; await service.recoverRefund(id); assert.equal(f.refundCalls, 1); assert.equal(f.docs.get(`orders/${id}`).data.refund.state, 'PENDING');
 });
 test('refund processed/failed events use provider evidence, not request acceptance', async () => {
   for (const status of ['processed', 'failed']) {
-    const { f, id, service } = await checkout(); await service.request('uid', id, 'Other'); await service.review('admin', id, true, 'Approved');
+    const { f, id, service } = await checkout(); await service.request('uid', id, 'Other'); await approveAndConfirm(service, id);
     f.refunds[0].status = status; await service.syncRefund(id); await f.service.syncPayment(id, 'pay_test1');
     const order = f.docs.get(`orders/${id}`).data; assert.equal(order.refund.state, status === 'processed' ? 'PROCESSED' : 'FAILED');
     assert.equal(order.paymentStatus, status === 'processed' ? 'REFUNDED' : 'PAID'); assert.equal(f.docs.get('products/dress').data.stockCount, 5);
@@ -125,7 +138,7 @@ test('refund processed/failed events use provider evidence, not request acceptan
 test('partial prior refund subtracts only authoritative remaining amount', async () => {
   const { f, id, service } = await checkout(); f.refunds.push({ id: 'rfnd_prior', payment_id: 'pay_test1', amount: 49900, status: 'processed', currency: 'INR' });
   await service.request('uid', id, 'Other'); const approved = await service.review('admin', id, true, 'Approved');
-  assert.equal(approved.refund!.amountPaise, 100000); assert.equal(f.refunds[1].amount, 100000);
+  assert.equal(approved.refund!.amountPaise, 100000); await approveAndConfirm(service, id); assert.equal(f.refunds[1].amount, 100000);
 });
 test('forged payment/amount or pending external refunds prevent approval and stock writes', async () => {
   for (const kind of ['payment', 'amount', 'pending']) {
@@ -163,17 +176,17 @@ test('unknown pre-response failure retries the immutable key/body and interrupte
   const { f, id, service } = await checkout(); await service.request('uid', id, 'Other');
   const original = f.provider.createRefund!; const calls: unknown[] = []; let fail = true;
   f.provider.createRefund = async (...args) => { calls.push(args); if (fail) { fail = false; throw Error('before response'); } return original(...args); };
-  await service.review('admin', id, true, 'Approved'); await service.recoverRefund(id);
+  await approveAndConfirm(service, id); await service.recoverRefund(id);
   assert.equal(calls.length, 2); assert.deepEqual(calls[0], calls[1]); assert.equal(f.refundCalls, 1);
   const interrupted = await checkout(); const disabled = new CancellationService(interrupted.f.db, interrupted.f.provider, false, () => 1_800_000_000_000);
   await disabled.request('uid', interrupted.id, 'Other'); await disabled.review('admin', interrupted.id, true, 'Approved');
   const refund = interrupted.f.docs.get(`orders/${interrupted.id}`).data.refund; refund.state = 'INITIATING'; refund.approvedAt = new Date(1_800_000_000_000 - 180_000).toISOString(); refund.updatedAt = new Date(1_800_000_000_000 - 120_000).toISOString();
-  await interrupted.service.recoverRefund(interrupted.id); assert.equal(interrupted.f.refundCalls, 1);
+  authorizeFixture(interrupted.f, interrupted.id); await interrupted.service.recoverRefund(interrupted.id); assert.equal(interrupted.f.refundCalls, 1);
 });
 test('expired ambiguous refund retry enters manual review rather than generating another refund', async () => {
   const { f, id } = await checkout(); const disabled = new CancellationService(f.db, f.provider, false, () => 1_800_000_000_000);
   await disabled.request('uid', id, 'Other'); await disabled.review('admin', id, true, 'Approved');
-  f.docs.get(`orders/${id}`).data.refund.state = 'UNKNOWN';
+  f.docs.get(`orders/${id}`).data.refund.state = 'UNKNOWN'; authorizeFixture(f, id);
   await new CancellationService(f.db, f.provider, true, () => 1_800_000_000_000 + 86_400_001).recoverRefund(id);
   assert.equal(f.refundCalls, 0); assert.equal(f.docs.get(`orders/${id}`).data.refund.state, 'MANUAL_REVIEW');
 });
@@ -187,7 +200,7 @@ test('historical COD cancellation copies only the authenticated customer record 
 });
 test('stale request/payment responses cannot erase a reviewed cancellation or processed refund', async () => {
   const { f, id, service } = await checkout(); const requested = await service.request('uid', id, 'Other');
-  const approved = await service.review('admin', id, true, 'Approved');
+  const approved = await approveAndConfirm(service, id);
   assert.equal(preferPaymentOrder(approved, requested), approved);
   f.refunds[0].status = 'processed'; await service.syncRefund(id); const processed = f.docs.get(`orders/${id}`).data;
   assert.equal(preferPaymentOrder(processed, approved), processed);
@@ -196,7 +209,7 @@ test('invalid provider refund response cannot mark a refund processed or alter p
   for (const kind of ['amount', 'payment']) {
     const { f, id, service } = await checkout(); await service.request('uid', id, 'Other');
     f.provider.createRefund = async () => ({ id: 'rfnd_wrong', payment_id: kind === 'payment' ? 'pay_wrong' : 'pay_test1', amount: kind === 'amount' ? 1 : 149900, status: 'processed', currency: 'INR' });
-    const result = await service.review('admin', id, true, 'Approved');
+    const result = await approveAndConfirm(service, id);
     assert.equal(result.refund!.state, 'UNKNOWN'); assert.equal(result.refund!.id, undefined); assert.equal(result.paymentStatus, 'PAID');
   }
 });

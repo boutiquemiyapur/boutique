@@ -1,3 +1,4 @@
+import { AdminRefundSettings } from './AdminRefundSettings';
 import { AdminOrders as Orders } from './AdminOrders';
 import { AdminSkeleton } from '../common/Skeleton';
 import { ButtonProgress } from '../common/Loading';
@@ -149,7 +150,7 @@ export const AdminPortalPage: React.FC = () => {
     {activeTab === 'contact' && <ContactEditor initial={cms.contact} onSave={async (contact) => { await cmsRepository.saveContact(contact); await refreshCms(); showToast('Contact information saved', 'The contact page and footer now use this record.'); }} />}
     {activeTab === 'about' && <AboutEditor initial={cms.about} onSave={async (about) => { await cmsRepository.saveAbout(about); await refreshCms(); showToast('About page saved', 'The public About Us page now uses this record.'); }} />}
     {activeTab === 'enquiries' && <CustomerEnquiriesPanel />}
-    {activeTab === 'settings' && <SettingsEditor threshold={threshold} charges={cms.checkoutCharges} onSave={async (settings) => { await cmsRepository.saveSettings(settings); await refreshCms(); showToast('Settings saved', 'Inventory alerts and checkout charges were updated.'); }} />}
+    {activeTab === 'settings' && <div className="space-y-6"><AdminRefundSettings /><SettingsEditor threshold={threshold} charges={cms.checkoutCharges} onSave={async (settings) => { await cmsRepository.saveSettings(settings); await refreshCms(); showToast('Settings saved', 'Inventory alerts and checkout charges were updated.'); }} /></div>}
   </>}</main></div>{productEditor !== undefined && <ProductEditor product={productEditor} categories={categories} onCreateCategory={createCategory} onClose={() => setProductEditor(undefined)} onSave={async (product) => { await cmsRepository.saveProduct(product, productEditor ? productEditorVersion : undefined); await reload(); setProductEditor(undefined); showToast('Product saved', `${product.title} was saved to Firestore.`); }} />}{bannerEditor !== undefined && <BannerEditor banner={bannerEditor} onClose={() => setBannerEditor(undefined)} onSave={async (banner) => { await cmsRepository.saveBanner(banner); await reload(); await refreshCms(); setBannerEditor(undefined); showToast('Banner saved', 'The active homepage banner set has been updated.'); }} />}</div>;
 };
 

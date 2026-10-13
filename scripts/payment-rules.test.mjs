@@ -43,4 +43,10 @@ for (const auth of [uid, admin]) {
 await expect('carts/customer','PATCH','owner',{ownerId:'customer',items:[],lastPurchasedOrderId:'trusted-order'},true);
 await expect('carts/customer','PATCH',uid,{ownerId:'customer',items:[],lastPurchasedOrderId:'forged-order'},false);
 await expect('carts/customer','PATCH',uid,{ownerId:'customer',items:[],lastPurchasedOrderId:'trusted-order',checkoutGeneration:'forged-generation'},false);
+for (const path of ['refundSettings/control','refundSettings/control/history/change','refundReviews/review']) {
+ await expect(path,'PATCH','owner',{enabled:false},true);
+ for(const auth of [uid,other,admin]) {
+  await expect(path,'GET',auth,null,false); await expect(path,'PATCH',auth,{enabled:true},false); await expect(path,'DELETE',auth,null,false);
+ }
+}
 console.log(`${checks} Firestore payment authorization checks passed.`);

@@ -7,12 +7,16 @@ import { requireCondition } from '../../server/payments/errors.js';
 
 export default async function handler(req: Request, res: Response) {
   try {
-    prepare(req, res); const body = object(jsonBody(req)); only(body, ['orderId', 'action', 'reason']);
-    const action = text(body.action, 20); requireCondition(['request', 'quote', 'approve', 'reject', 'retryRefund'].includes(action), 'INVALID_CANCELLATION_ACTION');
+    prepare(req, res); const body = object(jsonBody(req)); only(body, ['orderId', 'action', 'reason', 'reviewId', 'confirmed']);
+    const action = text(body.action, 20); requireCondition(['request', 'quote', 'approve', 'reject', 'retryRefund', 'reviewRefund', 'executeRefund'].includes(action), 'INVALID_CANCELLATION_ACTION');
+    if (action !== 'executeRefund') only(body, ['orderId', 'action', 'reason']);
+    else { only(body, ['orderId', 'action', 'reviewId', 'confirmed']); requireCondition(body.confirmed === true, 'REFUND_CONFIRMATION_REQUIRED'); }
     const uid = await authenticate(req, action !== 'request');
     const id = identifier(body.orderId); const db = database(); await rateLimit(db, uid, 'cancellation');
     const service = new CancellationService(db, razorpayProvider(), LIVE_REFUND_EXECUTION_ENABLED);
     const reason = text(body.reason, 300, true);
+    if (action === 'reviewRefund') return res.status(200).json({ review: await service.prepareRefundReview(uid, id) });
+    if (action === 'executeRefund') return res.status(200).json({ order: await service.confirmReviewedRefund(uid, id, identifier(body.reviewId), body.confirmed === true) });
     if (action === 'quote') { const order = (await service.record(id)).data; requireCondition(order.cancellationRequest?.status === 'REQUESTED' && service.eligible(order), 'CANCELLATION_INELIGIBLE', 409); return res.status(200).json({ quote: await service.quote(id), executionEnabled: LIVE_REFUND_EXECUTION_ENABLED }); }
     const order = action === 'request' ? await service.request(uid, id, reason)
       : action === 'retryRefund' ? await service.retryApprovedRefund(uid, id)

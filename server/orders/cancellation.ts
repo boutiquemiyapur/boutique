@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { RefundSettingsService } from './refundSettings.js';
+import type { ApprovedRefundReview } from '../../src/types/refundManagement.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Order } from '../../src/types/index.js';
 import { cancellationStageEligible, CANCELLATION_REASONS } from '../../src/utils/cancellationPolicy.js';
@@ -99,7 +102,7 @@ export class CancellationService {
         if (attempt?.exists) tx.update(attempt.ref, { nextCheckAt: this.now() + 60_000 });
         next.orderStatus = 'Cancelled'; next.cancellation = { reason: current.cancellationRequest.reason, cancelledAt: at, cancelledBy: adminUid };
         next.timeline = [...current.timeline, { status: 'Cancelled', timestamp: at, description: 'Cancellation approved by the store. Refund progress is recorded separately.', completed: true }];
-        next.refund = { state: quote.captured && quote.amountPaise > 0 ? this.executeRefunds ? 'APPROVED' : 'AWAITING_ENABLEMENT' : 'NOT_REQUIRED', amountPaise: quote.amountPaise, ...('paymentId' in quote ? { paymentId: quote.paymentId } : {}), idempotencyKey: `abr-${digest(id).slice(0, 32)}`, approvedBy: adminUid, approvedAt: at, updatedAt: at };
+        next.refund = { state: quote.captured && quote.amountPaise > 0 ? 'AWAITING_ENABLEMENT' : 'NOT_REQUIRED', amountPaise: quote.amountPaise, ...('paymentId' in quote ? { paymentId: quote.paymentId } : {}), idempotencyKey: `abr-${digest(id).slice(0, 32)}`, approvedBy: adminUid, approvedAt: at, updatedAt: at };
         for (const u of updates) tx.update(u.ref, u.data);
         if (restore) { tx.update(rr, { state: inventory, cancelledAt: this.now() }); tx.set(this.ref('inventoryMovements', `${id}-cancel`), { orderId: id, type: inventory, items: reservation!.items, approvedBy: adminUid, createdAt: new Date(this.now()) }); }
       }
@@ -107,14 +110,16 @@ export class CancellationService {
       tx.set(this.ref('cancellationAudits', `${id}-decision`), { orderId: id, action: approve ? 'APPROVED' : 'REJECTED', reason, by: adminUid, at });
       return next;
     });
-    return approve && this.executeRefunds && order.refund?.state === 'APPROVED' ? this.execute(id) : order;
+    return order; // Approval never initiates money movement; individual confirmation is separate.
   }
   async execute(id: string) {
     requireCondition(this.executeRefunds && this.provider.createRefund, 'LIVE_REFUNDS_DISABLED', 409);
+    const policy = new RefundSettingsService(this.db, this.executeRefunds, this.now); policy.requireEnabled(await policy.read());
     const record = await this.record(id); const current = record.data as Order;
     requireCondition(current.orderStatus === 'Cancelled' && current.cancellationRequest?.status === 'APPROVED' && current.refund?.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
     if (['PROCESSED', 'FAILED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(current.refund.state)) return current;
     if (!this.validRefundTimes(current.refund)) { await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_TIMESTAMPS_INVALID' }); return (await this.record(id)).data as Order; }
+    requireCondition(this.authorizedRefund(current.refund), 'REFUND_CONFIRMATION_REQUIRED', 409);
     await this.syncRefund(id);
     const after = (await this.record(id)).data as Order;
     if (after.refund?.id || after.refund?.state === 'MANUAL_REVIEW') return after;
@@ -122,6 +127,8 @@ export class CancellationService {
     const quote = await this.quote(id);
     const claimed = await this.db.runTransaction(async tx => {
       const ref = this.ref('orders', id); const order = (await tx.get(ref)).data()!.data as Order; const refund = order.refund!;
+      const settings = policy.snapshot((await tx.get(policy.ref())).data()); policy.requireEnabled(settings);
+      requireCondition(this.authorizedRefund(refund) && refund.executionAuthorization!.settingsRevision === settings.revision, 'REFUND_SETTINGS_CHANGED', 409);
       requireCondition(order.cancellationRequest?.status === 'APPROVED' && order.orderStatus === 'Cancelled' && refund.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
       if (!this.validRefundTimes(refund) || this.now() - Date.parse(refund.approvedAt!) > 86_400_000) {
         const at = new Date(this.now()).toISOString();
@@ -130,7 +137,7 @@ export class CancellationService {
         return null;
       }
       if (refund.id || (refund.state === 'INITIATING' && this.now() - Date.parse(refund.updatedAt) < 60_000)) return null;
-      requireCondition(['APPROVED', 'AWAITING_ENABLEMENT', 'UNKNOWN', 'INITIATING'].includes(refund.state) && quote.captured && quote.paymentId === refund.paymentId && quote.amountPaise === refund.amountPaise && quote.amountPaise > 0, 'REFUND_QUOTE_CHANGED', 409);
+      requireCondition(['APPROVED', 'AWAITING_ENABLEMENT', 'UNKNOWN', 'INITIATING'].includes(refund.state) && quote.captured && quote.paymentId === refund.paymentId && quote.amountPaise === refund.amountPaise && quote.amountPaise >= 100, 'REFUND_QUOTE_CHANGED', 409);
       const at = new Date(this.now()).toISOString();
       tx.update(ref, { 'data.refund.state': 'INITIATING', 'data.refund.updatedAt': at, 'data.cancellationRequest.audit': [...order.cancellationRequest!.audit, { action: 'REFUND_INITIATING', at, by: 'trusted-backend' }].slice(-30), updatedAt: new Date(this.now()) });
       tx.set(this.ref('cancellationAudits', `${id}-refund-${digest(`INITIATING-${at}`).slice(0, 16)}`), { orderId: id, action: 'REFUND_INITIATING', at, approvedBy: refund.approvedBy, amountPaise: refund.amountPaise, paymentId: refund.paymentId });
@@ -139,6 +146,9 @@ export class CancellationService {
     if (!claimed) return (await this.record(id)).data as Order;
     try {
       // Stable key and immutable body survive ambiguous network responses.
+      // Recheck the policy immediately before transport; OFF prevents new sends.
+      const finalPolicy = await policy.read(); policy.requireEnabled(finalPolicy);
+      requireCondition(claimed.executionAuthorization!.settingsRevision === finalPolicy.revision, 'REFUND_SETTINGS_CHANGED', 409);
       const refund = await this.provider.createRefund!(claimed.paymentId!, claimed.amountPaise, claimed.idempotencyKey!);
       requireCondition(refund.payment_id === claimed.paymentId && refund.amount === claimed.amountPaise, 'REFUND_EVIDENCE_MISMATCH', 409);
       this.validateRefunds([refund], claimed.paymentId!, claimed.amountPaise);
@@ -162,7 +172,16 @@ export class CancellationService {
   }
   async recoverRefund(id: string) {
     const order = (await this.record(id)).data as Order;
-    if (this.executeRefunds && order.cancellationRequest?.status === 'APPROVED' && ['APPROVED', 'INITIATING', 'UNKNOWN'].includes(order.refund?.state || '')) return this.execute(id);
+    if (order.cancellationRequest?.status === 'APPROVED' && order.refund && !order.refund.id && ['AWAITING_ENABLEMENT', 'APPROVED', 'INITIATING', 'UNKNOWN'].includes(order.refund.state)
+      && (!this.validRefundTimes(order.refund) || this.now() - Date.parse(order.refund.approvedAt!) > 86_400_000)) {
+      await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_APPROVAL_REVIEW_REQUIRED' });
+      await this.syncRefund(id); // Discover an existing provider refund; never initiate another.
+      return (await this.record(id)).data as Order;
+    }
+    if (this.executeRefunds && order.cancellationRequest?.status === 'APPROVED' && ['AWAITING_ENABLEMENT', 'APPROVED', 'INITIATING', 'UNKNOWN'].includes(order.refund?.state || '') && this.authorizedRefund(order.refund!)) {
+      const settings = await new RefundSettingsService(this.db, this.executeRefunds, this.now).read();
+      if (settings.effectiveEnabled && settings.revision === order.refund!.executionAuthorization!.settingsRevision) return this.execute(id);
+    }
     await this.syncRefund(id);
     return (await this.record(id)).data as Order;
   }
@@ -170,19 +189,74 @@ export class CancellationService {
     const valid = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
     return valid(refund.approvedAt) && valid(refund.updatedAt) && Date.parse(refund.approvedAt!) <= Date.parse(refund.updatedAt) && Date.parse(refund.updatedAt) <= this.now();
   }
+  authorizedRefund(refund: NonNullable<Order['refund']>) {
+    const a = refund.executionAuthorization;
+    return !!a && typeof a.adminUid === 'string' && a.adminUid.length > 0 && typeof a.reviewId === 'string' && a.reviewId.length > 0
+      && typeof a.confirmedAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(a.confirmedAt) && Number.isFinite(Date.parse(a.confirmedAt)) && new Date(a.confirmedAt).toISOString() === a.confirmedAt && Date.parse(a.confirmedAt) <= this.now()
+      && Number.isSafeInteger(a.settingsRevision) && a.settingsRevision > 0
+      && a.paymentId === refund.paymentId && a.amountPaise === refund.amountPaise && a.idempotencyKey === refund.idempotencyKey && a.approvedAt === refund.approvedAt;
+  }
+  async auditAction(adminUid: string, id: string, action: string) {
+    await this.db.runTransaction(async tx => tx.set(this.ref('cancellationAudits', `${id}-${randomUUID()}`), { orderId: id, action, by: adminUid, at: new Date(this.now()).toISOString() }));
+  }
   async retryApprovedRefund(adminUid: string, id: string) {
+    // Old UI/clients cannot silently authorize a first refund or renew approval.
     requireCondition(this.executeRefunds, 'LIVE_REFUNDS_DISABLED', 409);
+    await this.auditAction(adminUid, id, 'REFUND_RETRY_REQUESTED');
     const order = (await this.record(id)).data as Order;
-    requireCondition(order.cancellationRequest?.status === 'APPROVED' && order.orderStatus === 'Cancelled', 'ADMIN_APPROVAL_REQUIRED', 403);
-    if (order.refund?.state === 'NOT_REQUIRED') {
-      const quote = await this.quote(id);
-      if (!quote.captured || !quote.amountPaise) return order;
-      await this.db.runTransaction(async tx => {
-        const ref = this.ref('orders', id); const latest = (await tx.get(ref)).data()!.data as Order;
-        requireCondition(latest.cancellationRequest?.status === 'APPROVED' && latest.orderStatus === 'Cancelled' && latest.refund?.state === 'NOT_REQUIRED', 'REFUND_QUOTE_CHANGED', 409);
-        tx.update(ref, { 'data.refund': { ...latest.refund, state: 'APPROVED', paymentId: quote.paymentId, amountPaise: quote.amountPaise, approvedBy: adminUid, approvedAt: new Date(this.now()).toISOString(), updatedAt: new Date(this.now()).toISOString() } });
-      });
+    requireCondition(order.refund && this.authorizedRefund(order.refund), 'REFUND_CONFIRMATION_REQUIRED', 409);
+    return this.execute(id);
+  }
+  async prepareRefundReview(adminUid: string, id: string): Promise<ApprovedRefundReview> {
+    await this.auditAction(adminUid, id, 'REFUND_REVIEWED');
+    const policy = new RefundSettingsService(this.db, this.executeRefunds, this.now); const settings = await policy.read();
+    let order = (await this.record(id)).data as Order;
+    requireCondition(order.orderStatus === 'Cancelled' && order.cancellationRequest?.status === 'APPROVED' && order.refund?.approvedBy, 'ADMIN_APPROVAL_REQUIRED', 403);
+    const result = (reason?: string): ApprovedRefundReview => ({ orderId: id, paymentId: order.refund?.paymentId, amountPaise: order.refund?.amountPaise || 0, currency: 'INR', state: order.refund!.state, refundId: order.refund?.id, approvedAt: order.refund?.approvedAt, canExecute: false, settings, ...(reason ? { reason } : {}) });
+    if (!order.refund?.id && (!this.validRefundTimes(order.refund!) || this.now() - Date.parse(order.refund!.approvedAt!) > 86_400_000)) {
+      await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_APPROVAL_REVIEW_REQUIRED' }); await this.syncRefund(id); order = (await this.record(id)).data as Order; return result('REFUND_APPROVAL_REVIEW_REQUIRED');
     }
+    await this.syncRefund(id); order = (await this.record(id)).data as Order;
+    if (order.refund?.id || ['PROCESSED', 'FAILED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(order.refund!.state)) return result('REFUND_ALREADY_RECORDED_OR_REVIEW_REQUIRED');
+    if (!this.validRefundTimes(order.refund!) || this.now() - Date.parse(order.refund!.approvedAt!) > 86_400_000) {
+      await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_APPROVAL_REVIEW_REQUIRED' }); order = (await this.record(id)).data as Order; return result('REFUND_APPROVAL_REVIEW_REQUIRED');
+    }
+    const quote = await this.quote(id); order = (await this.record(id)).data as Order;
+    requireCondition(quote.captured && quote.paymentId === order.refund!.paymentId && quote.amountPaise === order.refund!.amountPaise && quote.amountPaise > 0, 'REFUND_QUOTE_CHANGED', 409);
+    if (quote.amountPaise < 100) { await this.updateRefund(id, { state: 'MANUAL_REVIEW', error: 'REFUND_AMOUNT_BELOW_PROVIDER_MINIMUM' }); order = (await this.record(id)).data as Order; return result('REFUND_APPROVAL_REVIEW_REQUIRED'); }
+    if (!settings.effectiveEnabled) return result(settings.codeEnabled ? 'ADMIN_REFUNDS_DISABLED' : 'LIVE_REFUNDS_DISABLED');
+    const reviewId = randomUUID(); const expiresAt = this.now() + 300_000;
+    await this.db.runTransaction(async tx => {
+      const current = (await tx.get(this.ref('orders', id))).data()!.data as Order;
+      const fresh = policy.snapshot((await tx.get(policy.ref())).data()); policy.requireEnabled(fresh);
+      requireCondition(fresh.revision === settings.revision && current.refund?.approvedAt === order.refund!.approvedAt && current.refund?.amountPaise === quote.amountPaise && current.refund?.paymentId === quote.paymentId, 'REFUND_QUOTE_CHANGED', 409);
+      tx.set(this.ref('refundReviews', reviewId), { adminUid, orderId: id, paymentId: quote.paymentId, amountPaise: quote.amountPaise, settingsRevision: settings.revision, approvedAt: current.refund!.approvedAt, idempotencyKey: current.refund!.idempotencyKey, expiresAt, consumed: false, createdAt: new Date(this.now()).toISOString() });
+    });
+    return { ...result(), canExecute: true, reviewId, expiresAt: new Date(expiresAt).toISOString() };
+  }
+  async confirmReviewedRefund(adminUid: string, id: string, reviewId: string, confirmed: boolean) {
+    requireCondition(confirmed === true, 'REFUND_CONFIRMATION_REQUIRED');
+    await this.auditAction(adminUid, id, 'REFUND_EXECUTION_REQUESTED');
+    const policy = new RefundSettingsService(this.db, this.executeRefunds, this.now); policy.requireEnabled(await policy.read());
+    const saved = (await this.ref('refundReviews', reviewId).get()).data();
+    requireCondition(saved?.adminUid === adminUid && saved?.orderId === id && Number.isSafeInteger(saved?.expiresAt) && saved.expiresAt > this.now(), 'REFUND_REVIEW_EXPIRED_OR_INVALID', 409);
+    if (saved.consumed) return this.recoverRefund(id);
+    const quote = await this.quote(id);
+    await this.db.runTransaction(async tx => {
+      const rr = this.ref('refundReviews', reviewId); const review = (await tx.get(rr)).data();
+      const ref = this.ref('orders', id); const order = (await tx.get(ref)).data()!.data as Order; const refund = order.refund;
+      const settings = policy.snapshot((await tx.get(policy.ref())).data()); policy.requireEnabled(settings);
+      const attempt = await tx.get(this.ref('paymentAttempts', id));
+      requireCondition(review?.adminUid === adminUid && review?.orderId === id && review.expiresAt > this.now(), 'REFUND_REVIEW_EXPIRED_OR_INVALID', 409);
+      if (review.consumed) return;
+      requireCondition(order.orderStatus === 'Cancelled' && order.cancellationRequest?.status === 'APPROVED' && refund?.approvedBy && this.validRefundTimes(refund) && this.now() - Date.parse(refund.approvedAt!) <= 86_400_000, 'REFUND_APPROVAL_REVIEW_REQUIRED', 409);
+      requireCondition(!refund.id && !['PROCESSED', 'FAILED', 'MANUAL_REVIEW', 'NOT_REQUIRED'].includes(refund.state) && settings.revision === review.settingsRevision && quote.captured && quote.paymentId === review.paymentId && quote.amountPaise === review.amountPaise && refund.paymentId === review.paymentId && refund.amountPaise === review.amountPaise && refund.approvedAt === review.approvedAt && refund.idempotencyKey === review.idempotencyKey, 'REFUND_QUOTE_CHANGED', 409);
+      const at = new Date(this.now()).toISOString();
+      tx.update(ref, { 'data.refund.executionAuthorization': { adminUid, confirmedAt: at, reviewId, settingsRevision: settings.revision, paymentId: review.paymentId, amountPaise: review.amountPaise, idempotencyKey: review.idempotencyKey, approvedAt: review.approvedAt }, 'data.cancellationRequest.audit': [...order.cancellationRequest.audit, { action: 'REFUND_EXECUTION_CONFIRMED', at, by: adminUid }].slice(-30) });
+      tx.update(rr, { consumed: true, consumedAt: at });
+      if (attempt.exists) tx.update(attempt.ref, { nextCheckAt: this.now() + 60_000 });
+      tx.set(this.ref('cancellationAudits', `${id}-confirmed-${reviewId}`), { orderId: id, action: 'REFUND_EXECUTION_CONFIRMED', by: adminUid, at, amountPaise: review.amountPaise, paymentId: review.paymentId });
+    });
     return this.execute(id);
   }
   async syncRefund(id: string) {

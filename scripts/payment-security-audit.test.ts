@@ -126,6 +126,8 @@ test('LIVE refund gate remains disabled throughout the audit', () => assert.equa
 
 test('M5: timestamp corruption after provider inspection is rechecked in the initiation transaction', async () => {
   const {f,id,service}=await order(true);await service.request('uid',id,'Other');await service.review('admin',id,true,'Approved');
+  f.docs.set('refundSettings/control',{enabled:true,revision:1,updatedBy:'admin',updatedAt:new Date(1_800_000_000_000).toISOString()});
+  const r=f.docs.get(`orders/${id}`).data.refund; r.executionAuthorization={adminUid:'admin',reviewId:'fixture',confirmedAt:r.approvedAt,settingsRevision:1,paymentId:r.paymentId,amountPaise:r.amountPaise,idempotencyKey:r.idempotencyKey,approvedAt:r.approvedAt};
   const enabled=new CancellationService(f.db,f.provider,true,()=>1_800_000_000_000);
   const inspect=enabled.quote.bind(enabled);
   enabled.quote=async id=>{const quote=await inspect(id);f.docs.get(`orders/${id}`).data.refund.updatedAt='invalid-date';return quote;};

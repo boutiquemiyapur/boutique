@@ -274,7 +274,7 @@ export interface Order {
   timeline: OrderTimelineEvent[];
   cancellation?: OrderCancellation;
   cancellationRequest?: { status: 'REQUESTED' | 'APPROVED' | 'REJECTED'; reason: string; requestedAt: string; requestedBy: string; reviewedAt?: string; reviewedBy?: string; decisionReason?: string; inventory?: 'RESTORED' | 'RELEASED' | 'MANUAL_REVIEW'; audit: { action: string; at: string; by: string }[] };
-  refund?: { state: 'AWAITING_ENABLEMENT' | 'APPROVED' | 'INITIATING' | 'UNKNOWN' | 'PENDING' | 'PROCESSED' | 'FAILED' | 'MANUAL_REVIEW' | 'NOT_REQUIRED'; amountPaise: number; paymentId?: string; id?: string; idempotencyKey?: string; approvedBy?: string; approvedAt?: string; error?: string; updatedAt: string };
+  refund?: { executionAuthorization?: { adminUid: string; confirmedAt: string; reviewId: string; settingsRevision: number; paymentId: string; amountPaise: number; idempotencyKey: string; approvedAt: string }; state: 'AWAITING_ENABLEMENT' | 'APPROVED' | 'INITIATING' | 'UNKNOWN' | 'PENDING' | 'PROCESSED' | 'FAILED' | 'MANUAL_REVIEW' | 'NOT_REQUIRED'; amountPaise: number; paymentId?: string; id?: string; idempotencyKey?: string; approvedBy?: string; approvedAt?: string; error?: string; updatedAt: string };
   cartCleanupStatus?: 'PENDING' | 'DONE' | 'SKIPPED';
 }
 
