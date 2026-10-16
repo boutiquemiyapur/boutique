@@ -135,10 +135,25 @@ test('pending local Firestore snapshots do not expose an unconfirmed wishlist co
  const h=initialize();let s=await h.session('A');const listener=[...database.listeners.get('wishlists/A')][0].fn;listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:true}});s=h.render();assert.deepEqual(s.wishlist,[]);listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:false,fromCache:true}});s=h.render();assert.deepEqual(s.wishlist,[]);listener({data:()=>({productIds:['a']}),metadata:{hasPendingWrites:false,fromCache:false}});s=await h.flush();assert.deepEqual(s.wishlist,['a']);h.cleanup();
 });
 
-const pendingPayment={id:'pay-integration',orderNumber:'AB-INTEGRATION',createdAt:new Date().toISOString(),shippingAddress:{fullName:'Fixture'},items:[],charges:[],timeline:[],paymentMethod:'razorpay',paymentProvider:'razorpay',paymentStatus:'PAYMENT_PENDING',totalINR:100};
+const pendingPayment={id:'pay-integration',orderNumber:'AB-INTEGRATION',createdAt:new Date().toISOString(),shippingAddress:{fullName:'Fixture'},items:[line('a')],charges:[],timeline:[],paymentMethod:'razorpay',paymentProvider:'razorpay',paymentStatus:'PAYMENT_PENDING',totalINR:100,amountPaise:10000};
 const capturedPayment={...pendingPayment,paymentStatus:'PAID',currency:'INR',amountPaise:10000,razorpayOrderId:'order_integration',razorpayPaymentId:'pay_integration',paidAt:new Date().toISOString(),paymentVerifiedAt:new Date().toISOString(),paymentReviewRequired:false};
 function paymentFixture(openPayment){globalThis.localStorage={length:0};globalThis.paymentMock={stableCheckout:async(_uid,r)=>({...r,intentId:'integration-intent'}),checkoutBusinessRequest:()=>({}),paymentApi:async()=>({order:pendingPayment,checkout:{}}),openPayment};}
 function emitPayment(value){for(const entry of database.listeners.get('orders')||[])entry.fn({docs:[{data:()=>({data:value})}]});}
+
+test('server price changes require explicit review before opening the retained payment attempt',async()=>{
+ for(const accepted of [false,true]){
+  const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();
+  let opened=0,reviewed=0,requests=0;
+  const updated={...pendingPayment,items:[{...line('a'),product:{...product('a'),priceINR:200}}],totalINR:200,amountPaise:20000};
+  paymentFixture(async()=>{opened++;return {kind:'pending',order:updated};});
+  paymentMock.paymentApi=async()=>{requests++;return {order:updated,checkout:{}};};
+  window.confirm=message=>{reviewed++;assert.match(message,/prices have changed/);assert.match(message,/INR 200/);return accepted;};
+  const result=await s.createOrder({},'standard','razorpay');
+  assert.equal(reviewed,1);assert.equal(opened,accepted?1:0);assert.equal(requests,1);
+  assert.equal(result.kind,accepted?'pending':'error');assert.equal(result.order.id,pendingPayment.id);
+  assert.equal((await h.flush()).cart.length,1);h.cleanup();
+ }
+});
 test('real store dismissal preserves cart and newer delayed webhook capture without client financial writes',async()=>{
  const h=initialize();let s=await h.session('A');await s.addToCart(product('a'),'','');s=await h.flush();let release;paymentFixture(()=>new Promise(r=>release=r));
  const promise=s.createOrder({},'standard','razorpay');await new Promise(r=>setImmediate(r));emitPayment(capturedPayment);s=h.render();assert.equal(s.currentOrder.paymentStatus,'PAID');release({kind:'dismissed',order:pendingPayment});assert.equal((await promise).kind,'dismissed');s=await h.flush();assert.equal(s.currentOrder.paymentStatus,'PAID');assert.equal(s.cart.length,1);assert.equal(database.records.has('orders/pay-integration'),false);h.cleanup();

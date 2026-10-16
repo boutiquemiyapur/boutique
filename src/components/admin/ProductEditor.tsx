@@ -4,18 +4,27 @@ import { X } from 'lucide-react';
 import { Product, StoreCategory } from '../../types';
 import { hasVariantInventory, normalizeProduct, productValidationError, syncVariantInventory, totalProductStock, uniqueValues } from '../../utils/productData';
 import { MediaUploader } from './MediaUploader';
+import { editProductPricing, productPricing, pricingValidationError, formatProductMoney, type PricingFields, type PricingMode } from '../../utils/productPricing';
 
 const input = 'mt-1 w-full min-w-0 border border-stone-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-stone-700';
 
 export const ProductEditor = ({ product, categories, onCreateCategory, onClose, onSave }: { product: Product | null; categories: StoreCategory[]; onCreateCategory: (name: string) => Promise<StoreCategory>; onClose: () => void; onSave: (product: Product) => Promise<void> }) => {
   const [draft, setDraft] = useState(() => normalizeProduct(product || { id: `ab-${Date.now()}`, isActive: true }));
   const [saving, setSaving] = useState(false);
+  const [pricingMode, setPricingMode] = useState<PricingMode>('price');
+  const pricing = productPricing(draft);
+  const pricingError = pricingValidationError(draft);
+  const editPricing = (field: keyof PricingFields, value: string) => {
+    const result = editProductPricing(draft, field, value === '' ? (field === 'originalPriceINR' ? undefined : field === 'discountPercentage' ? 0 : NaN) : Number(value), pricingMode);
+    setDraft(result.product); setPricingMode(result.mode);
+  };
   const [error, setError] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [creatingCategory, setCreatingCategory] = useState(false);
   const set = <K extends keyof Product>(key: K, value: Product[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setError('');
+    if (pricingError) { setError(pricingError); return; }
     const prepared = hasVariantInventory(draft) ? normalizeProduct({ ...draft, variantInventory: syncVariantInventory(draft) }) : normalizeProduct(draft);
     const validationError = productValidationError(prepared);
     if (validationError) { setError(validationError); return; }
@@ -36,10 +45,14 @@ export const ProductEditor = ({ product, categories, onCreateCategory, onClose, 
     <form onSubmit={submit} className="mt-5 grid gap-4">
       {textField('title', 'Product name', true)}
       <div className="grid gap-3 sm:grid-cols-2">{textField('sku', 'SKU', true)}<label className="text-sm">Category<select required className={input} value={draft.category} onChange={(event) => set('category', event.target.value)}><option value="">Select a category</option>{draft.category && !categories.some((item) => item.name === draft.category) && <option value={draft.category}>{draft.category} (legacy)</option>}{categories.filter((item) => item.isActive || item.name === draft.category).map((item) => <option key={item.id} value={item.name}>{item.name}{item.isActive ? '' : ' (inactive)'}</option>)}</select></label>
-        <label>Price (INR)<input required className={input} min="0" step="0.01" type="number" value={draft.priceINR} onChange={(event) => set('priceINR', Number(event.target.value))} /></label>
+        <label>Selling price (INR)<input required className={input} min="0.01" step="0.01" type="number" value={Number.isFinite(draft.priceINR) ? draft.priceINR : ''} onChange={(event) => editPricing('priceINR', event.target.value)} /></label>
         <label>Product stock<input required disabled={hasVariantInventory(draft)} className={`${input} disabled:bg-stone-100`} min="0" step="1" type="number" value={hasVariantInventory(draft) ? totalProductStock(draft) : draft.stockCount} onChange={(event) => set('stockCount', Number(event.target.value))} /><span className="mt-1 block text-xs text-stone-500">{hasVariantInventory(draft) ? 'Calculated from the variant rows below.' : 'Used for legacy products and products without variant inventory.'}</span></label>
-        <label>Original price / MRP (optional)<input className={input} type="number" min="0" step="0.01" value={draft.originalPriceINR ?? ''} onChange={(event) => set('originalPriceINR', event.target.value === '' ? undefined : Number(event.target.value))} /></label>
-        <label>Discount % (optional)<input className={input} type="number" min="0" max="100" step="0.01" value={draft.discountPercentage ?? ''} onChange={(event) => set('discountPercentage', event.target.value === '' ? undefined : Number(event.target.value))} /></label>
+        <label>Original price / MRP (optional)<input className={input} type="number" min="0.01" step="0.01" value={draft.originalPriceINR ?? ''} onChange={(event) => editPricing('originalPriceINR', event.target.value)} /></label>
+        <label>Discount %<input className={input} type="number" min="0" max="99.99" step="0.01" value={draft.discountPercentage ?? 0} onChange={(event) => editPricing('discountPercentage', event.target.value)} /></label>
+      </div>
+      <div aria-live="polite" className="min-h-20 border border-stone-200 bg-stone-50 p-3 text-sm">
+        <p>{pricingMode === 'discount' ? 'MRP changes keep your entered discount.' : 'MRP changes keep your entered selling price.'} Edit selling price or discount to switch.</p>
+        {pricingError ? <p className="mt-1 text-red-700">{pricingError}</p> : <p className="mt-1">Selling price: INR {formatProductMoney(draft.priceINR)} · Savings: INR {formatProductMoney(pricing.discountAmountINR)} ({pricing.discountPercentage}%)</p>}
       </div>
       <div className="border border-stone-200 bg-stone-50 p-3"><p className="text-sm font-medium">Create a category without leaving this product</p><div className="mt-2 flex flex-col gap-2 sm:flex-row"><input className={input} placeholder="New category name" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} /><button type="button" disabled={creatingCategory || !newCategoryName.trim()} className="min-h-11 shrink-0 bg-stone-800 px-4 text-xs font-semibold text-white disabled:opacity-50" onClick={async () => { setCreatingCategory(true); setError(''); try { const created = await onCreateCategory(newCategoryName); set('category', created.name); setNewCategoryName(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Category could not be created.'); } finally { setCreatingCategory(false); } }}>{creatingCategory ? 'Creating…' : 'Create category'}</button></div></div>
       {textField('subtitle', 'Subtitle (optional)')}

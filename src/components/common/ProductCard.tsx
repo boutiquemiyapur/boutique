@@ -1,3 +1,4 @@
+import { productPricing } from '../../utils/productPricing';
 import React, { useState } from 'react';
 import { Eye, Heart, ShoppingCart } from 'lucide-react';
 import { ProductImage } from './ProductImage';
@@ -24,7 +25,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
       </button>
       <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
         {product.isNewArrival && <span className="bg-[#fffdf9] px-2 py-1 text-[#2c2926]">New</span>}
-        {product.discountPercentage > 0 && <span className="bg-[#625e59] px-2 py-1 text-white">{product.discountPercentage}% off</span>}
+        {productPricing(product).discountPercentage > 0 && <span className="bg-[#625e59] px-2 py-1 text-white">{productPricing(product).discountPercentage}% off</span>}
         {isSoldOut && <span className="bg-[#2c2926] px-2 py-1 text-white">Sold out</span>}
       </div>
       <button onClick={() => toggleWishlist(product.id)} aria-pressed={saved} aria-label={saved ? `Remove ${product.title} from wishlist` : `Save ${product.title} to wishlist`} className={`absolute right-3 top-3 grid h-9 w-9 place-items-center transition ${saved ? 'bg-[#8B1E3F] text-white' : 'bg-[#fffdf9]/95 text-[#2c2926] hover:bg-[#625e59] hover:text-white'}`}>
@@ -38,7 +39,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
     <div className="px-1 pb-1 pt-4">
       <p className="text-[10px] uppercase tracking-[.16em] text-[#6f87a5]">{product.category}</p>
       <button onClick={() => navigate('product-detail', product.id)} className="mt-1 max-w-full line-clamp-1 break-words text-left text-sm font-semibold text-[#2c2926] hover:underline">{product.title}</button>
-      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="whitespace-nowrap font-sans text-base font-semibold tabular-nums text-[#2c2926]">{formatPrice(product.priceINR)}</span>{product.originalPriceINR != null && product.originalPriceINR > product.priceINR && <span className="whitespace-nowrap font-sans text-[13px] font-normal leading-5 tabular-nums text-stone-600 line-through">{formatPrice(product.originalPriceINR)}</span>}</div>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="whitespace-nowrap font-sans text-base font-semibold tabular-nums text-[#2c2926]">{formatPrice(product.priceINR)}</span>{productPricing(product).isDiscounted && <span className="whitespace-nowrap font-sans text-[13px] font-normal leading-5 tabular-nums text-stone-600 line-through">{formatPrice(product.originalPriceINR)}</span>}</div>
       <p className={`mt-1 text-[10px] ${isSoldOut ? 'text-stone-500' : product.stockCount <= cms.lowStockThreshold ? 'text-[#8a5738]' : 'text-stone-500'}`}>{stockMessage(product, cms.lowStockThreshold)}</p>
     </div>
   </article>;

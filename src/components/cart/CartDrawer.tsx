@@ -1,3 +1,4 @@
+import { productPricing } from '../../utils/productPricing';
 import { cartPurchaseIssue as cartCatalogIssue } from '../../utils/shoppingState';
 import { CartRetentionNotice, ShoppingConnectionNotice } from '../common/ShoppingConnectionNotice';
 import { PrivateLoading } from '../common/Skeleton';
@@ -157,7 +158,7 @@ export const CartDrawer: React.FC = () => {
                     </div>
 
                     <p className="mt-1 text-xs text-stone-500">{catalogStatus !== 'ready' ? 'Checking stock...' : cartCatalogIssue([item], products) || `In stock: ${selectedVariantStock(item.product, item.selectedColor, item.selectedSize)} available`}</p>
-                    {item.product.originalPriceINR != null && item.product.originalPriceINR > item.product.priceINR && <p className="mt-1 text-xs text-stone-500 line-through">MRP {formatPrice(item.product.originalPriceINR)} each</p>}
+                    {productPricing(item.product).isDiscounted && <p className="mt-1 text-xs text-stone-500 line-through">MRP {formatPrice(item.product.originalPriceINR)} each</p>}
                     {item.isCustomTailored && (
                       <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-[#8B1E3F] bg-[#8B1E3F]/10 px-2 py-0.5 rounded-sm">
                         <Scissors className="w-2.5 h-2.5" /> Custom Made-to-Measure (+{formatPrice(item.tailoringFeeINR)})

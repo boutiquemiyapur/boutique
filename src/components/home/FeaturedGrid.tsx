@@ -1,3 +1,4 @@
+import { productPricing } from '../../utils/productPricing';
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ProductImage } from '../common/ProductImage';
@@ -129,9 +130,9 @@ export const FeaturedGrid: React.FC = () => {
                         <ShieldCheck className="w-3 h-3" /> Handloom certified
                       </span>
                     )}
-                    {product.discountPercentage > 0 && (
+                    {productPricing(product).discountPercentage > 0 && (
                       <span className="bg-[#8B1E3F] text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md shadow-xs">
-                        {product.discountPercentage}% OFF
+                        {productPricing(product).discountPercentage}% OFF
                       </span>
                     )}
                   </div>
@@ -197,7 +198,7 @@ export const FeaturedGrid: React.FC = () => {
                       <div className="text-sm sm:text-base font-serif font-bold text-[#8B1E3F]">
                         {formatPrice(product.priceINR)}
                       </div>
-                      {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
+                      {productPricing(product).isDiscounted && (
                         <div className="text-[11px] line-through text-stone-400 font-serif">
                           {formatPrice(product.originalPriceINR)}
                         </div>

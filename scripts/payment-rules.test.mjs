@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 const host = process.env.FIRESTORE_EMULATOR_HOST;
 assert.equal(host, '127.0.0.1:8189', 'Rules tests may only run against the dedicated local emulator.');
 const base = `http://${host}/v1/projects/demo-ab-payments/databases/(default)/documents/`;
-const encode = v => typeof v === 'string' ? { stringValue: v } : typeof v === 'boolean' ? { booleanValue: v } : typeof v === 'number' ? { integerValue: String(v) } : Array.isArray(v) ? { arrayValue: { values: v.map(encode) } } : { mapValue: { fields: fields(v) } };
+const encode = v => typeof v === 'string' ? { stringValue: v } : typeof v === 'boolean' ? { booleanValue: v } : typeof v === 'number' ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v }) : Array.isArray(v) ? { arrayValue: { values: v.map(encode) } } : { mapValue: { fields: fields(v) } };
 const fields = v => Object.fromEntries(Object.entries(v).map(([k, value]) => [k, encode(value)]));
 function token(uid, admin = false) {
   const b64 = v => Buffer.from(JSON.stringify(v)).toString('base64url');
@@ -18,6 +18,12 @@ async function expect(path, method, auth, data, allowed) {
   const result = await request(path, method, auth, data); checks++;
   assert.equal(result.ok, allowed, `${method} ${path}: ${result.status} ${await result.text()}`);
 }
+// Pricing remains restricted to the trusted custom-claim admin role.
+await expect('products/pricing-security', 'PATCH', admin, { status: 'active', data: { priceINR: 1000, originalPriceINR: 1500, discountPercentage: 33.33 } }, true);
+await expect('products/pricing-security', 'PATCH', uid, { data: { priceINR: 1, originalPriceINR: 1500, discountPercentage: 99.99 } }, false);
+await expect('products/pricing-forged', 'PATCH', uid, { data: { priceINR: 1 } }, false);
+await expect('products/pricing-security', 'DELETE', uid, null, false);
+await expect('products/pricing-security', 'PATCH', admin, { status: 'active', data: { priceINR: 750, originalPriceINR: 1500, discountPercentage: 50 } }, true);
 await expect('orders/online', 'PATCH', 'owner', order, true);
 await expect('orders/online', 'GET', uid, null, true); await expect('orders/online', 'GET', other, null, false); await expect('orders/online', 'GET', admin, null, true);
 for (const auth of [uid, admin]) {

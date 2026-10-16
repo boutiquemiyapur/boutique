@@ -255,10 +255,11 @@ test('per-color images take priority and absent media uses a neutral placeholder
   setupStore(product()); assert.match(api.renderProduct(), /Image unavailable/);
 });
 
-test('optional numeric values are valid at zero and duplicate specification concepts are rejected', () => {
-  assert.equal(api.productValidationError(product({ originalPriceINR: 0, discountPercentage: 0, weightGrams: 0 })), null);
+test('optional non-price values allow zero; MRP must be positive and specification concepts are unique', () => {
+  assert.equal(api.productValidationError(product({ discountPercentage: 0, weightGrams: 0 })), null);
+  assert.match(api.productValidationError(product({ originalPriceINR: 0 })), /MRP must be positive/);
   assert.match(api.productValidationError({ ...product(), stockCount: 1.5 }), /whole-number/);
-  assert.match(api.productValidationError(product({ discountPercentage: 101 })), /100%/);
+  assert.match(api.productValidationError({ ...product(), discountPercentage: 101 }), /100%/);
   assert.match(api.productValidationError(product({ specifications: [{ label: 'Fabric Composition', value: 'Cotton' }] })), /dedicated field/);
 });
 

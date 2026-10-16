@@ -1,4 +1,5 @@
 import { AppliedCheckoutCharge, CartItem, CheckoutCharge, Coupon } from '../types';
+import { moneyPaise } from './productPricing.js';
 
 const finiteNonnegative = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 
@@ -44,8 +45,8 @@ export interface CheckoutTotals {
 
 /** Percentage charges use merchandise subtotal after coupon discount. Tailoring and other charges are excluded. */
 export const calculateCheckoutTotals = (items: CartItem[], coupon: Coupon | null, configuredCharges: CheckoutCharge[]): CheckoutTotals => {
-  const subtotalINR = items.reduce((sum, item) => sum + finiteNonnegative(item.product.priceINR) * Math.max(0, Math.floor(item.quantity)), 0);
-  const tailoringTotalINR = items.reduce((sum, item) => sum + (item.isCustomTailored ? finiteNonnegative(item.tailoringFeeINR) * Math.max(0, Math.floor(item.quantity)) : 0), 0);
+  const subtotalINR = items.reduce((sum, item) => sum + moneyPaise(finiteNonnegative(item.product.priceINR)) * Math.max(0, Math.floor(item.quantity)), 0) / 100;
+  const tailoringTotalINR = items.reduce((sum, item) => sum + (item.isCustomTailored ? moneyPaise(finiteNonnegative(item.tailoringFeeINR)) * Math.max(0, Math.floor(item.quantity)) : 0), 0) / 100;
   const couponDiscountINR = couponDiscount(subtotalINR, coupon);
   const percentageChargeBaseINR = Math.max(0, subtotalINR - couponDiscountINR);
   const charges = normalizeCheckoutCharges(configuredCharges).filter((charge) => charge.enabled).map((charge) => ({
@@ -60,7 +61,7 @@ export const calculateCheckoutTotals = (items: CartItem[], coupon: Coupon | null
     percentageChargeBaseINR,
     charges,
     chargeTotalINR,
-    totalINR: Math.max(0, subtotalINR + tailoringTotalINR - couponDiscountINR + chargeTotalINR),
+    totalINR: Math.max(0, moneyPaise(subtotalINR) + moneyPaise(tailoringTotalINR) - moneyPaise(couponDiscountINR) + moneyPaise(chargeTotalINR)) / 100,
   };
 };
 

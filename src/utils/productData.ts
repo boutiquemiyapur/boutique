@@ -1,4 +1,5 @@
 import { CartItem, Product, ProductVariant, VariantInventoryItem } from '../types';
+import { productPricing, pricingValidationError } from './productPricing.js';
 
 const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 export const uniqueValues = (value: unknown): string[] => {
@@ -106,6 +107,7 @@ export const normalizeProduct = (raw: Partial<Product>, id = raw.id || ''): Prod
   const variantInventory = rawInventory?.filter((item) => allowedInventoryKeys.has(item.key));
   const normalized = {
     ...raw, id,
+    discountPercentage: productPricing({ ...raw, priceINR: raw.priceINR ?? 0 }).discountPercentage,
     title: text(raw.title), sku: text(raw.sku), category: text(raw.category),
     subtitle: text(raw.subtitle), fabric: text(raw.fabric), occasion: text(raw.occasion),
     description: text(raw.description), craftDetails: text(raw.craftDetails), careInstructions: text(raw.careInstructions),
@@ -132,7 +134,11 @@ export const productFromDocument = (id: string, document: Record<string, unknown
 };
 
 /** Null clears optional values under Firestore merge writes; undefined is rejected by Firestore. */
-export const productForStorage = (product: Product): Product => JSON.parse(JSON.stringify(normalizeProduct(product), (_key, value) => value === undefined ? null : value));
+export const productForStorage = (product: Product): Product => {
+  const error = pricingValidationError(product);
+  if (error) throw new Error(error);
+  return JSON.parse(JSON.stringify(normalizeProduct(product), (_key, value) => value === undefined ? null : value));
+};
 
 export const productSpecifications = (product: Product) => {
   const rows = [
@@ -155,11 +161,12 @@ export const productSpecifications = (product: Product) => {
 
 export const productValidationError = (product: Product): string | null => {
   if (!product.title.trim() || !product.sku.trim() || !product.category.trim()) return 'Enter a product name, SKU and category.';
-  if (!Number.isFinite(product.priceINR) || product.priceINR < 0 || !Number.isInteger(product.stockCount) || product.stockCount < 0) return 'Enter a valid price and whole-number stock.';
-  for (const value of [product.originalPriceINR, product.discountPercentage, product.weightGrams, product.customStitchingFeeINR]) {
-    if (value != null && (!Number.isFinite(value) || value < 0)) return 'Prices, discount, weight and fees must be non-negative numbers.';
+  const pricingError = pricingValidationError(product);
+  if (pricingError) return pricingError;
+  if (!Number.isInteger(product.stockCount) || product.stockCount < 0) return 'Enter valid whole-number stock.';
+  for (const value of [product.weightGrams, product.customStitchingFeeINR]) {
+    if (value != null && (!Number.isFinite(value) || value < 0)) return 'Weight and fees must be non-negative numbers.';
   }
-  if (product.discountPercentage != null && product.discountPercentage > 100) return 'Discount cannot exceed 100%.';
   const reserved = new Set(['material', 'fabric', 'fabric composition', 'care instructions', 'zari specification', 'weight', 'blouse piece', 'blouse length', 'saree length']);
   const seen = new Set<string>();
   for (const row of product.specifications || []) {

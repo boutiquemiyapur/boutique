@@ -12,7 +12,7 @@ export async function trustedCheckout(db: Firestore, tx: Transaction, request: C
   const products = snapshots.slice(0, ids.length).map(s => {
     requireCondition(s.exists, 'INVALID_PRODUCT', 409);
     const raw = object(s.data()?.data);
-    paise(raw.priceINR); paise(raw.customStitchingFeeINR);
+    requireCondition(paise(raw.priceINR) > 0, 'INVALID_FINANCIAL_RECORD', 409); paise(raw.customStitchingFeeINR);
     requireCondition(Number.isInteger(raw.stockCount) && Number(raw.stockCount) >= 0, 'INVALID_INVENTORY', 409);
     if (raw.variantInventory !== undefined && raw.variantInventory !== null) {
       requireCondition(Array.isArray(raw.variantInventory), 'INVALID_INVENTORY', 409);

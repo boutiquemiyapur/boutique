@@ -1,3 +1,4 @@
+import { formatProductMoney, moneyPaise } from '../utils/productPricing';
 import { cancellationApi } from '../services/cancellationClient';
 import { cartPurchaseIssue as cartCatalogIssue, displayableWishlist } from '../utils/shoppingState';
 import { preferPaymentOrder, requestedOrder, type PaymentOutcome } from '../utils/paymentState';
@@ -509,11 +510,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const converted = inrAmount * curr.rateAgainstINR;
     
     if (selectedCurrency === 'INR') {
-      return `₹${Math.round(converted).toLocaleString('en-IN')}`;
+      return `₹${formatProductMoney(converted)}`;
     }
     return `${curr.symbol}${converted.toLocaleString('en-US', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 2
     })}`;
   };
 
@@ -803,6 +804,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
         setOrders(prev => [preferPaymentOrder(prev.find(order => order.id === preparedOrder.id), preparedOrder), ...prev.filter(order => order.id !== preparedOrder.id)]);
         setSelectedTrackingOrderId(preparedOrder.id);
+        const pricesChanged = moneyPaise(cartTotalINR) !== preparedOrder.amountPaise || cart.some(line => {
+          const saved = preparedOrder.items.find(item => item.product.id === line.product.id && item.selectedColor === line.selectedColor && item.selectedSize === line.selectedSize && item.isCustomTailored === line.isCustomTailored);
+          return !saved || moneyPaise(saved.product.priceINR) !== moneyPaise(line.product.priceINR) || moneyPaise(saved.tailoringFeeINR) !== moneyPaise(line.tailoringFeeINR);
+        });
+        if (pricesChanged && !window.confirm(`Checkout prices have changed. The server-confirmed total is INR ${formatProductMoney(preparedOrder.totalINR)}. Review this updated total and select OK to continue to payment, or Cancel to review the saved order. The same payment attempt will be retained.`)) {
+          return { kind: 'error', order: preparedOrder, message: 'Prices changed. Review the updated prices and total in this saved order before paying. No payment was opened.' };
+        }
         const outcome = await openPayment(prepared, onProgress);
         if (activePrivateUidRef.current !== uid) throw new Error('Sign in to the account that started this payment.');
         // Dismissal/error carries a stale pre-Checkout snapshot. Preserve listener data.

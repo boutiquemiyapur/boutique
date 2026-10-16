@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:product-pricing": "node --import tsx --test scripts/product-pricing.test.ts",
+    "test:product-pricing-browser": "node scripts/product-pricing-browser.test.mjs",
     "test:refund-management": "node --import tsx --test scripts/refund-management.test.ts scripts/refund-management-api.test.mjs scripts/refund-management-ui.test.mjs scripts/refund-management-client.test.mjs scripts/manual-refund-provider.test.mjs",
     "test:payment-security": "node --import tsx --test scripts/payment-security-audit.test.ts",
     "dev": "vite --port=3000 --host=0.0.0.0",

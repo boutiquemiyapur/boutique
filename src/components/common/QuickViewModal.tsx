@@ -1,3 +1,4 @@
+import { productPricing } from '../../utils/productPricing';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ProductOptions } from './ProductOptions';
@@ -130,14 +131,14 @@ export const QuickViewModal: React.FC = () => {
               <span className="whitespace-nowrap text-2xl font-sans font-bold tabular-nums text-[#8B1E3F]">
                 {formatPrice(product.priceINR)}
               </span>
-              {product.originalPriceINR != null && product.originalPriceINR > product.priceINR && (
+              {productPricing(product).isDiscounted && (
                 <span className="whitespace-nowrap text-sm line-through text-stone-600 font-sans font-normal tabular-nums">
                   {formatPrice(product.originalPriceINR)}
                 </span>
               )}
-              {product.discountPercentage > 0 && (
+              {productPricing(product).discountPercentage > 0 && (
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                  Save {product.discountPercentage}%
+                  {productPricing(product).discountPercentage}% OFF · You save {formatPrice(productPricing(product).discountAmountINR)}
                 </span>
               )}
             </div>
