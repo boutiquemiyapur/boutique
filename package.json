@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:sale-campaigns": "node --import tsx --test scripts/sale-campaigns.test.ts scripts/sale-campaigns-api.test.mjs",
+    "test:sale-campaigns-browser": "node scripts/sale-campaigns-browser.test.mjs",
     "test:product-pricing": "node --import tsx --test scripts/product-pricing.test.ts",
     "test:product-pricing-browser": "node scripts/product-pricing-browser.test.mjs",
     "test:refund-management": "node --import tsx --test scripts/refund-management.test.ts scripts/refund-management-api.test.mjs scripts/refund-management-ui.test.mjs scripts/refund-management-client.test.mjs scripts/manual-refund-provider.test.mjs",

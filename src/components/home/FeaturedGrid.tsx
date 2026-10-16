@@ -1,3 +1,4 @@
+import { SaleOfferBadge } from '../sales/SaleOfferBadge';
 import { productPricing } from '../../utils/productPricing';
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
@@ -124,7 +125,8 @@ export const FeaturedGrid: React.FC = () => {
                   />
 
                   {/* Badges */}
-                  <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
+                  <div className="absolute top-3 left-3 right-14 flex flex-col gap-1.5 z-10">
+                    <SaleOfferBadge product={product} />
                     {product.isHandloomCertified && (
                       <span className="bg-[#16423C] text-[#DFBF77] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1">
                         <ShieldCheck className="w-3 h-3" /> Handloom certified
@@ -200,7 +202,7 @@ export const FeaturedGrid: React.FC = () => {
                       </div>
                       {productPricing(product).isDiscounted && (
                         <div className="text-[11px] line-through text-stone-400 font-serif">
-                          {formatPrice(product.originalPriceINR)}
+                          {formatPrice(productPricing(product).referencePriceINR)}
                         </div>
                       )}
                     </div>

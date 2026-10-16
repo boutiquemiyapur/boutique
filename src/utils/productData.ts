@@ -135,6 +135,7 @@ export const productFromDocument = (id: string, document: Record<string, unknown
 
 /** Null clears optional values under Firestore merge writes; undefined is rejected by Firestore. */
 export const productForStorage = (product: Product): Product => {
+  if (product.regularPriceINR !== undefined || product.saleCampaign !== undefined || product.saleCampaignIds !== undefined) throw new Error('Save regular catalog products only; campaign prices belong in campaign records.');
   const error = pricingValidationError(product);
   if (error) throw new Error(error);
   return JSON.parse(JSON.stringify(normalizeProduct(product), (_key, value) => value === undefined ? null : value));
@@ -230,3 +231,6 @@ export const refreshCartProducts = (items: CartItem[], products: Product[]) => i
   const current = products.find((product) => product.id === item.product.id);
   return current ? { ...item, product: current, tailoringFeeINR: item.isCustomTailored ? current.customStitchingFeeINR : 0 } : item;
 });
+
+/** Price/stock refreshes must not reset a customer's gallery or valid selections. */
+export const productSelectionKey = (product?: Product) => JSON.stringify([product?.id, product?.images, product?.colors, product?.availableSizes, product?.customStitchingAvailable]);

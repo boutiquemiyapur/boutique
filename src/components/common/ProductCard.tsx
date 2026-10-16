@@ -1,3 +1,4 @@
+import { SaleOfferBadge } from '../sales/SaleOfferBadge';
 import { productPricing } from '../../utils/productPricing';
 import React, { useState } from 'react';
 import { Eye, Heart, ShoppingCart } from 'lucide-react';
@@ -23,7 +24,8 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
       <button onClick={() => navigate('product-detail', product.id)} className="block h-full w-full text-left" aria-label={`View ${product.title}`}>
         <ProductImage src={image} alt={product.title} loading={priority ? 'eager' : 'lazy'} className="boutique-image h-full w-full object-cover transition duration-700 group-hover:scale-[1.035]" />
       </button>
-      <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
+      <div className="absolute left-3 right-14 top-3 flex flex-col items-start gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
+        <SaleOfferBadge product={product} />
         {product.isNewArrival && <span className="bg-[#fffdf9] px-2 py-1 text-[#2c2926]">New</span>}
         {productPricing(product).discountPercentage > 0 && <span className="bg-[#625e59] px-2 py-1 text-white">{productPricing(product).discountPercentage}% off</span>}
         {isSoldOut && <span className="bg-[#2c2926] px-2 py-1 text-white">Sold out</span>}
@@ -39,7 +41,7 @@ export const ProductCard: React.FC<{ product: Product; priority?: boolean }> = (
     <div className="px-1 pb-1 pt-4">
       <p className="text-[10px] uppercase tracking-[.16em] text-[#6f87a5]">{product.category}</p>
       <button onClick={() => navigate('product-detail', product.id)} className="mt-1 max-w-full line-clamp-1 break-words text-left text-sm font-semibold text-[#2c2926] hover:underline">{product.title}</button>
-      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="whitespace-nowrap font-sans text-base font-semibold tabular-nums text-[#2c2926]">{formatPrice(product.priceINR)}</span>{productPricing(product).isDiscounted && <span className="whitespace-nowrap font-sans text-[13px] font-normal leading-5 tabular-nums text-stone-600 line-through">{formatPrice(product.originalPriceINR)}</span>}</div>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1"><span className="whitespace-nowrap font-sans text-base font-semibold tabular-nums text-[#2c2926]">{formatPrice(product.priceINR)}</span>{productPricing(product).isDiscounted && <span className="whitespace-nowrap font-sans text-[13px] font-normal leading-5 tabular-nums text-stone-600 line-through">{formatPrice(productPricing(product).referencePriceINR)}</span>}</div>
       <p className={`mt-1 text-[10px] ${isSoldOut ? 'text-stone-500' : product.stockCount <= cms.lowStockThreshold ? 'text-[#8a5738]' : 'text-stone-500'}`}>{stockMessage(product, cms.lowStockThreshold)}</p>
     </div>
   </article>;

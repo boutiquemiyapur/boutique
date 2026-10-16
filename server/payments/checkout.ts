@@ -4,6 +4,8 @@ import { legacyChargeAmounts } from '../../src/utils/checkoutTotals.js';
 import { productFromDocument, cartCatalogIssue, variantKey } from '../../src/utils/productData.js';
 import { requireCondition } from './errors.js';
 import { object, paise, type CheckoutRequest } from './validation.js';
+import { campaignPrices } from '../sales/campaigns.js';
+import { withSalePrice } from '../../src/utils/saleCampaigns.js';
 
 export async function trustedCheckout(db: Firestore, tx: Transaction, request: CheckoutRequest, now: number) {
   const ids = [...new Set(request.items.map(l => l.productId))];
@@ -23,8 +25,10 @@ export async function trustedCheckout(db: Firestore, tx: Transaction, request: C
     const product = productFromDocument(s.id, s.data()!);
     requireCondition(product && product.isActive !== false, 'INACTIVE_PRODUCT', 409); return product;
   });
+  const prices = await campaignPrices(db, products, now, tx);
   const items: CartItem[] = request.items.map((l, i) => {
-    const product = products.find(p => p.id === l.productId)!;
+    const index = products.findIndex(p => p.id === l.productId);
+    const product = withSalePrice(products[index], prices[index]);
     return { ...l, cartItemId: `line-${i}`, product, tailoringFeeINR: l.isCustomTailored ? product.customStitchingFeeINR : 0 };
   });
   requireCondition(!cartCatalogIssue(items, products), 'INVALID_OPTIONS_OR_STOCK', 409);

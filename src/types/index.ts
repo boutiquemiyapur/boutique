@@ -68,6 +68,10 @@ export interface Product {
   fabric: FabricType;
   occasion: OccasionType;
   priceINR: number;
+  /** Transient campaign/order snapshot metadata; never persisted to the product catalog. */
+  regularPriceINR?: number;
+  saleCampaignIds?: string[];
+  saleCampaign?: { id: string; name: string; slug: string; endsAt: number };
   originalPriceINR?: number;
   discountPercentage?: number;
   rating: number;
@@ -302,6 +306,7 @@ export interface CustomerProfile {
 }
 
 export type AppView = 
+  | 'sale'
   | 'home'
   | 'shop'
   | 'product-detail'

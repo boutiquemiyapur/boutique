@@ -1,4 +1,6 @@
 import { formatProductMoney, moneyPaise } from '../utils/productPricing';
+import { useCampaignCatalog } from '../hooks/useCampaignCatalog';
+import type { SaleCampaign } from '../utils/saleCampaigns';
 import { cancellationApi } from '../services/cancellationClient';
 import { cartPurchaseIssue as cartCatalogIssue, displayableWishlist } from '../utils/shoppingState';
 import { preferPaymentOrder, requestedOrder, type PaymentOutcome } from '../utils/paymentState';
@@ -45,6 +47,8 @@ interface StoreContextType {
   privateDataError: boolean;
   authSession: AuthSession;
   products: Product[];
+  saleCampaigns: SaleCampaign[];
+  saleSlug: string | null;
   categories: StoreCategory[];
   catalogStatus: 'loading' | 'ready' | 'error';
   cartIssue: string | null;
@@ -206,6 +210,7 @@ const pathForView = (view: AppView, productId?: string, orderId?: string) => {
     'privacy-policy': '/privacy', 'terms-policy': '/terms', 'cookie-policy': '/cookies', 'not-found': '/404'
   };
   if (view === 'product-detail' && productId) return `/product/${encodeURIComponent(productId)}`;
+  if (view === 'sale') return productId ? `/sale/${encodeURIComponent(productId)}` : '/sale';
   if (view === 'order-confirmation' && orderId) return `/order-confirmation/${encodeURIComponent(orderId)}`;
   if (view === 'order-tracking' && orderId) return `/orders/${encodeURIComponent(orderId)}`;
   return paths[view] || '/';
@@ -225,10 +230,13 @@ const customerForSession = (session: NonNullable<AuthSession>): CustomerProfile 
 const INITIAL_CUSTOMER: CustomerProfile = { id: '', fullName: '', email: '', phone: '', tier: 'Silver Patron', savedAddresses: [], totalSpendINR: 0, ordersCount: 0 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [regularProducts, setProducts] = useState<Product[]>([]);
+  const { products, campaigns: saleCampaigns, status: saleStatus } = useCampaignCatalog(regularProducts);
+  const [saleSlug, setSaleSlug] = useState<string | null>(null);
   const [catalogReferenceIds, setCatalogReferenceIds] = useState<string[]>([]);
   const [categories, setCategories] = useState<StoreCategory[]>([]);
-  const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [regularCatalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const catalogStatus = regularCatalogStatus === 'ready' ? saleStatus : regularCatalogStatus;
 
   // Do not hydrate cart or wishlist before Firebase resolves the owner.
   // This prevents a prior account's browser state from flashing for another user.
@@ -980,6 +988,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Navigation router
   const navigate = (view: AppView, productId?: string, trackingOrderId?: string) => {
+    if (view === 'sale') setSaleSlug(productId || null);
     if (productId) setSelectedProductId(productId);
     if (trackingOrderId) setSelectedTrackingOrderId(trackingOrderId);
     const nextPath = pathForView(view, productId, trackingOrderId);
@@ -995,6 +1004,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       shipping: 'shipping-policy', returns: 'returns-policy', cancellation: 'cancellation-policy', privacy: 'privacy-policy', terms: 'terms-policy', cookies: 'cookie-policy', '404': 'not-found'
     };
     if (first === 'product' && second) { setSelectedProductId(decodeURIComponent(second)); setActiveView('product-detail'); return; }
+    if (first === 'sale') { setSaleSlug(second ? (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(second) && second.length <= 80 ? second : '__unavailable__') : null); setActiveView('sale'); return; }
     if (first === 'order-confirmation' && second) { setSelectedTrackingOrderId(decodeURIComponent(second)); setActiveView('order-confirmation'); return; }
     if (first === 'orders' && second) { setSelectedTrackingOrderId(decodeURIComponent(second)); setActiveView('order-tracking'); return; }
     if (first === 'collections' && second) {
@@ -1012,6 +1022,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <StoreContext.Provider
       value={{
+        saleCampaigns, saleSlug,
         authStatus,
         isCustomerDataReady: privateDataReady,
         privateDataError,

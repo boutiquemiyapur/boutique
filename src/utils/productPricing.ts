@@ -1,19 +1,22 @@
 /** Product money is INR at the storage boundary, integer paise during calculation.
  * priceINR is authoritative. Legacy discount metadata never changes that price.
  */
-export interface PricingFields { priceINR: number; originalPriceINR?: number; discountPercentage?: number }
+export interface PricingFields { priceINR: number; originalPriceINR?: number; discountPercentage?: number; regularPriceINR?: number }
 export type PricingMode = 'price' | 'discount';
 export const moneyPaise = (value: number): number => Math.round((value + Number.EPSILON) * 100);
 const validMoney = (value: number) => Number.isFinite(value) && value > 0 && Number.isSafeInteger(moneyPaise(value)) && moneyPaise(value) <= 100_000_000 && Math.abs(value * 100 - moneyPaise(value)) < 0.000001;
 
 export function productPricing(product: PricingFields) {
   const sellingPaise = moneyPaise(product.priceINR);
-  const mrpPaise = product.originalPriceINR == null ? 0 : moneyPaise(product.originalPriceINR);
-  const isDiscounted = validMoney(product.priceINR) && validMoney(product.originalPriceINR ?? 0) && mrpPaise > sellingPaise;
+  const useMrp = validMoney(product.originalPriceINR ?? 0) && moneyPaise(product.originalPriceINR!) > sellingPaise;
+  const referencePriceINR = useMrp ? product.originalPriceINR : product.regularPriceINR;
+  const referenceLabel = useMrp ? 'MRP' : 'Regular price';
+  const mrpPaise = referencePriceINR == null ? 0 : moneyPaise(referencePriceINR);
+  const isDiscounted = validMoney(product.priceINR) && validMoney(referencePriceINR ?? 0) && mrpPaise > sellingPaise;
   const savingsPaise = isDiscounted ? mrpPaise - sellingPaise : 0;
   // Cap rounded percentages below 100: a positive selling price is never free.
   const discountPercentage = isDiscounted ? Math.min(99.99, Math.round(savingsPaise * 10_000 / mrpPaise) / 100) : 0;
-  return { sellingPaise, mrpPaise, isDiscounted, discountPercentage, discountAmountINR: savingsPaise / 100 };
+  return { sellingPaise, mrpPaise, isDiscounted, discountPercentage, discountAmountINR: savingsPaise / 100, referencePriceINR, referenceLabel };
 }
 
 export function pricingValidationError(product: PricingFields): string | null {

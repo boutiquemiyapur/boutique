@@ -23,17 +23,20 @@ const INTERACTION_PAUSE = 7000;
 const SWIPE_THRESHOLD = 48;
 
 export const HeroBanner: React.FC = () => {
-  const { navigate, cms } = useStore();
+  const { navigate, cms, saleCampaigns = [] } = useStore();
   const prefersReducedMotion = useReducedMotion();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const pauseTimeoutRef = useRef<number | null>(null);
   const touchStartXRef = useRef<number | null>(null);
-  const slides: HeroSlide[] = cms.banners.map((banner) => ({
+  const campaignBanners = saleCampaigns.filter(c => c.homepage).map(c => ({ id: c.id, image: c.desktopImage, mobileImage: c.mobileImage, title: c.name, subtitle: c.description, ctaText: c.ctaText, ctaDestination: `/sale/${c.slug}`, displayOrder: c.displayOrder, featured: c.featured }));
+  const slides: HeroSlide[] = [...cms.banners, ...campaignBanners].sort((a, b) => Number(Boolean((b as any).featured)) - Number(Boolean((a as any).featured)) || a.displayOrder - b.displayOrder).map((banner) => ({
     id: banner.id, image: banner.image, mobileImage: banner.mobileImage || banner.image, alt: banner.title || 'AB Collection by Aadya boutique collection', eyebrow: cms.content.homeEyebrow,
     title: banner.title, description: banner.subtitle, cta: banner.ctaText, ctaDestination: banner.ctaDestination,
     desktopPositionClass: 'lg:object-[50%_36%]', mobilePositionClass: 'object-[50%_50%]'
   }));
+
+  const openDestination = () => { if (currentSlide?.ctaDestination.startsWith('/sale/')) navigate('sale', currentSlide.ctaDestination.slice(6)); else navigate(currentSlide?.ctaDestination === '/about' ? 'about' : currentSlide?.ctaDestination === '/contact' ? 'contact' : 'shop'); };
 
   const clearInteractionPause = () => {
     if (pauseTimeoutRef.current !== null) {
@@ -58,7 +61,8 @@ export const HeroBanner: React.FC = () => {
 
   const next = () => goToSlide(currentIndex + 1);
   const previous = () => goToSlide(currentIndex - 1);
-  const currentSlide = slides[currentIndex] || null;
+  const currentSlide = slides.length ? slides[currentIndex % slides.length] : null;
+  useEffect(() => { setCurrentIndex(index => slides.length ? index % slides.length : 0); }, [slides.length]);
 
   useEffect(() => {
     // Cache the next Vite-bundled visual while the current banner is visible.
@@ -87,6 +91,7 @@ export const HeroBanner: React.FC = () => {
   if (!currentSlide) return null;
   return <section
     className="relative isolate min-h-[540px] overflow-hidden bg-[#102847] sm:min-h-[590px] lg:h-[620px] lg:min-h-0 xl:h-[650px]"
+    onClick={event => { if (currentSlide.ctaDestination.startsWith('/sale/') && !(event.target as HTMLElement).closest('button,a')) openDestination(); }}
     aria-roledescription="carousel"
     aria-label="AB Collection highlights"
     onMouseEnter={() => setIsPaused(true)}
@@ -98,6 +103,7 @@ export const HeroBanner: React.FC = () => {
   >
     <AnimatePresence initial={false} mode="sync">
       <motion.div key={currentSlide.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.8, ease: 'easeInOut' }} className="absolute inset-0">
+        {currentSlide.ctaDestination.startsWith('/sale/') && <button type="button" className="absolute inset-0 z-10" onClick={openDestination} aria-label={`Open ${currentSlide.title} collection`} />}
         <picture className="block h-full w-full"><source media="(max-width: 767px)" srcSet={currentSlide.mobileImage || currentSlide.image} /><ProductImage src={currentSlide.image} alt={currentSlide.alt} className={`h-full w-full object-cover ${currentSlide.mobilePositionClass} ${currentSlide.desktopPositionClass}`} fetchPriority={currentIndex === 0 ? 'high' : 'auto'} loading={currentIndex === 0 ? 'eager' : 'lazy'} /></picture>
         <div className="absolute inset-0 bg-gradient-to-t from-[#102847]/78 via-[#102847]/18 to-transparent sm:bg-gradient-to-r sm:from-[#102847]/58 sm:via-[#102847]/10 sm:to-transparent" aria-hidden="true" />
       </motion.div>
@@ -108,7 +114,7 @@ export const HeroBanner: React.FC = () => {
         {currentSlide.eyebrow && <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-[#f1dfae] sm:text-[11px]">{currentSlide.eyebrow}</p>}
         {currentSlide.title && <h2 className="mt-4 font-serif text-[2.65rem] leading-[.92] drop-shadow-[0_2px_12px_rgba(0,0,0,.28)] sm:text-6xl lg:text-7xl">{currentSlide.title}</h2>}
         {currentSlide.description && <p className="mt-4 max-w-sm text-sm leading-6 text-white/95 sm:mt-5 sm:text-base sm:leading-7">{currentSlide.description}</p>}
-        {currentSlide.cta && currentSlide.ctaDestination && <button onClick={() => navigate(currentSlide.ctaDestination === '/about' ? 'about' : currentSlide.ctaDestination === '/contact' ? 'contact' : 'shop')} className="mt-8 inline-flex items-center gap-2 border border-[#e5d5ad] bg-[#fffdf8] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#102847] transition hover:bg-[#17335c] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+        {currentSlide.cta && currentSlide.ctaDestination && <button onClick={openDestination} className="mt-8 inline-flex items-center gap-2 border border-[#e5d5ad] bg-[#fffdf8] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#102847] transition hover:bg-[#17335c] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
           {currentSlide.cta}<ArrowRight className="h-4 w-4" />
         </button>}
       </motion.div>

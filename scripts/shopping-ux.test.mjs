@@ -35,13 +35,15 @@ export const home=()=>renderToStaticMarkup(React.createElement(StorefrontHomePag
 `},outfile,bundle:true,format:'esm',platform:'node',packages:'external',plugins:[{name:'shopping-boundaries',setup(b){
 b.onResolve({filter:/^motion\/react$/},args=> /WishlistDrawer|CartDrawer/.test(args.importer)?{path:'motion',namespace:'fixture'}:undefined);
 b.onResolve({filter:/^react$/},args=> /StoreContext|ProductImage|useNavigationScroll|CheckoutPage/.test(args.importer)?{path:'hooks',namespace:'fixture'}:undefined);
-b.onResolve({filter:/context\/StoreContext$/},args=> /StorefrontHomePage|FeaturedGrid|HeroBanner|CustomTailoringBanner|Header|WishlistPage|WishlistDrawer|WishlistReferenceNotice|ProductCard|CartDrawer|CartPage|CheckoutPage/.test(args.importer)?{path:'context',namespace:'fixture'}:undefined);
+b.onResolve({filter:/context\/StoreContext$/},args=> /StorefrontHomePage|FeaturedGrid|HeroBanner|CustomTailoringBanner|Header|WishlistPage|WishlistDrawer|WishlistReferenceNotice|ProductCard|CartDrawer|CartPage|CheckoutPage|SaleOfferBadge|SaleCampaignPage/.test(args.importer)?{path:'context',namespace:'fixture'}:undefined);
+b.onResolve({filter:/hooks\/useCampaignCatalog$/},()=>({path:'campaigns',namespace:'fixture'}));
 b.onResolve({filter:/firebase\/auth$/},()=>({path:'auth',namespace:'fixture'}));
 b.onResolve({filter:/firebase\/config$/},()=>({path:'config',namespace:'fixture'}));
 b.onResolve({filter:/services\/paymentClient$/},()=>({path:'payments',namespace:'fixture'}));
 b.onResolve({filter:/services\/cmsRepository$/},()=>({path:'cms',namespace:'fixture'}));
 b.onResolve({filter:/^firebase\/firestore$/},()=>({path:'db',namespace:'fixture'}));
 b.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({resolveDir:process.cwd(),contents:({
+campaigns:`export const useCampaignCatalog=products=>({products,campaigns:[],status:'ready'});`,
 motion:`import React from 'react'; export const motion={div:({initial,animate,exit,transition,...props})=>React.createElement('div',props)}; export const AnimatePresence=({children})=>children;`,
 hooks:`export const createContext=()=>({Provider:'provider'}); export const useState=(v)=>globalThis.hooks.state(v); export const useRef=(v)=>globalThis.hooks.ref(v); export const useEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useLayoutEffect=(f,d)=>globalThis.hooks.effect(f,d); export const useMemo=(f)=>{globalThis.hooks.index++;return f()}; export const useContext=()=>{}; export default {createContext,useState,useRef,useEffect,useMemo,useContext};`,
 context:`export const useStore=()=>globalThis.viewStore;`,
@@ -136,6 +138,13 @@ test('pending local Firestore snapshots do not expose an unconfirmed wishlist co
 });
 
 const pendingPayment={id:'pay-integration',orderNumber:'AB-INTEGRATION',createdAt:new Date().toISOString(),shippingAddress:{fullName:'Fixture'},items:[line('a')],charges:[],timeline:[],paymentMethod:'razorpay',paymentProvider:'razorpay',paymentStatus:'PAYMENT_PENDING',totalINR:100,amountPaise:10000};
+test('dynamic festival navigation resolves campaign slugs and malformed URLs safely',async()=>{
+ const h=initialize();let s=await h.session('A');window.history.pushState=(_a,_b,path)=>{window.location.pathname=path;};
+ s.navigate('sale','diwali-2026');s=h.render();assert.equal(s.activeView,'sale');assert.equal(s.saleSlug,'diwali-2026');assert.equal(window.location.pathname,'/sale/diwali-2026');
+ window.location.pathname='/sale/dussehra-2026';s.navigateFromUrl();s=h.render();assert.equal(s.saleSlug,'dussehra-2026');
+ window.location.pathname='/sale/%';s.navigateFromUrl();s=h.render();assert.equal(s.saleSlug,'__unavailable__');
+ s.navigate('sale');s=h.render();assert.equal(s.saleSlug,null);assert.equal(window.location.pathname,'/sale');h.cleanup();
+});
 const capturedPayment={...pendingPayment,paymentStatus:'PAID',currency:'INR',amountPaise:10000,razorpayOrderId:'order_integration',razorpayPaymentId:'pay_integration',paidAt:new Date().toISOString(),paymentVerifiedAt:new Date().toISOString(),paymentReviewRequired:false};
 function paymentFixture(openPayment){globalThis.localStorage={length:0};globalThis.paymentMock={stableCheckout:async(_uid,r)=>({...r,intentId:'integration-intent'}),checkoutBusinessRequest:()=>({}),paymentApi:async()=>({order:pendingPayment,checkout:{}}),openPayment};}
 function emitPayment(value){for(const entry of database.listeners.get('orders')||[])entry.fn({docs:[{data:()=>({data:value})}]});}

@@ -9,7 +9,7 @@ function token(uid, admin = false) {
   return `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ aud: 'demo-ab-payments', iss: 'https://securetoken.google.com/demo-ab-payments', sub: uid, user_id: uid, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600, admin, firebase: { sign_in_provider: 'custom' } })}.`;
 }
 async function request(path, method, auth, data) {
-  return fetch(base + path, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json' }, ...(data ? { body: JSON.stringify({ fields: fields(data) }) } : {}) });
+  return fetch(base + path, { method, headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), 'Content-Type': 'application/json' }, ...(data ? { body: JSON.stringify({ fields: fields(data) }) } : {}) });
 }
 const uid = token('customer'); const other = token('other'); const admin = token('admin', true);
 const order = { customerId: 'customer', orderStatus: 'Order Placed', paymentStatus: 'PAID', data: { id: 'online', paymentMethod: 'razorpay', paymentProvider: 'razorpay', paymentStatus: 'PAID', paymentReviewRequired: false, amountPaise: 149900, currency: 'INR', razorpayOrderId: 'order_test', razorpayPaymentId: 'pay_test', orderStatus: 'Order Placed', timeline: [] } };
@@ -19,6 +19,22 @@ async function expect(path, method, auth, data, allowed) {
   assert.equal(result.ok, allowed, `${method} ${path}: ${result.status} ${await result.text()}`);
 }
 // Pricing remains restricted to the trusted custom-claim admin role.
+const saleWindow = { status: 'published', startsAt: Date.now() - 1000, endsAt: Date.now() + 600000 };
+for (const [id, data] of Object.entries({ active: saleWindow, draft: { ...saleWindow, status: 'draft' }, paused: { ...saleWindow, status: 'paused' }, archived: { ...saleWindow, status: 'archived' }, ended: { ...saleWindow, endsAt: Date.now() - 1 }, future: { ...saleWindow, startsAt: Date.now() + 300000 } })) {
+  await expect(`saleCampaigns/${id}`, 'PATCH', 'owner', data, true);
+  await expect(`saleCampaigns/${id}/products/item`, 'PATCH', 'owner', { productId: 'item', fixedPriceINR: 750 }, true);
+  await expect(`saleCampaigns/${id}`, 'GET', '', null, id === 'active');
+  await expect(`saleCampaigns/${id}/products/item`, 'GET', uid, null, id === 'active');
+  await expect(`saleCampaigns/${id}`, 'GET', admin, null, true);
+  for (const auth of [uid, admin]) await expect(`saleCampaigns/${id}`, 'PATCH', auth, saleWindow, false);
+}
+for (const path of ['saleCampaignControl/published', 'saleProductAssignments/item', 'saleCampaignSlugs/private']) {
+  await expect(path, 'PATCH', 'owner', { value: 'private' }, true);
+  await expect(path, 'GET', '', null, false);
+  for (const auth of [uid, admin]) await expect(path, 'PATCH', auth, { ids: ['forged'] }, false);
+}
+await expect('saleCampaigns/active/products/forged', 'PATCH', admin, { fixedPriceINR: 1 }, false);
+await expect('saleCampaigns/active/products/item', 'DELETE', uid, null, false);
 await expect('products/pricing-security', 'PATCH', admin, { status: 'active', data: { priceINR: 1000, originalPriceINR: 1500, discountPercentage: 33.33 } }, true);
 await expect('products/pricing-security', 'PATCH', uid, { data: { priceINR: 1, originalPriceINR: 1500, discountPercentage: 99.99 } }, false);
 await expect('products/pricing-forged', 'PATCH', uid, { data: { priceINR: 1 } }, false);

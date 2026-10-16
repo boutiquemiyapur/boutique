@@ -49,7 +49,7 @@ export const Header: React.FC = () => {
     };
   }, [isMenuOpen]);
 
-  const NavLink = ({ view, children }: { view: 'home' | 'shop' | 'about' | 'contact'; children: React.ReactNode }) => <button onClick={() => navigate(view)} className="relative py-1 text-[11px] font-medium uppercase tracking-[.18em] text-[#52657c] transition hover:text-[#102847] after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0 after:bg-[#b69755] after:transition hover:after:scale-x-100">{children}</button>;
+  const NavLink = ({ view, children }: { view: 'home' | 'shop' | 'about' | 'contact' | 'sale'; children: React.ReactNode }) => <button onClick={() => navigate(view)} className="relative py-1 text-[11px] font-medium uppercase tracking-[.18em] text-[#52657c] transition hover:text-[#102847] after:absolute after:inset-x-0 after:-bottom-0.5 after:h-px after:origin-left after:scale-x-0 after:bg-[#b69755] after:transition hover:after:scale-x-100">{children}</button>;
 
   const mobileDrawer = isMenuOpen && typeof document !== 'undefined'
     ? createPortal(
@@ -60,6 +60,7 @@ export const Header: React.FC = () => {
           <nav className="mt-2 space-y-1" aria-label="Mobile primary navigation">
             <DrawerLink onClick={closeMenuThen(() => navigate('home'))}>Home</DrawerLink>
             <DrawerLink onClick={closeMenuThen(() => navigate('shop'))}>Shop</DrawerLink>
+            <DrawerLink onClick={closeMenuThen(() => navigate('sale'))}>Festive Offers</DrawerLink>
             <DrawerLink onClick={closeMenuThen(() => navigate('about'))}>About Us</DrawerLink>
             <DrawerLink onClick={closeMenuThen(() => navigate('contact'))}>Contact</DrawerLink>
             <DrawerLink onClick={goToNewArrivals}>New Arrivals</DrawerLink>
@@ -77,7 +78,7 @@ export const Header: React.FC = () => {
     <header data-store-header className="sticky top-0 z-40 border-b border-[#ddd7cf] bg-[#fffdf9]/95 shadow-[0_1px_0_rgba(182,151,85,.18)] backdrop-blur">
       <div className="mx-auto hidden max-w-[1440px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-8 px-7 py-1 lg:grid">
         <div className="flex min-w-0 items-center"><button onClick={() => navigate('home')} aria-label={`${BRAND.title} home`} className="inline-flex max-w-full items-center"><BrandMark /></button></div>
-        <nav className="flex items-center gap-8" aria-label="Primary navigation"><NavLink view="home">Home</NavLink><NavLink view="shop">Shop</NavLink><NavLink view="about">About Us</NavLink><NavLink view="contact">Contact</NavLink></nav>
+        <nav className="flex items-center gap-8" aria-label="Primary navigation"><NavLink view="home">Home</NavLink><NavLink view="shop">Shop</NavLink><NavLink view="sale">Festive Offers</NavLink><NavLink view="about">About Us</NavLink><NavLink view="contact">Contact</NavLink></nav>
         <div className="flex items-center justify-end gap-1"><button onClick={() => setIsSearchOpen((open) => !open)} className={iconButton} aria-label="Search"><Search className="h-4 w-4" /></button><button onClick={() => requireAuth('account')} className={iconButton} aria-label="Account"><User className="h-4 w-4" /></button><button onClick={openWishlist} className={iconButton} aria-label={`Wishlist, ${wishlistCount} saved products`}><Heart className="h-4 w-4" />{wishlistCount > 0 && <CountBadge count={wishlistCount} />}</button><button onClick={openCart} className={iconButton} aria-label={`Shopping cart, ${cartCount} items`}><ShoppingCart className="h-4 w-4" />{cartCount > 0 && <CountBadge count={cartCount} />}</button></div>
       </div>
       <div className="mx-auto grid max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center px-3 py-1 lg:hidden">

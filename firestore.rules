@@ -6,6 +6,22 @@ service cloud.firestore {
     // Cloud Function. It is never read from a client-writable Firestore field.
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
     function owns(userId) { return signedIn() && request.auth.uid == userId; }
+    function publicCampaign(data) {
+      return data.status == 'published' && data.startsAt <= request.time.toMillis() && request.time.toMillis() < data.endsAt;
+    }
+    match /saleCampaigns/{campaignId} {
+      allow read: if isAdmin() || publicCampaign(resource.data);
+      // Every mutation is validated by the trusted admin API, including slug
+      // reservation, publication index and product assignment synchronization.
+      allow write: if false;
+      match /products/{productId} {
+        allow read: if isAdmin() || publicCampaign(get(/databases/$(database)/documents/saleCampaigns/$(campaignId)).data);
+        allow write: if false;
+      }
+    }
+    match /saleCampaignSlugs/{id} { allow read: if isAdmin(); allow write: if false; }
+    match /saleProductAssignments/{id} { allow read, write: if false; }
+    match /saleCampaignControl/{id} { allow read, write: if false; }
 
     match /products/{productId} {
       allow read: if true;

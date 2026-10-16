@@ -7,6 +7,7 @@ import { StoreProvider, useStore } from './context/StoreContext';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { StorefrontHomePage } from './components/home/StorefrontHomePage';
+import { SaleCampaignPage } from './components/sales/SaleCampaignPage';
 import { ProductListingPage } from './components/shop/ProductListingPage';
 import { ProductDetailPage } from './components/product/ProductDetailPage';
 import { CheckoutPage } from './components/checkout/CheckoutPage';
@@ -63,11 +64,11 @@ const UnauthorizedAdminRedirect = () => {
 const AccessNotice = ({ title, action, onAction }: { title: string; action: string; onAction: () => void }) => <section className="grid min-h-[60vh] place-items-center px-5"><div className="max-w-md border border-[#ddd7cf] bg-white p-8 text-center shadow-sm"><ShieldAlert className="mx-auto h-7 w-7 text-[#685c53]" /><h1 className="mt-4 font-serif text-3xl text-[#252220]">{title}</h1><p className="mt-3 text-sm text-stone-600">Your account and boutique operations are protected by Firebase Authentication.</p><button onClick={onAction} className="mt-6 bg-[#685c53] px-6 py-3 text-xs font-semibold uppercase tracking-[.12em] text-white">{action}</button></div></section>;
 
 function AppContent() {
-  const { activeView, selectedProductId, selectedTrackingOrderId, navigateFromUrl } = useStore();
+  const { activeView, selectedProductId, selectedTrackingOrderId, navigateFromUrl, saleSlug } = useStore();
   const isAuthView = activeView === 'login' || activeView === 'register' || activeView === 'forgot-password';
   const isStandaloneView = isAuthView || activeView === 'admin';
 
-  useNavigationScroll(`${activeView}:${selectedProductId || ""}:${selectedTrackingOrderId || ""}`);
+  useNavigationScroll(`${activeView}:${saleSlug || ""}:${selectedProductId || ""}:${selectedTrackingOrderId || ""}`);
 
   useEffect(() => {
     navigateFromUrl();
@@ -86,6 +87,7 @@ function AppContent() {
       {/* Main View Router */}
       <main className="flex-1">
         {activeView === 'home' && <StorefrontHomePage />}
+        {activeView === 'sale' && <SaleCampaignPage key={saleSlug || "index"} />}
 
         {activeView === 'shop' && <ProductListingPage />}
 

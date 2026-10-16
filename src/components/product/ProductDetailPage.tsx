@@ -1,9 +1,10 @@
+import { SaleOfferBadge } from '../sales/SaleOfferBadge';
 import { productPricing } from '../../utils/productPricing';
 import { DetailsSkeleton } from '../common/Skeleton';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { CustomMeasurements, ReviewItem, SizeOption } from '../../types';
-import { isVariantAvailable, productImages, productSpecifications, stockMessage } from '../../utils/productData';
+import { isVariantAvailable, productImages, productSpecifications, stockMessage, productSelectionKey } from '../../utils/productData';
 import { ProductOptions } from '../common/ProductOptions';
 import { ProductImage } from '../common/ProductImage';
 import { ProductCard } from '../common/ProductCard';
@@ -44,6 +45,7 @@ export const ProductDetailPage: React.FC = () => {
 } = useStore();
 
   const product = products.find((p) => p.id === selectedProductId && p.isActive !== false);
+  const selectionKey = productSelectionKey(product);
 
   const [activeImgIndex, setActiveImgIndex] = useState(0);
   const [failedGalleryImages, setFailedGalleryImages] = useState<string[]>([]);
@@ -89,7 +91,7 @@ export const ProductDetailPage: React.FC = () => {
     setSelectedColor((current) => product.colors.some((color) => color.colorName === current) ? current : product.colors[0]?.colorName || '');
     setSelectedSize((current) => product.availableSizes.includes(current) ? current : product.availableSizes[0] || '');
     if (!product.customStitchingAvailable) setIsCustomTailoring(false);
-  }, [product]);
+  }, [selectionKey]);
 
   useEffect(() => {
     if (!product) return;
@@ -301,6 +303,7 @@ export const ProductDetailPage: React.FC = () => {
                 <span className="text-xs text-stone-400">({product.reviewCount} client reviews)</span>
               </div>}
 
+              <SaleOfferBadge product={product} />
               {/* Pricing */}
               <div className="flex flex-wrap items-baseline gap-3 mt-4 p-3.5 bg-white border border-[#E6D5B8] rounded-xl">
                 <span className="whitespace-nowrap text-2xl sm:text-3xl font-sans font-bold tabular-nums text-[#8B1E3F]">
@@ -308,7 +311,7 @@ export const ProductDetailPage: React.FC = () => {
                 </span>
                 {productPricing(product).isDiscounted && (
                   <span className="whitespace-nowrap text-sm line-through text-stone-600 font-sans font-normal tabular-nums">
-                    {formatPrice(product.originalPriceINR)}
+                    {productPricing(product).referenceLabel === 'Regular price' && 'Regular '}{formatPrice(productPricing(product).referencePriceINR)}
                   </span>
                 )}
                 {productPricing(product).discountPercentage > 0 && (

@@ -23,14 +23,18 @@ const setStructuredData = (value: unknown[]) => {
 };
 
 export const SeoManager = () => {
-  const { activeView, selectedProductId, products, categories, filters, cms } = useStore();
+  const { activeView, selectedProductId, products, categories, filters, cms, saleCampaigns = [], saleSlug } = useStore();
   const product = activeView === 'product-detail' ? products.find((item) => item.id === selectedProductId && item.isActive !== false) : undefined;
   const configuredCategory = categories.find((category) => category.isActive && category.name === filters.category);
   const page = metadataForView(activeView, product, filters.category, Boolean(filters.searchQuery.trim()), configuredCategory?.slug);
+  if (activeView === 'sale') {
+    const campaign = saleCampaigns.find(c => c.slug === saleSlug);
+    Object.assign(page, { title: `${campaign?.name || 'Festive Offers'} | ${SEO.siteName}`, description: campaign?.description || 'Explore current festival collections and offers.', path: saleSlug ? `/sale/${encodeURIComponent(saleSlug)}` : '/sale', indexable: !saleSlug || Boolean(campaign), image: campaign?.desktopImage || SEO.logo });
+  }
 
   useEffect(() => {
     const canonical = absoluteUrl(page.path);
-    document.title = SEO.siteName;
+    document.title = activeView === 'sale' ? page.title : SEO.siteName;
     setCanonical(canonical);
     setMeta('description', page.description);
     setMeta('robots', page.indexable ? 'index, follow, max-image-preview:large' : 'noindex, nofollow');

@@ -1,9 +1,10 @@
+import { SaleOfferBadge } from '../sales/SaleOfferBadge';
 import { productPricing } from '../../utils/productPricing';
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { ProductOptions } from './ProductOptions';
 import { ProductImage } from './ProductImage';
-import { isVariantAvailable, productImages, stockMessage } from '../../utils/productData';
+import { isVariantAvailable, productImages, stockMessage, productSelectionKey } from '../../utils/productData';
 import { SizeOption } from '../../types';
 import { X, Heart, ShoppingCart, Star, ShieldCheck, Scissors } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -31,11 +32,12 @@ export const QuickViewModal: React.FC = () => {
   useBodyScrollLock(Boolean(quickViewProduct));
 
   const product = products.find((item) => item.id === quickViewProduct?.id);
+  const selectionKey = productSelectionKey(product);
   useEffect(() => {
     setSelectedImgIndex(0); setQuantity(1); setIsCustomTailoring(false);
     setSelectedColor((value) => product?.colors.some((item) => item.colorName === value) ? value : product?.colors[0]?.colorName || '');
     setSelectedSize((value) => product?.availableSizes.includes(value) ? value : product?.availableSizes[0] || '');
-  }, [product]);
+  }, [selectionKey]);
   useEffect(() => { if (quickViewProduct && !product) setQuickViewProduct(null); }, [quickViewProduct, product]);
   if (!product) return null;
   const isSaved = isInWishlist(product.id);
@@ -126,6 +128,7 @@ export const QuickViewModal: React.FC = () => {
               <span className="text-xs text-stone-400">({product.reviewCount} reviews)</span>
             </div>}
 
+            <SaleOfferBadge product={product} />
             {/* Price */}
             <div className="flex flex-wrap items-baseline gap-3 mt-4">
               <span className="whitespace-nowrap text-2xl font-sans font-bold tabular-nums text-[#8B1E3F]">
@@ -133,7 +136,7 @@ export const QuickViewModal: React.FC = () => {
               </span>
               {productPricing(product).isDiscounted && (
                 <span className="whitespace-nowrap text-sm line-through text-stone-600 font-sans font-normal tabular-nums">
-                  {formatPrice(product.originalPriceINR)}
+                  {productPricing(product).referenceLabel === 'Regular price' && 'Regular '}{formatPrice(productPricing(product).referencePriceINR)}
                 </span>
               )}
               {productPricing(product).discountPercentage > 0 && (
