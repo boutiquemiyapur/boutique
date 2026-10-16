@@ -4,13 +4,18 @@ import { identifier, object, only } from '../server/payments/validation.js';
 import { requireCondition } from '../server/payments/errors.js';
 import { productFromDocument } from '../src/utils/productData.js';
 import type { SaleCampaign } from '../src/utils/saleCampaigns.js';
+import adminHandler from '../server/sales/adminHandler.js';
 
 // Explicit public projection: no admin identities, audit fields or drafts.
 export const publicCampaign = (c: SaleCampaign) => {
   const { id, name, slug, description, desktopImage, mobileImage, ctaText, startsAt, endsAt, mode, percentage, categoryNames, displayOrder, homepage, featured } = c;
   return { id, name, slug, description, desktopImage, mobileImage, ctaText, startsAt, endsAt, mode, percentage, categoryNames, displayOrder, homepage, featured, status: 'published', revision: c.revision, assignedCount: 0 };
 };
-export default async function handler(req: Request, res: Response) {
+export default async function handler(req: Request & { query?: Record<string, string | string[]> }, res: Response) {
+  // Both campaign URLs share one function to stay within Vercel Hobby's cap.
+  // The rewrite marker only selects a handler; it never grants admin access.
+  const url = new URL(req.url || '/api/sales', 'https://local.invalid');
+  if (url.pathname === '/api/admin/sale-campaigns' || url.searchParams.get('__campaignAdmin') === '1' || req.query?.__campaignAdmin === '1') return adminHandler(req, res);
   try {
     const db = database(); const now = Date.now();
     if (req.method === 'GET') {

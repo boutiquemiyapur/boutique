@@ -11,7 +11,7 @@
     "test:refund-management": "node --import tsx --test scripts/refund-management.test.ts scripts/refund-management-api.test.mjs scripts/refund-management-ui.test.mjs scripts/refund-management-client.test.mjs scripts/manual-refund-provider.test.mjs",
     "test:payment-security": "node --import tsx --test scripts/payment-security-audit.test.ts",
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "node scripts/check-vercel-function-budget.mjs && vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",

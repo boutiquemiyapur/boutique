@@ -22,7 +22,7 @@ Campaign listing uses 20-row pages; assignment listing uses 100-row pages; assig
 
 ## Security and scheduling
 
-`api/admin/sale-campaigns.ts` uses the existing revoked-token verification and trusted admin custom claim for every action, with request validation, rate limits and optimistic revisions. Direct campaign writes are denied by Firestore rules even to browser admins, so publication, slug reservations and both assignment indexes cannot be bypassed through the client SDK. Admins can read protected campaign metadata. Anonymous/customer reads of campaign and assignment records require published status and the current Firestore request-time window. Slug, publication and reverse indexes remain private. Public API responses explicitly omit admin audit identities and all draft content.
+`server/sales/adminHandler.ts`, reached through `/api/admin/sale-campaigns` and the shared `api/sales.ts` function, uses the existing revoked-token verification and trusted admin custom claim for every action, with request validation, rate limits and optimistic revisions. Direct campaign writes are denied by Firestore rules even to browser admins, so publication, slug reservations and both assignment indexes cannot be bypassed through the client SDK. Admins can read protected campaign metadata. Anonymous/customer reads of campaign and assignment records require published status and the current Firestore request-time window. Slug, publication and reverse indexes remain private. Public API responses explicitly omit admin audit identities and all draft content.
 
 Images must use credential-free HTTPS URLs of up to 2,048 characters. Names, descriptions, slugs, types, dates, percentages and money are validated server-side. Public price requests accept product IDs only; forged prices, discount values and campaign IDs are rejected.
 
@@ -71,7 +71,7 @@ There is no automatic Production migration and no pre-created Production campaig
 ## Exact files created or modified
 
 - `SALE_CAMPAIGNS_IMPLEMENTATION.md`
-- `api/admin/sale-campaigns.ts`
+- `server/sales/adminHandler.ts`
 - `api/sales.ts`
 - `firestore.rules`
 - `package.json`
@@ -105,3 +105,15 @@ There is no automatic Production migration and no pre-created Production campaig
 - `src/utils/productData.ts`
 - `src/utils/productPricing.ts`
 - `src/utils/saleCampaigns.ts`
+
+## Deployment function-budget correction
+
+The `bbb0459` campaign release contained 13 API entrypoint files. The supplied log completed its Vite and function build, then stopped during output deployment. The screenshot identifies the Hobby plan; Vercel documents a 12-function limit for this file-per-function Vite architecture. The pasted log does not contain the final deployment error, and remote inspection could not be completed because the local CLI has no usable credentials. Exceeding this documented limit is independently confirmed by the source count.
+
+The admin campaign implementation now lives in `server/sales/adminHandler.ts`. A rewrite before the SPA fallback preserves `/api/admin/sale-campaigns` and routes it to `/api/sales?__campaignAdmin=1`. The shared campaign entrypoint dispatches both original-path and rewritten-query forms to the same existing admin-authenticated handler. The marker selects the handler and grants no privileges. Public price requests and all payment/webhook/refund URLs remain unchanged. There are now 12 API entrypoints.
+
+`npm run build` first runs `scripts/check-vercel-function-budget.mjs` and fails clearly if the project exceeds the Hobby limit. TypeScript, production build and all 19 campaign/pricing/API/routing tests passed after this change. The deployment test verifies rewrite ordering and the 12-function budget, and authorization tests cover anonymous, customer, revoked-token and admin requests through original and rewritten URLs.
+
+This correction modifies `api/sales.ts`, `vercel.json`, `package.json`, `scripts/sale-campaigns-api.test.mjs` and this report; adds `server/sales/adminHandler.ts` and `scripts/check-vercel-function-budget.mjs`; and removes `api/admin/sale-campaigns.ts`. It does not modify payment logic, credentials, Firestore data or security rules. It remains local and requires an approved commit/push/redeployment to verify hosted acceptance. The earlier client-only Production build did not verify Vercel plan capacity; the new guard closes that validation gap.
+
+Reference: [Vercel function limits for file-based APIs](https://vercel.com/docs/functions/runtimes#functions-created-per-deployment).

@@ -1,7 +1,7 @@
-import { CampaignService } from '../../server/sales/campaigns.js';
-import { authenticate, database, failure, jsonBody, prepare, rateLimit, type Request, type Response } from '../../server/payments/http.js';
-import { identifier, object, only } from '../../server/payments/validation.js';
-import { requireCondition } from '../../server/payments/errors.js';
+import { CampaignService } from './campaigns.js';
+import { authenticate, database, failure, jsonBody, prepare, rateLimit, type Request, type Response } from '../payments/http.js';
+import { identifier, object, only } from '../payments/validation.js';
+import { requireCondition } from '../payments/errors.js';
 import type { CampaignStatus } from '../../src/utils/saleCampaigns.js';
 export default async function handler(req: Request, res: Response) {
   try {

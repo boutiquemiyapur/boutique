@@ -12,6 +12,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/admin/sale-campaigns",
+      "destination": "/api/sales?__campaignAdmin=1"
+    },
+    {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },
