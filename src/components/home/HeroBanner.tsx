@@ -110,9 +110,9 @@ export const HeroBanner: React.FC = () => {
     </AnimatePresence>
 
     <div className="relative mx-auto flex min-h-[540px] max-w-[1440px] items-end px-6 pb-24 pt-20 sm:min-h-[590px] sm:px-10 sm:pb-28 lg:h-[620px] lg:min-h-0 lg:items-center lg:px-16 lg:py-20 xl:h-[650px]">
-      <motion.div key={`content-${currentSlide.id}`} initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.55, delay: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }} className="max-w-xs text-white sm:max-w-md">
+      <motion.div key={`content-${currentSlide.id}`} initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: prefersReducedMotion ? 0 : 0.55, delay: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }} className="min-w-0 w-full max-w-xs text-white sm:max-w-xl lg:max-w-[40rem]">
         {currentSlide.eyebrow && <p className="text-[10px] font-semibold uppercase tracking-[.28em] text-[#f1dfae] sm:text-[11px]">{currentSlide.eyebrow}</p>}
-        {currentSlide.title && <h2 className="mt-4 font-serif text-[2.65rem] leading-[.92] drop-shadow-[0_2px_12px_rgba(0,0,0,.28)] sm:text-6xl lg:text-7xl">{currentSlide.title}</h2>}
+        {currentSlide.title && <h2 className="mt-4 break-words font-serif text-[clamp(2rem,10vw,2.65rem)] leading-[.92] drop-shadow-[0_2px_12px_rgba(0,0,0,.28)] sm:text-6xl lg:text-7xl">{currentSlide.title}</h2>}
         {currentSlide.description && <p className="mt-4 max-w-sm text-sm leading-6 text-white/95 sm:mt-5 sm:text-base sm:leading-7">{currentSlide.description}</p>}
         {currentSlide.cta && currentSlide.ctaDestination && <button onClick={openDestination} className="mt-8 inline-flex items-center gap-2 border border-[#e5d5ad] bg-[#fffdf8] px-6 py-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[#102847] transition hover:bg-[#17335c] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
           {currentSlide.cta}<ArrowRight className="h-4 w-4" />
